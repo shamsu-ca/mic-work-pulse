@@ -17,6 +17,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Missing auth header' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
+    // Verify caller is authenticated
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -28,6 +29,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
+    // Verify caller is an Admin
     const { data: profile } = await supabaseClient
       .from('profiles')
       .select('role')
@@ -38,38 +40,26 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Forbidden: Admins only' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    const { targetUserId, newPassword, newEmail } = await req.json()
-    if (!targetUserId) {
-      return new Response(JSON.stringify({ error: 'Missing targetUserId' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
-    if (!newPassword && !newEmail) {
-      return new Response(JSON.stringify({ error: 'Provide newPassword or newEmail to update' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    const { targetUserId, newPassword } = await req.json()
+    if (!targetUserId || !newPassword) {
+      return new Response(JSON.stringify({ error: 'Missing targetUserId or newPassword' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
+    // Use service role key to update password
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Build update payload dynamically
-    const updatePayload: { password?: string; email?: string } = {}
-    if (newPassword) updatePayload.password = newPassword
-    if (newEmail) updatePayload.email = newEmail
-
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       targetUserId,
-      updatePayload
+      { password: newPassword }
     )
 
     if (updateError) throw updateError
 
-    // If email changed, also store it in the profiles table for display
-    if (newEmail) {
-      await supabaseAdmin.from('profiles').update({ email: newEmail }).eq('id', targetUserId)
-    }
-
     return new Response(
-      JSON.stringify({ message: 'User updated successfully' }),
+      JSON.stringify({ message: 'Password updated successfully' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 

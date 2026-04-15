@@ -222,9 +222,7 @@ export function SupabaseDataProvider({ children, session }) {
 
   // User Management
   const createUser = async (userData) => {
-    const { email, password, full_name, role, staff_group, department } = userData;
-    // Uses the client's signup. Since email confirmation is off, it should immediately be an active user.
-    // The trigger in the DB will create the profile automatically.
+    const { email, password, full_name, role, staff_group, department, manager, login_id } = userData;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -233,7 +231,9 @@ export function SupabaseDataProvider({ children, session }) {
           full_name,
           role,
           staff_group: staff_group || 'Office Staff',
-          department
+          department,
+          manager,
+          login_id,
         }
       }
     });

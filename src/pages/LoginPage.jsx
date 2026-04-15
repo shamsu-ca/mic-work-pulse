@@ -1,23 +1,30 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
+const INTERNAL_DOMAIN = '@mic.internal';
+
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError("Please enter both email and password.");
+    if (!loginId || !password) {
+      setError("Please enter your Login ID and password.");
       return;
     }
     setLoading(true);
     setError(null);
-    
+
+    // Convert login_id to the internal email format
+    const email = loginId.trim().toLowerCase() + INTERNAL_DOMAIN;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
+    if (error) {
+      // Give a friendly message instead of exposing internals
+      setError("Invalid Login ID or password. Please try again.");
+    }
     setLoading(false);
   };
 
@@ -57,17 +64,18 @@ export default function LoginPage() {
 
           {/* Form */}
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            {/* Email */}
+            {/* Login ID */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Email Address</label>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Login ID</label>
               <div className="relative">
-                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">mail</span>
+                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">badge</span>
                 <input
-                  type="email"
+                  type="text"
                   className="w-full bg-slate-50 border border-outline-variant rounded-xl pl-10 pr-4 py-3 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary focus:bg-white transition-all"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Your assigned Login ID"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  autoComplete="username"
                   required
                 />
               </div>
@@ -84,6 +92,7 @@ export default function LoginPage() {
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
                   required
                 />
               </div>
@@ -111,11 +120,10 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="text-center text-xs text-on-surface-variant/70 font-medium">
-            Need an account? Contact your Administrator.
+            Need access? Contact your Administrator.
           </p>
         </div>
 
-        {/* Bottom tag */}
         <p className="text-center text-[10px] text-on-surface-variant/40 mt-4 font-medium tracking-wider uppercase">
           MIC WorkPulse · Secure Internal Portal
         </p>
