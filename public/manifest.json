@@ -3,14 +3,14 @@
   "name": "WorkPulse ERP",
   "icons": [
     {
-      "src": "/vite.svg",
-      "type": "image/svg+xml",
+      "src": "/app-icon-192.png",
+      "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "/vite.svg",
-      "type": "image/svg+xml",
-      "sizes": "512x512"
+      "src": "/app-icon-1024.png",
+      "type": "image/png",
+      "sizes": "1024x1024"
     }
   ],
   "start_url": "/",

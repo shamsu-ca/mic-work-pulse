@@ -43,7 +43,7 @@ export default function AppLayout({ userRole, staffGroup, setStaffGroup, current
       {/* Top Header */}
       <header className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md h-16 flex justify-between items-center px-4 md:px-8 border-b border-outline shadow-sm">
         <div className="flex items-center gap-8">
-          <span className="text-xl font-bold tracking-tighter text-on-surface font-headline">WorkPulse ERP</span>
+          <span className="text-xl font-bold tracking-tighter text-on-surface font-headline">MIC Work Pulse</span>
         </div>
         
         {userRole === 'Admin' && (
