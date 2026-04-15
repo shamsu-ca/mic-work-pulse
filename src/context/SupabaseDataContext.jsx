@@ -222,7 +222,7 @@ export function SupabaseDataProvider({ children, session }) {
 
   // User Management
   const createUser = async (userData) => {
-    const { email, password, full_name, role, staff_group, department, manager, login_id } = userData;
+    const { email, password, full_name, role, staff_group, department, manager } = userData;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -233,11 +233,18 @@ export function SupabaseDataProvider({ children, session }) {
           staff_group: staff_group || 'Office Staff',
           department,
           manager,
-          login_id,
-          email_display: email,  // store display email for profiles table
         }
       }
     });
+
+    // After signup, immediately store the email in profiles table
+    if (!error && data?.user) {
+      await supabase
+        .from('profiles')
+        .update({ email })
+        .eq('id', data.user.id);
+    }
+
     return { data, error };
   };
 

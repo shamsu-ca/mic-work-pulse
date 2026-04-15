@@ -1,6 +1,20 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 
+// Auto-generate login email from name
+const generateEmail = (name) => {
+  if (!name) return '';
+  return name.trim().toLowerCase()
+    .replace(/\s+/g, '.')
+    .replace(/[^a-z0-9.]/g, '') + '@mic.internal';
+};
+
+// Generate a secure temp password
+const generatePassword = () => {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
+  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+};
+
 // --- Edit User Modal ---
 function EditUserModal({ profile, profiles, onClose, onSave }) {
   const [editData, setEditData] = useState({
@@ -17,14 +31,13 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
   const handleSave = async () => {
     setLoading(true);
     setError(null);
-    const result = await onSave(profile.id, editData, profile.email);
+    const result = await onSave(profile.id, editData);
     if (result?.error) {
       setError(result.error);
       setLoading(false);
     } else {
       onClose();
     }
-    setLoading(false);
   };
 
   const inputCls = "bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all w-full";
@@ -37,22 +50,14 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
             <span className="material-symbols-outlined text-primary">edit</span>
             <h2 className="font-bold text-lg text-on-surface font-headline">Edit Staff Member</h2>
           </div>
-          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface transition-colors">
-            <span className="material-symbols-outlined">close</span>
-          </button>
+          <button onClick={onClose}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
         </div>
 
         <div className="p-6 flex flex-col gap-4">
           {error && (
-            <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-3 rounded-xl text-sm font-semibold flex gap-2 items-start">
+            <div className="bg-red-50 text-red-700 border border-red-200 px-4 py-3 rounded-xl text-sm font-semibold flex gap-2">
               <span className="material-symbols-outlined text-[18px] flex-shrink-0 mt-0.5">error</span>
-              <div>
-                <p className="font-bold">Update failed</p>
-                <p className="font-normal mt-0.5 text-xs">{error}</p>
-                {error.includes('Edge Function') && (
-                  <p className="font-normal mt-1 text-xs text-red-500">⚠ The Edge Function needs to be deployed to Supabase first. Profile name/info was still saved.</p>
-                )}
-              </div>
+              {error}
             </div>
           )}
 
@@ -62,9 +67,9 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
               <input className={inputCls} value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Email Address (Login ID)</label>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Login Email</label>
               <input type="email" className={inputCls} value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})} placeholder="user@email.com" />
-              <p className="text-[10px] text-on-surface-variant">Changing this updates their login email in Supabase.</p>
+              <p className="text-[10px] text-on-surface-variant">Displayed for your records only.</p>
             </div>
           </div>
 
@@ -122,18 +127,20 @@ function ResetPasswordModal({ profile, onClose, onReset }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!newPassword || newPassword.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (!newPassword || newPassword.length < 6) { setError("Min. 6 characters."); return; }
     setLoading(true);
     setError(null);
     const { error } = await onReset(profile.id, newPassword);
     if (error) {
-      setError(typeof error === 'string' ? error : error.message || 'Failed to reset password');
+      setError(typeof error === 'string' ? error : error.message || 'Failed');
     } else {
       onClose();
-      alert(`Password for ${profile.name} has been reset successfully.`);
+      alert(`Password for ${profile.name} reset successfully.`);
     }
     setLoading(false);
   };
+
+  const inputCls = "bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all w-full";
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1001] flex items-center justify-center p-4" onClick={onClose}>
@@ -142,28 +149,19 @@ function ResetPasswordModal({ profile, onClose, onReset }) {
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-error">lock_reset</span>
             <div>
-              <h2 className="font-bold text-lg text-on-surface font-headline">Reset Password</h2>
+              <p className="font-bold text-on-surface font-headline">Reset Password</p>
               <p className="text-xs text-on-surface-variant">{profile.name}</p>
             </div>
           </div>
-          <button onClick={onClose}>
-            <span className="material-symbols-outlined text-on-surface-variant">close</span>
-          </button>
+          <button onClick={onClose}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
           {error && <p className="text-error text-sm font-bold bg-error-container/50 px-3 py-2 rounded-xl">{error}</p>}
-          <p className="text-sm text-on-surface-variant">Enter a new password for this staff member. They will need to use this new password to sign in.</p>
-          <input
-            type="password"
-            className="bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all w-full"
-            placeholder="New password (min. 6 chars)"
-            value={newPassword}
-            onChange={e => setNewPassword(e.target.value)}
-            required
-          />
+          <p className="text-sm text-on-surface-variant">Enter the new password for this staff member.</p>
+          <input type="password" className={inputCls} placeholder="New password (min. 6 chars)" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
           <div className="flex justify-end gap-2">
-            <button type="button" className="px-4 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors" onClick={onClose}>Cancel</button>
-            <button type="submit" className="px-4 py-2 text-sm font-bold bg-error text-white hover:opacity-90 rounded-xl transition-opacity flex items-center gap-2" disabled={loading}>
+            <button type="button" className="px-4 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
+            <button type="submit" className="px-4 py-2 text-sm font-bold bg-error text-white hover:opacity-90 rounded-xl flex items-center gap-2" disabled={loading}>
               <span className="material-symbols-outlined text-[16px]">lock_reset</span>
               {loading ? 'Resetting...' : 'Force Reset'}
             </button>
@@ -174,23 +172,75 @@ function ResetPasswordModal({ profile, onClose, onReset }) {
   );
 }
 
+// --- Credentials Created Modal ---
+function CredentialsModal({ name, email, password, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const text = `Name: ${name}\nLogin Email: ${email}\nPassword: ${password}`;
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1002] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl border border-outline-variant/30 w-full max-w-md flex flex-col">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-surface-container bg-green-50 rounded-t-2xl">
+          <span className="material-symbols-outlined text-green-600 text-2xl">check_circle</span>
+          <div>
+            <p className="font-bold text-on-surface font-headline">User Created!</p>
+            <p className="text-xs text-on-surface-variant">Share these credentials with the staff member</p>
+          </div>
+        </div>
+        <div className="p-6 flex flex-col gap-4">
+          <div className="bg-surface-container rounded-xl p-4 flex flex-col gap-2 font-mono text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-on-surface-variant text-xs font-sans font-bold uppercase tracking-wider">Name</span>
+              <span className="font-bold text-on-surface">{name}</span>
+            </div>
+            <div className="flex justify-between items-center border-t border-outline-variant/30 pt-2">
+              <span className="text-on-surface-variant text-xs font-sans font-bold uppercase tracking-wider">Login Email</span>
+              <span className="font-bold text-primary text-xs">{email}</span>
+            </div>
+            <div className="flex justify-between items-center border-t border-outline-variant/30 pt-2">
+              <span className="text-on-surface-variant text-xs font-sans font-bold uppercase tracking-wider">Temp Password</span>
+              <span className="font-bold text-error">{password}</span>
+            </div>
+          </div>
+          <p className="text-xs text-on-surface-variant text-center">⚠ Copy and share these now. You can always reset the password later.</p>
+          <div className="flex gap-3">
+            <button className="flex-1 py-2.5 text-sm font-bold border border-outline-variant rounded-xl hover:bg-surface-container transition-colors flex items-center justify-center gap-2" onClick={handleCopy}>
+              <span className="material-symbols-outlined text-[16px]">{copied ? 'check' : 'content_copy'}</span>
+              {copied ? 'Copied!' : 'Copy Credentials'}
+            </button>
+            <button className="flex-1 py-2.5 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 transition-opacity" onClick={onClose}>Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Main Page ---
 export default function UsersPage() {
-  const { profiles, createUser, updateProfile, adminUpdateUser, adminResetUserPassword } = useDataContext();
+  const { profiles, createUser, updateProfile, adminResetUserPassword } = useDataContext();
   const safeProfiles = profiles || [];
 
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
+  // Create form — simple fields only
   const [newName, setNewName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('Assignee');
   const [newGroup, setNewGroup] = useState('Office Staff');
   const [newDept, setNewDept] = useState('');
   const [newManager, setNewManager] = useState('');
 
+  // After creation: show credentials
+  const [createdCreds, setCreatedCreds] = useState(null);
+
+  // Modals
   const [editingProfile, setEditingProfile] = useState(null);
   const [resettingProfile, setResettingProfile] = useState(null);
 
@@ -202,32 +252,34 @@ export default function UsersPage() {
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
-    if (!newEmail.trim()) { setErrorMsg("Email is required."); return; }
+    if (!newName.trim()) { setErrorMsg("Full name is required."); return; }
     setLoading(true);
     setErrorMsg(null);
 
+    const email = generateEmail(newName);
+    const password = generatePassword();
+
     const { error } = await createUser({
-      email: newEmail.trim().toLowerCase(),
-      password: newPassword,
+      email,
+      password,
       full_name: newName,
       role: newRole,
       staff_group: newGroup,
       department: newDept,
       manager: newManager,
-      email_display: newEmail.trim().toLowerCase(),
     });
 
     if (error) {
       setErrorMsg(error.message);
     } else {
       setIsOpen(false);
-      setNewName(''); setNewEmail(''); setNewPassword(''); setNewDept(''); setNewManager('');
+      setNewName(''); setNewDept(''); setNewManager('');
+      setCreatedCreds({ name: newName, email, password });
     }
     setLoading(false);
   };
 
-  const handleSaveEdit = async (id, editData, originalEmail) => {
-    // Update profile fields in the profiles table (no edge function needed)
+  const handleSaveEdit = async (id, editData) => {
     const { error } = await updateProfile(id, {
       name: editData.name,
       email: editData.email,
@@ -236,8 +288,7 @@ export default function UsersPage() {
       staff_group: editData.staff_group,
       manager: editData.manager,
     });
-    if (error) return { error: error.message };
-    return { error: null };
+    return { error: error?.message || null };
   };
 
   const handleResetPassword = async (targetId, newPassword) => {
@@ -253,7 +304,7 @@ export default function UsersPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">User Management</h1>
-          <p className="text-on-surface-variant font-medium text-sm">Create and manage staff member accounts. Emails are used as login credentials.</p>
+          <p className="text-on-surface-variant font-medium text-sm">Login emails are auto-generated from staff names. Passwords can be reset anytime.</p>
         </div>
         <button
           className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-2 hover:opacity-90 transition-opacity"
@@ -264,12 +315,15 @@ export default function UsersPage() {
         </button>
       </div>
 
-      {/* Create User Form */}
+      {/* Create User Form — no email/password fields */}
       {isOpen && (
         <div className="bg-white rounded-xl shadow-md shadow-primary/5 border border-primary/20 p-6 flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-primary">person_add</span>
-            <h3 className="font-bold text-lg font-headline text-on-surface">Create New Staff Member</h3>
+            <div>
+              <h3 className="font-bold text-lg font-headline text-on-surface">Add New Staff Member</h3>
+              <p className="text-xs text-on-surface-variant">Login email and password will be auto-generated.</p>
+            </div>
           </div>
           {errorMsg && (
             <div className="bg-error-container text-on-error-container px-4 py-3 rounded-lg text-sm font-bold flex gap-2 items-center">
@@ -277,22 +331,22 @@ export default function UsersPage() {
             </div>
           )}
           <form onSubmit={handleCreateUser} className="flex flex-col gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant">Full Name</label>
+                <label className="text-xs font-bold text-on-surface-variant">Full Name <span className="text-error">*</span></label>
                 <input required className={inputCls} placeholder="e.g. John Doe" value={newName} onChange={e => setNewName(e.target.value)} />
+                {newName && (
+                  <p className="text-[10px] text-primary font-semibold">
+                    → Login email will be: <span className="font-mono">{generateEmail(newName)}</span>
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant">Email Address</label>
-                <input required type="email" className={inputCls} placeholder="user@email.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
-                <p className="text-[10px] text-on-surface-variant">This will be their login email.</p>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant">Initial Password</label>
-                <input required type="password" className={inputCls} placeholder="Min. 6 characters" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                <label className="text-xs font-bold text-on-surface-variant">Department</label>
+                <input className={inputCls} placeholder="Optional" value={newDept} onChange={e => setNewDept(e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface-variant">Role</label>
                 <select className={inputCls} value={newRole} onChange={e => setNewRole(e.target.value)}>
@@ -308,14 +362,10 @@ export default function UsersPage() {
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant">Department</label>
-                <input className={inputCls} placeholder="Optional" value={newDept} onChange={e => setNewDept(e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface-variant">Manager</label>
                 <select className={inputCls} value={newManager} onChange={e => setNewManager(e.target.value)}>
                   <option value="">— None —</option>
-                  {safeProfiles.filter(p => p.role === 'Admin' || true).map(p => (
+                  {safeProfiles.map(p => (
                     <option key={p.id} value={p.name}>{p.name}</option>
                   ))}
                 </select>
@@ -323,7 +373,10 @@ export default function UsersPage() {
             </div>
             <div className="flex justify-end gap-3 border-t border-surface-container pt-4">
               <button type="button" className="px-6 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" onClick={() => setIsOpen(false)}>Cancel</button>
-              <button type="submit" className="px-6 py-2 text-sm font-bold bg-primary text-white hover:opacity-90 active:scale-95 rounded-lg shadow-sm transition-all" disabled={loading}>{loading ? 'Creating...' : 'Create User'}</button>
+              <button type="submit" className="px-6 py-2 text-sm font-bold bg-primary text-white hover:opacity-90 active:scale-95 rounded-lg shadow-sm transition-all flex items-center gap-2" disabled={loading}>
+                <span className="material-symbols-outlined text-[16px]">person_add</span>
+                {loading ? 'Creating...' : 'Create User'}
+              </button>
             </div>
           </form>
         </div>
@@ -336,7 +389,7 @@ export default function UsersPage() {
             <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
               <tr>
                 <th className="px-5 py-4">Name</th>
-                <th className="px-5 py-4">Email (Login)</th>
+                <th className="px-5 py-4">Login Email</th>
                 <th className="px-5 py-4 text-center">Role</th>
                 <th className="px-5 py-4 text-center">Group</th>
                 <th className="px-5 py-4">Department</th>
@@ -357,7 +410,10 @@ export default function UsersPage() {
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    <span className="text-xs text-on-surface-variant font-medium">{p.email || <span className="italic text-outline">not set</span>}</span>
+                    {p.email
+                      ? <span className="text-xs text-on-surface-variant font-mono">{p.email}</span>
+                      : <span className="text-xs text-outline italic">not set — click Edit</span>
+                    }
                   </td>
                   <td className="px-5 py-4 text-center">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${p.role === 'Admin' ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container text-on-surface-variant'}`}>{p.role}</span>
@@ -378,12 +434,13 @@ export default function UsersPage() {
           {safeProfiles.length === 0 && (
             <div className="text-center py-16 text-on-surface-variant">
               <span className="material-symbols-outlined text-5xl mb-3 block">group</span>
-              <p className="font-semibold">No staff members found.</p>
+              <p className="font-semibold">No staff members yet. Click "Add User" to get started.</p>
             </div>
           )}
         </div>
       </div>
 
+      {/* Modals */}
       {editingProfile && (
         <EditUserModal
           profile={editingProfile}
@@ -398,6 +455,15 @@ export default function UsersPage() {
           profile={resettingProfile}
           onClose={() => setResettingProfile(null)}
           onReset={handleResetPassword}
+        />
+      )}
+
+      {createdCreds && (
+        <CredentialsModal
+          name={createdCreds.name}
+          email={createdCreds.email}
+          password={createdCreds.password}
+          onClose={() => setCreatedCreds(null)}
         />
       )}
     </div>
