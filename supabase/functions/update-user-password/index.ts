@@ -7,32 +7,27 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Check if user is authenticated and is an Admin
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing auth header' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Initialize regular client to verify who is making the request
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: authHeader } } }
     )
 
-    // Get the user from the auth token
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Verify the caller is an Admin from the profiles table
     const { data: profile } = await supabaseClient
       .from('profiles')
       .select('role')
@@ -43,30 +38,38 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Forbidden: Admins only' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Get request body
-    const { targetUserId, newPassword } = await req.json()
-    if (!targetUserId || !newPassword) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    const { targetUserId, newPassword, newEmail } = await req.json()
+    if (!targetUserId) {
+      return new Response(JSON.stringify({ error: 'Missing targetUserId' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    if (!newPassword && !newEmail) {
+      return new Response(JSON.stringify({ error: 'Provide newPassword or newEmail to update' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Initialize an ADMIN client using the SERVICE ROLE KEY
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Update the password using admin auth API
-    const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+    // Build update payload dynamically
+    const updatePayload: { password?: string; email?: string } = {}
+    if (newPassword) updatePayload.password = newPassword
+    if (newEmail) updatePayload.email = newEmail
+
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       targetUserId,
-      { password: newPassword }
+      updatePayload
     )
 
-    if (updateError) {
-      throw updateError
+    if (updateError) throw updateError
+
+    // If email changed, also store it in the profiles table for display
+    if (newEmail) {
+      await supabaseAdmin.from('profiles').update({ email: newEmail }).eq('id', targetUserId)
     }
 
     return new Response(
-      JSON.stringify({ message: 'Password updated successfully' }),
+      JSON.stringify({ message: 'User updated successfully' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 

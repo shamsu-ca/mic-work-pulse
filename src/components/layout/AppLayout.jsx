@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
+import ProfileModal from '../common/ProfileModal';
 
 export default function AppLayout({ userRole, staffGroup, setStaffGroup, currentUser }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -43,7 +45,7 @@ export default function AppLayout({ userRole, staffGroup, setStaffGroup, current
       {/* Top Header */}
       <header className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md h-16 flex justify-between items-center px-4 md:px-8 border-b border-outline shadow-sm">
         <div className="flex items-center gap-8">
-          <span className="text-xl font-bold tracking-tighter text-on-surface font-headline">MIC Work Pulse</span>
+          <span className="text-xl font-bold tracking-tighter text-on-surface font-headline">MIC WorkPulse</span>
         </div>
         
         {userRole === 'Admin' && (
@@ -74,19 +76,25 @@ export default function AppLayout({ userRole, staffGroup, setStaffGroup, current
           <div className="relative">
             <button 
               onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="h-8 w-8 rounded-full bg-primary-container text-primary font-bold text-sm flex items-center justify-center border border-outline hover:ring-2 hover:ring-primary transition-all"
+              className="h-8 w-8 rounded-full overflow-hidden bg-primary-container text-primary font-bold text-sm flex items-center justify-center border border-outline hover:ring-2 hover:ring-primary transition-all"
             >
-              {getAvatarInitials(currentUser?.name)}
+              {currentUser?.avatar_url
+                ? <img src={currentUser.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                : getAvatarInitials(currentUser?.name)
+              }
             </button>
 
             {isProfileOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-outline py-2 z-50">
-                <div className="px-4 py-2 border-b border-outline mb-2">
+              <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-lg border border-outline py-2 z-50">
+                <div className="px-4 py-2 border-b border-outline mb-1">
                   <p className="text-sm font-bold text-on-surface">{currentUser?.name}</p>
                   <p className="text-xs text-on-surface-variant">{currentUser?.role}</p>
                 </div>
-                <button className="w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-dim transition-colors flex items-center gap-2">
-                   <span className="material-symbols-outlined text-[18px]">person</span> Profile
+                <button
+                  onClick={() => { setIsProfileOpen(false); setIsProfileModalOpen(true); }}
+                  className="w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-dim transition-colors flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-[18px]">manage_accounts</span> My Profile
                 </button>
                 <button 
                   onClick={handleLogout}
@@ -110,7 +118,7 @@ export default function AppLayout({ userRole, staffGroup, setStaffGroup, current
                </div>
                <div>
                   <h2 className="font-headline font-bold text-on-surface leading-none truncate">
-                    {userRole === 'Admin' ? 'Executive Ops' : 'Assignee Portal'}
+                    {userRole === 'Admin' ? 'MIC WorkPulse' : 'My Workspace'}
                   </h2>
                   <span className="text-[10px] text-on-surface-variant font-body uppercase tracking-widest">Workspace</span>
                </div>
@@ -130,7 +138,7 @@ export default function AppLayout({ userRole, staffGroup, setStaffGroup, current
                     }`
                   }
                 >
-                  <span className={`material-symbols-outlined text-xl ${userRole === 'Admin' ? '' : ''}`}>{item.icon}</span>
+                  <span className="material-symbols-outlined text-xl">{item.icon}</span>
                   <span>{item.label}</span>
                 </NavLink>
              ))}
@@ -169,6 +177,11 @@ export default function AppLayout({ userRole, staffGroup, setStaffGroup, current
           </NavLink>
         ))}
       </nav>
+
+      {/* Profile Modal */}
+      {isProfileModalOpen && (
+        <ProfileModal onClose={() => setIsProfileModalOpen(false)} currentUser={currentUser} />
+      )}
     </div>
   );
 }

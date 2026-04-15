@@ -242,6 +242,10 @@ export function SupabaseDataProvider({ children, session }) {
 
   const updateProfile = async (id, updates) => {
     const { data, error } = await supabase.from('profiles').update(updates).eq('id', id).select();
+    // If it's the current user updating themselves, refresh local state
+    if (!error && data && data.length > 0 && id === currentUser?.id) {
+      setCurrentUser(data[0]);
+    }
     return { data, error };
   };
 
