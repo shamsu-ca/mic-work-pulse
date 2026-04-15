@@ -227,8 +227,8 @@ export default function UsersPage() {
   };
 
   const handleSaveEdit = async (id, editData, originalEmail) => {
-    // 1. Always update profile fields
-    await updateProfile(id, {
+    // Update profile fields in the profiles table (no edge function needed)
+    const { error } = await updateProfile(id, {
       name: editData.name,
       email: editData.email,
       role: editData.role,
@@ -236,13 +236,7 @@ export default function UsersPage() {
       staff_group: editData.staff_group,
       manager: editData.manager,
     });
-
-    // 2. If email changed, also update Supabase Auth via Edge Function
-    if (editData.email && editData.email !== originalEmail) {
-      const { error } = await adminUpdateUser(id, { newEmail: editData.email });
-      if (error) return { error: error.message || JSON.stringify(error) };
-    }
-
+    if (error) return { error: error.message };
     return { error: null };
   };
 
