@@ -18,11 +18,13 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    // Convert login_id to the internal email format
-    const email = loginId.trim().toLowerCase() + INTERNAL_DOMAIN;
+    // If the user typed a full email (contains @), use it directly.
+    // Otherwise treat it as a Login ID and append the internal domain.
+    const raw = loginId.trim();
+    const email = raw.includes('@') ? raw : raw.toLowerCase() + INTERNAL_DOMAIN;
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      // Give a friendly message instead of exposing internals
       setError("Invalid Login ID or password. Please try again.");
     }
     setLoading(false);
