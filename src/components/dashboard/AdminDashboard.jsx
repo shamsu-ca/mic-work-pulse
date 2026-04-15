@@ -1,368 +1,342 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
-import { getDisplayStatus, getStatusBadgeClass } from '../../lib/statusUtils';
-
+import { getDisplayStatus } from '../../lib/statusUtils';
 
 export default function AdminDashboard() {
   const { profiles, workItems, containers, staffGroup } = useDataContext();
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
   const safeContainers = containers || [];
-  
-  const filteredStaff = safeProfiles.filter(p => p.staff_group === staffGroup && p.role !== 'Admin');
 
-  // Helpers
+  const filteredProfiles = safeProfiles.filter(p => p.staff_group === staffGroup && p.role !== 'Admin');
+
   const getAvatarInitials = (name) => {
     if (!name) return 'U';
-    const split = name.split(' ');
-    if (split.length > 1) return (split[0][0] + split[1][0]).toUpperCase();
-    return name.substring(0, 2).toUpperCase();
+    const s = name.split(' ');
+    return s.length > 1 ? (s[0][0] + s[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
   };
 
   const getAssigneeName = (id) => {
     const p = safeProfiles.find(p => p.id === id);
-    return p && p.name ? p.name : 'Unassigned';
+    return p?.name || 'Unassigned';
   };
 
-  // Metrics
-  const overdueCounts = filteredStaff.map(p => {
-    const count = safeWorkItems.filter(w => w.assignee_id === p.id && w.status === 'Overdue').length;
-    return count > 0 ? { id: p.id, name: p.name, count } : null;
-  }).filter(Boolean);
+  // ── Stats ──
+  const totalTasks = safeWorkItems.filter(w => !w.is_recurring).length;
+  const assignedTasks = safeWorkItems.filter(w => getDisplayStatus(w) === 'Assigned' || getDisplayStatus(w) === 'Not Started').length;
+  const ongoingTasks = safeWorkItems.filter(w => getDisplayStatus(w) === 'Ongoing').length;
+  const doneTasks = safeWorkItems.filter(w => getDisplayStatus(w) === 'Completed').length;
 
-  const notStartedCounts = filteredStaff.map(p => {
-    const count = safeWorkItems.filter(w => w.assignee_id === p.id && getDisplayStatus(w) === 'Not Started').length;
-    return count > 0 ? { id: p.id, name: p.name, count } : null;
-  }).filter(Boolean);
+  const activeProjects = safeContainers.filter(c => c.type === 'Project').length;
+  const plannedProj = safeContainers.filter(c => c.type === 'Project' && (c.progress || 0) === 0).length;
+  const closedProj = safeContainers.filter(c => c.type === 'Project' && (c.progress || 0) === 100).length;
+  const activeContProj = activeProjects - plannedProj - closedProj;
 
-  const stats = {
-    tasks: {
-      total: safeWorkItems.filter(w => w.type === 'Task' || w.type === 'Subtask').length,
-      assigned: safeWorkItems.filter(w => (w.type === 'Task' || w.type === 'Subtask') && (w.status === 'Assigned' || w.status === 'Not Started' || w.status === 'Overdue')).length,
-      ongoing: safeWorkItems.filter(w => (w.type === 'Task' || w.type === 'Subtask') && w.status === 'Ongoing').length,
-      done: safeWorkItems.filter(w => (w.type === 'Task' || w.type === 'Subtask') && w.status === 'Completed').length,
-    },
-    projects: {
-      total: safeContainers.filter(c => c.type === 'Project').length,
-      planned: safeContainers.filter(c => c.type === 'Project' && c.progress === 0).length,
-      active: safeContainers.filter(c => c.type === 'Project' && c.progress > 0 && c.progress < 100).length,
-      closed: safeContainers.filter(c => c.type === 'Project' && c.progress === 100).length,
-    },
-    events: {
-      total: safeContainers.filter(c => c.type === 'Event').length,
-      invites: safeContainers.filter(c => c.type === 'Event' && c.progress < 50).length,
-      live: safeContainers.filter(c => c.type === 'Event' && c.progress >= 50 && c.progress < 100).length,
-      ended: safeContainers.filter(c => c.type === 'Event' && c.progress === 100).length,
-    }
+  const totalEvents = safeContainers.filter(c => c.type === 'Event').length;
+  const ongoingEvents = safeContainers.filter(c => c.type === 'Event' && (c.progress || 0) > 0 && (c.progress || 0) < 100).length;
+  const endedEvents = safeContainers.filter(c => c.type === 'Event' && (c.progress || 0) === 100).length;
+  const inviteEvents = totalEvents - ongoingEvents - endedEvents;
+
+  // ── Critical items ──
+  const overdueItems = safeWorkItems.filter(w => getDisplayStatus(w) === 'Overdue');
+  const notStartedItems = safeWorkItems.filter(w => getDisplayStatus(w) === 'Not Started');
+
+  // Group overdue by assignee
+  const overdueByPerson = filteredProfiles.map(p => ({
+    p,
+    count: overdueItems.filter(w => w.assignee_id === p.id).length
+  })).filter(x => x.count > 0).slice(0, 4);
+
+  const notStartedByPerson = filteredProfiles.map(p => ({
+    p,
+    count: notStartedItems.filter(w => w.assignee_id === p.id).length
+  })).filter(x => x.count > 0).slice(0, 4);
+
+  // ── Today's Focus: high priority, non-completed ──
+  const todaysFocus = [...safeWorkItems]
+    .filter(w => getDisplayStatus(w) !== 'Completed' && w.priority === 'High' || w.priority === 'Critical')
+    .sort((a, b) => (a.expected_date || '').localeCompare(b.expected_date || ''))
+    .slice(0, 4);
+
+  // ── Priority Queue ──
+  const priorityQueue = [...safeWorkItems]
+    .filter(w => getDisplayStatus(w) !== 'Completed')
+    .sort((a, b) => {
+      const pOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+      return (pOrder[a.priority] ?? 2) - (pOrder[b.priority] ?? 2);
+    })
+    .slice(0, 5);
+
+  const statusBadgeCls = (w) => {
+    const s = getDisplayStatus(w);
+    if (s === 'Overdue') return 'bg-red-100 text-red-700';
+    if (s === 'Ongoing') return 'bg-blue-100 text-blue-700';
+    if (s === 'Completed') return 'bg-green-100 text-green-700';
+    return 'bg-surface-container text-on-surface-variant';
   };
 
-  const todaysFocus = safeWorkItems.filter(w => w.priority <= 2 && w.status !== 'Completed').slice(0, 3);
-  const priorityQueue = safeWorkItems.filter(w => w.status !== 'Completed' && !w.in_planning_pool).sort((a,b) => a.priority - b.priority).slice(0, 4);
-  const recentActivity = safeWorkItems.filter(w => w.status === 'Completed').slice(0, 4); // mock activity
+  const priorityCls = (p) => {
+    if (p === 'Critical') return 'bg-red-100 text-red-700';
+    if (p === 'High') return 'bg-orange-100 text-orange-700';
+    return 'bg-surface-container text-on-surface-variant';
+  };
 
   return (
-    <div className="flex flex-col gap-8 max-w-[1400px] mx-auto pb-12">
-      
-      {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="flex flex-col gap-6 max-w-[1400px] mx-auto pb-16 animate-fade-in">
+      {/* Page Title */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">System Overview</h1>
-          <p className="text-on-surface-variant font-medium text-sm">Real-time enterprise performance metrics</p>
-        </div>
-        <div className="flex gap-4 items-center">
-          <div className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px]">calendar_today</span>
-            Today
-            <span className="material-symbols-outlined text-[16px] ml-1">expand_more</span>
-          </div>
+          <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">System Overview</h1>
+          <p className="text-sm text-on-surface-variant font-medium">Real-time enterprise performance metrics · <span className="font-bold text-primary">{staffGroup}</span></p>
         </div>
       </div>
 
-      {/* Top Alerts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-error/20 p-6 relative overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 w-2 bg-error"></div>
-          <div className="flex items-center gap-3 mb-6 ml-2">
-            <div className="w-10 h-10 bg-error/10 text-error rounded-lg flex items-center justify-center">
-              <span className="material-symbols-outlined" style={{fontVariationSettings: "'FILL' 1"}}>warning</span>
-            </div>
-            <div>
-              <h3 className="font-bold text-error uppercase text-sm tracking-widest">Critical Overdue</h3>
-              <p className="text-xs text-on-surface-variant font-medium">10 tasks requiring immediate attention</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-6 ml-2">
-            {overdueCounts.map(c => (
-              <div key={c.id} className="flex flex-col items-center gap-1">
-                 <div className="w-8 h-8 rounded-full bg-surface-container-high border border-outline flex items-center justify-center text-xs font-bold">
-                   {getAvatarInitials(c.name)}
-                 </div>
-                 <div className="flex flex-col items-center">
-                   <span className="text-[9px] uppercase tracking-wider text-on-surface-variant font-bold">{(c.name || 'User').split(' ')[0]}</span>
-                   <span className="text-error font-extrabold text-sm">{c.count}</span>
-                 </div>
+      {/* ── Alert Banners ── */}
+      {(overdueItems.length > 0 || notStartedItems.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {overdueItems.length > 0 && (
+            <div className="bg-white border-l-4 border-error rounded-xl p-4 shadow-sm flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined text-error text-[18px]" style={{fontVariationSettings:"'FILL' 1"}}>warning</span>
+                </div>
+                <div>
+                  <p className="text-xs font-black text-error uppercase tracking-widest">Critical Overdue</p>
+                  <p className="text-xs text-on-surface-variant">{overdueItems.length} tasks requiring immediate attention</p>
+                </div>
               </div>
-            ))}
-            {overdueCounts.length === 0 && <span className="text-sm font-medium text-slate-400">No overdue items.</span>}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-orange-700/20 p-6 relative overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 w-2 bg-orange-700"></div>
-          <div className="flex items-center gap-3 mb-6 ml-2">
-            <div className="w-10 h-10 bg-orange-700/10 text-orange-700 rounded-lg flex items-center justify-center">
-              <span className="material-symbols-outlined" style={{fontVariationSettings: "'FILL' 1"}}>pending</span>
+              {overdueByPerson.length > 0 && (
+                <div className="flex gap-4 flex-wrap">
+                  {overdueByPerson.map(({ p, count }) => (
+                    <div key={p.id} className="flex items-center gap-1.5">
+                      <div className="w-6 h-6 rounded-full bg-red-200 flex items-center justify-center text-[8px] font-black text-red-700">{getAvatarInitials(p.name)}</div>
+                      <div>
+                        <p className="text-[9px] font-bold text-on-surface uppercase">{p.name.split(' ')[0]}</p>
+                        <p className="text-xs font-black text-error">{count}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div>
-              <h3 className="font-bold text-orange-700 uppercase text-sm tracking-widest">Not Started</h3>
-              <p className="text-xs text-on-surface-variant font-medium">High priority items pending kick-off</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-6 ml-2">
-            {notStartedCounts.map(c => (
-              <div key={c.id} className="flex flex-col items-center gap-1">
-                 <div className="w-8 h-8 rounded-full bg-surface-container-high border border-outline flex items-center justify-center text-xs font-bold">
-                   {getAvatarInitials(c.name)}
-                 </div>
-                 <div className="flex flex-col items-center">
-                   <span className="text-[9px] uppercase tracking-wider text-on-surface-variant font-bold">{c.name.split(' ')[0]}</span>
-                   <span className="text-orange-700 font-extrabold text-sm">{c.count}</span>
-                 </div>
+          )}
+          {notStartedItems.length > 0 && (
+            <div className="bg-white border-l-4 border-amber-400 rounded-xl p-4 shadow-sm flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined text-amber-600 text-[18px]" style={{fontVariationSettings:"'FILL' 1"}}>chat_bubble</span>
+                </div>
+                <div>
+                  <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Not Started</p>
+                  <p className="text-xs text-on-surface-variant">High priority items pending kick-off</p>
+                </div>
               </div>
-            ))}
-            {notStartedCounts.length === 0 && <span className="text-sm font-medium text-slate-400">All fast-tracked.</span>}
-          </div>
+              {notStartedByPerson.length > 0 && (
+                <div className="flex gap-4 flex-wrap">
+                  {notStartedByPerson.map(({ p, count }) => (
+                    <div key={p.id} className="flex items-center gap-1.5">
+                      <div className="w-6 h-6 rounded-full bg-amber-200 flex items-center justify-center text-[8px] font-black text-amber-700">{getAvatarInitials(p.name)}</div>
+                      <div>
+                        <p className="text-[9px] font-bold text-on-surface uppercase">{p.name.split(' ')[0]}</p>
+                        <p className="text-xs font-black text-amber-700">{count}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* ── Stat Cards ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Tasks */}
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-6">
-             <div className="w-10 h-10 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
-               <span className="material-symbols-outlined">assignment</span>
-             </div>
-             <div className="text-right">
-               <h2 className="text-3xl font-black text-on-surface font-headline">{stats.tasks.total}</h2>
-               <p className="text-[10px] uppercase font-bold text-on-surface-variant tracking-widest">Total Tasks</p>
-             </div>
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary" style={{fontVariationSettings:"'FILL' 1"}}>assignment</span>
+            </div>
+            <p className="text-4xl font-black text-on-surface">{totalTasks}</p>
           </div>
-          <div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Assigned</p>
-                 <p className="text-lg font-bold text-on-surface">{stats.tasks.assigned}</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Ongoing</p>
-                 <p className="text-lg font-bold text-primary">{stats.tasks.ongoing}</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Done</p>
-                 <p className="text-lg font-bold text-green-600">{stats.tasks.done}</p>
-               </div>
-            </div>
-            <div className="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden flex">
-               <div className="bg-on-surface h-full" style={{width: `${(stats.tasks.assigned/stats.tasks.total)*100}%`}}></div>
-               <div className="bg-primary h-full" style={{width: `${(stats.tasks.ongoing/stats.tasks.total)*100}%`}}></div>
-            </div>
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Total Tasks</p>
+          <div className="h-px bg-outline-variant/20 mb-3"></div>
+          <div className="grid grid-cols-3 text-center gap-2">
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Assigned</p><p className="font-black text-on-surface">{assignedTasks}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Ongoing</p><p className="font-black text-on-surface">{ongoingTasks}</p></div>
+            <div><p className="text-[10px] text-green-600 font-bold uppercase">Done</p><p className="font-black text-green-600">{doneTasks}</p></div>
+          </div>
+          <div className="mt-3 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+            <div className="h-full bg-primary rounded-full" style={{ width: totalTasks === 0 ? '0%' : `${(doneTasks / totalTasks) * 100}%` }}></div>
           </div>
         </div>
 
         {/* Projects */}
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-6">
-             <div className="w-10 h-10 bg-blue-500/10 text-blue-600 rounded-lg flex items-center justify-center">
-               <span className="material-symbols-outlined">account_tree</span>
-             </div>
-             <div className="text-right">
-               <h2 className="text-3xl font-black text-on-surface font-headline">{stats.projects.total < 10 ? `0${stats.projects.total}` : stats.projects.total}</h2>
-               <p className="text-[10px] uppercase font-bold text-on-surface-variant tracking-widest">Active Projects</p>
-             </div>
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-indigo-600" style={{fontVariationSettings:"'FILL' 1"}}>folder_open</span>
+            </div>
+            <p className="text-4xl font-black text-on-surface">{activeProjects}</p>
           </div>
-          <div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Planned</p>
-                 <p className="text-lg font-bold text-on-surface">0{stats.projects.planned}</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Active</p>
-                 <p className="text-lg font-bold text-blue-600">0{stats.projects.active}</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Closed</p>
-                 <p className="text-lg font-bold text-green-600">0{stats.projects.closed}</p>
-               </div>
-            </div>
-            <div className="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden flex">
-               <div className="bg-blue-600 h-full w-2/3"></div>
-            </div>
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Active Projects</p>
+          <div className="h-px bg-outline-variant/20 mb-3"></div>
+          <div className="grid grid-cols-3 text-center gap-2">
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Planned</p><p className="font-black text-on-surface">{String(plannedProj).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Active</p><p className="font-black text-on-surface">{String(activeContProj).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-green-600 font-bold uppercase">Closed</p><p className="font-black text-green-600">{String(closedProj).padStart(2,'0')}</p></div>
+          </div>
+          <div className="mt-3 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+            <div className="h-full bg-indigo-500 rounded-full" style={{ width: activeProjects === 0 ? '0%' : `${(activeContProj / activeProjects) * 100}%` }}></div>
           </div>
         </div>
 
         {/* Events */}
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-6">
-             <div className="w-10 h-10 bg-slate-100 text-slate-600 rounded-lg flex items-center justify-center">
-               <span className="material-symbols-outlined">calendar_today</span>
-             </div>
-             <div className="text-right">
-               <h2 className="text-3xl font-black text-on-surface font-headline">{stats.events.total < 10 ? `0${stats.events.total}` : stats.events.total}</h2>
-               <p className="text-[10px] uppercase font-bold text-on-surface-variant tracking-widest">Scheduled Events</p>
-             </div>
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-green-600" style={{fontVariationSettings:"'FILL' 1"}}>event</span>
+            </div>
+            <p className="text-4xl font-black text-on-surface">{totalEvents}</p>
           </div>
-          <div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Invites</p>
-                 <p className="text-lg font-bold text-on-surface">0{stats.events.invites}</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Live</p>
-                 <p className="text-lg font-bold text-on-surface-variant">0{stats.events.live}</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Ended</p>
-                 <p className="text-lg font-bold text-green-600">0{stats.events.ended}</p>
-               </div>
-            </div>
-            <div className="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden flex">
-               <div className="bg-slate-700 h-full w-3/4"></div>
-            </div>
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Scheduled Events</p>
+          <div className="h-px bg-outline-variant/20 mb-3"></div>
+          <div className="grid grid-cols-3 text-center gap-2">
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Invites</p><p className="font-black text-on-surface">{String(inviteEvents).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Live</p><p className="font-black text-on-surface">{String(ongoingEvents).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-green-600 font-bold uppercase">Ended</p><p className="font-black text-green-600">{String(endedEvents).padStart(2,'0')}</p></div>
+          </div>
+          <div className="mt-3 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 rounded-full" style={{ width: totalEvents === 0 ? '0%' : `${(ongoingEvents / totalEvents) * 100}%` }}></div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
-        {/* Main Content Col */}
-        <div className="xl:col-span-2 flex flex-col gap-6">
-          
-          {/* Today's Focus */}
-          <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-             <div className="p-6 border-b border-surface-container-high flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                   <div className="w-1.5 h-6 bg-primary rounded-full"></div>
-                   <h2 className="font-bold text-lg font-headline text-on-surface">Today's Focus</h2>
-                </div>
-                <span className="px-3 py-1 bg-surface-container text-primary font-bold text-[10px] uppercase tracking-wider rounded-full">High Priority</span>
-             </div>
-             <div className="p-6 flex flex-col gap-4">
-                {todaysFocus.map(w => (
-                  <div key={w.id} className="flex items-center justify-between p-4 bg-white border border-outline-variant/40 rounded-xl hover:shadow-md transition-shadow group relative overflow-hidden">
-                     <div className={`absolute left-0 top-0 bottom-0 w-1 ${w.priority === 1 ? 'bg-error' : 'bg-primary'}`}></div>
-                     <div className="flex items-center gap-4 ml-2">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${w.priority === 1 ? 'bg-error/10 text-error' : 'bg-primary/10 text-primary'}`}>
-                           <span className="material-symbols-outlined text-lg">{w.type === 'Task' ? 'assignment' : (w.type === 'Milestone' ? 'flag' : 'checklist')}</span>
-                        </div>
-                        <div>
-                           <div className="flex items-center gap-2 mb-1">
-                              <span className="text-[10px] uppercase font-bold text-outline tracking-wider">{w.type} • {w.status}</span>
-                           </div>
-                           <h4 className="font-bold text-sm text-on-surface">{w.title}</h4>
-                        </div>
-                     </div>
-                     <div className="text-right">
-                        <p className={`text-[10px] font-black uppercase tracking-wider ${w.priority === 1 ? 'text-error' : 'text-primary'}`}>{w.priority === 1 ? 'URGENT' : 'STABLE'}</p>
-                        <p className="text-xs text-on-surface-variant font-medium mt-1">{w.expected_date ? `Due ${w.expected_date}` : 'No deadline'}</p>
-                     </div>
+      {/* ── Bottom Split Layout ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Today's Focus */}
+        <div className="md:col-span-2 flex flex-col gap-4">
+          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-5 bg-primary rounded-full"></div>
+                <h2 className="font-bold text-on-surface font-headline">Today's Focus</h2>
+              </div>
+              <span className="text-[10px] font-bold text-orange-700 bg-orange-100 px-2.5 py-1 rounded-full uppercase tracking-widest">HIGH PRIORITY</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {todaysFocus.length === 0 && <p className="text-sm text-on-surface-variant text-center py-6 italic">No high priority items right now 🎉</p>}
+              {todaysFocus.map(t => {
+                const s = getDisplayStatus(t);
+                const isOverdue = s === 'Overdue';
+                return (
+                  <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border-l-4 ${isOverdue ? 'border-error bg-red-50' : 'border-primary/30 bg-surface-container-low'}`}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-red-100' : 'bg-primary/10'}`}>
+                      <span className="material-symbols-outlined text-[16px] text-primary" style={{fontVariationSettings:"'FILL' 1"}}>{isOverdue ? 'warning' : 'assignment'}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">{t.type || 'Task'} · {s}</p>
+                      <p className="text-sm font-semibold text-on-surface truncate">{t.title}</p>
+                      {t.expected_date && <p className="text-[10px] text-on-surface-variant">Due {t.expected_date}</p>}
+                    </div>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-surface-container text-on-surface-variant'}`}>{isOverdue ? 'URGENT' : 'STABLE'}</span>
                   </div>
-                ))}
-                {todaysFocus.length === 0 && <p className="text-sm text-outline font-medium text-center py-4">No critical tasks pending.</p>}
-             </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Priority Queue */}
-          <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-             <div className="p-6 border-b border-surface-container-high flex justify-between items-center">
-                <h2 className="font-bold text-lg font-headline text-on-surface">Priority Queue</h2>
-                <div className="flex gap-2">
-                   <button className="h-8 w-8 border border-outline-variant/50 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-dim"><span className="material-symbols-outlined text-[16px]">filter_list</span></button>
-                   <button className="h-8 w-8 border border-outline-variant/50 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-dim"><span className="material-symbols-outlined text-[16px]">sort</span></button>
-                </div>
-             </div>
-             <div className="overflow-x-auto">
-               <table className="w-full text-left">
-                  <thead className="bg-surface-container-lowest/50 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
-                     <tr>
-                        <th className="px-6 py-4">Subject</th>
-                        <th className="px-6 py-4">Assigned</th>
-                        <th className="px-6 py-4">Status</th>
-                        <th className="px-6 py-4 text-right">Deadline</th>
-                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-surface-container-low text-sm font-medium">
-                     {priorityQueue.map(w => (
-                       <tr key={w.id} className="hover:bg-surface-container-low/50 transition-colors">
-                          <td className="px-6 py-4 flex items-center gap-2">
-                             <span className={`w-2 h-2 rounded-full ${w.priority === 1 ? 'bg-error' : 'bg-primary'}`}></span>
-                             <span className="text-on-surface font-semibold">{w.title}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                             <div className="flex items-center gap-2">
-                               <div className="w-6 h-6 rounded-full bg-surface-dim flex items-center justify-center text-[9px] font-bold">
-                                 {getAvatarInitials(getAssigneeName(w.assignee_id))}
-                               </div>
-                               <span className="text-on-surface">{getAssigneeName(w.assignee_id).split(' ')[0]}</span>
-                             </div>
-                          </td>
-                          <td className="px-6 py-4">
-                             <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded ${w.status === 'Overdue' ? 'bg-error-container text-on-error-container' : (w.status === 'Not Started' ? 'bg-orange-100 text-orange-700' : 'bg-primary-container/20 text-primary')}`}>
-                                {w.status}
-                             </span>
-                          </td>
-                          <td className="px-6 py-4 text-right text-on-surface-variant">
-                             {w.expected_date || 'None'}
-                          </td>
-                       </tr>
-                     ))}
-                  </tbody>
-               </table>
-               {priorityQueue.length === 0 && <p className="text-sm text-outline font-medium text-center py-6 border-b border-surface-container-high/50">Priority queue is empty.</p>}
-             </div>
+          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-on-surface font-headline">Priority Queue</h2>
+              <span className="material-symbols-outlined text-on-surface-variant text-[18px]">filter_list</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest border-b border-surface-container-high">
+                    <th className="pb-2 text-left">Subject</th>
+                    <th className="pb-2 text-left">Assigned</th>
+                    <th className="pb-2 text-left">Status</th>
+                    <th className="pb-2 text-left">Deadline</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-container-low">
+                  {priorityQueue.map(t => {
+                    const s = getDisplayStatus(t);
+                    return (
+                      <tr key={t.id} className="text-sm">
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.priority === 'Critical' ? 'bg-error' : t.priority === 'High' ? 'bg-orange-500' : 'bg-primary'}`}></span>
+                            <span className="font-medium text-on-surface truncate max-w-[150px]">{t.title}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary">{getAvatarInitials(getAssigneeName(t.assignee_id))}</div>
+                            <span className="text-on-surface-variant">{getAssigneeName(t.assignee_id).split(' ')[0]}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${statusBadgeCls(t)}`}>{s}</span>
+                        </td>
+                        <td className="py-2.5 text-on-surface-variant">{t.expected_date || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {priorityQueue.length === 0 && <p className="text-center py-6 text-on-surface-variant text-sm italic">All clear!</p>}
+            </div>
           </div>
         </div>
 
-        {/* Right Sidebar Col */}
-        <div className="xl:col-span-1 flex flex-col gap-6">
-           <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 flex flex-col h-full">
-              <div className="p-6 border-b border-surface-container-high flex justify-between items-center">
-                 <h2 className="font-bold text-lg font-headline text-on-surface">Recent Activity</h2>
-                 <span className="text-[10px] font-bold text-primary uppercase tracking-widest cursor-pointer">View All</span>
-              </div>
-              <div className="p-6 flex-1">
-                 <div className="relative border-l border-outline-variant/30 ml-3 space-y-8">
-                    {recentActivity.map((w, idx) => (
-                      <div key={w.id} className="relative pl-6">
-                         <div className="absolute -left-[9px] bg-white p-0.5 rounded-full">
-                            <div className="w-3.5 h-3.5 rounded-full border-2 border-primary bg-primary/20 flex items-center justify-center text-primary">
-                              <span className="material-symbols-outlined shrink-0" style={{fontSize: '8px'}}>{idx % 2 === 0 ? 'check' : ''}</span>
-                            </div>
-                         </div>
-                         <div>
-                            <p className="text-sm font-medium text-on-surface">
-                              <span className="font-bold">{getAssigneeName(w.assignee_id).split(' ')[0]}</span> completed task <span className="font-semibold text-primary">{w.title}</span>
-                            </p>
-                            <p className="text-[10px] text-outline font-bold uppercase mt-1">Recently</p>
-                         </div>
-                      </div>
-                    ))}
-                    {recentActivity.length === 0 && <p className="ml-6 text-sm text-outline">No recent activity.</p>}
-                 </div>
-              </div>
-              <div className="p-6 bg-primary text-white rounded-b-xl flex justify-between items-end">
-                 <div>
-                    <p className="text-[10px] uppercase font-bold text-white/70 tracking-widest mb-1">Weekly Efficiency</p>
-                    <p className="text-3xl font-black font-headline">+12.5%</p>
-                    <p className="text-[10px] text-white/80 font-medium mt-1">Above last quarter average</p>
-                 </div>
-                 <span className="material-symbols-outlined text-4xl text-white/20">trending_up</span>
-              </div>
-           </div>
-        </div>
+        {/* Recent Activity (Staff workload) */}
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5 flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-on-surface font-headline">Staff Workload</h2>
+            <span className="text-[10px] text-primary font-bold">VIEW ALL</span>
+          </div>
+          <div className="flex flex-col gap-3 flex-1">
+            {filteredProfiles.slice(0, 6).map(p => {
+              const tasks = safeWorkItems.filter(w => w.assignee_id === p.id);
+              const completed = tasks.filter(w => getDisplayStatus(w) === 'Completed').length;
+              const total = tasks.length;
+              const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+              const overdue = tasks.filter(w => getDisplayStatus(w) === 'Overdue').length;
+              return (
+                <div key={p.id} className="flex items-center gap-3">
+                  {p.avatar_url
+                    ? <img src={p.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                    : <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-black text-primary flex-shrink-0">{getAvatarInitials(p.name)}</div>
+                  }
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-on-surface truncate">{p.name}</p>
+                      {overdue > 0 && <span className="text-[9px] font-bold text-error">{overdue} late</span>}
+                    </div>
+                    <div className="h-1.5 bg-surface-container-high rounded-full mt-1 overflow-hidden">
+                      <div className={`h-full rounded-full ${overdue > 0 ? 'bg-error' : 'bg-primary'}`} style={{ width: `${pct}%` }}></div>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-on-surface-variant w-8 text-right flex-shrink-0">{pct}%</span>
+                </div>
+              );
+            })}
+            {filteredProfiles.length === 0 && <p className="text-sm text-on-surface-variant italic text-center mt-4">No staff in {staffGroup}.</p>}
+          </div>
 
+          {/* Weekly efficiency */}
+          <div className="mt-4 bg-primary rounded-xl p-4">
+            <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest">WEEKLY EFFICIENCY</p>
+            <p className="text-2xl font-black text-white mt-1">
+              {safeWorkItems.length === 0 ? '0%' : `${Math.round((safeWorkItems.filter(w => getDisplayStatus(w) === 'Completed').length / safeWorkItems.length) * 100)}%`}
+            </p>
+            <p className="text-[10px] text-white/70 mt-1">completion rate across all tasks</p>
+          </div>
+        </div>
       </div>
     </div>
   );

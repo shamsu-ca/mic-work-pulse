@@ -257,10 +257,17 @@ export function SupabaseDataProvider({ children, session }) {
 
   const updateProfile = async (id, updates) => {
     const { data, error } = await supabase.from('profiles').update(updates).eq('id', id).select();
-    // If it's the current user updating themselves, refresh local state
-    if (!error && data && data.length > 0 && id === currentUser?.id) {
+    if (error) {
+      console.error('updateProfile error:', error);
+      return { data, error };
+    }
+    // Refresh current user state if they updated themselves
+    if (data && data.length > 0 && id === currentUser?.id) {
       setCurrentUser(data[0]);
     }
+    // Always refresh the full profiles list so the table re-renders
+    const { data: allProfiles } = await supabase.from('profiles').select('*');
+    if (allProfiles) setProfiles(allProfiles);
     return { data, error };
   };
 

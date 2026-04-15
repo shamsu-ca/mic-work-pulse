@@ -3,153 +3,266 @@ import { useDataContext } from '../context/SupabaseDataContext';
 import CreateModal from '../components/common/CreateModal';
 
 export default function ProjectsEventsPage() {
-  const { containers, currentUser } = useDataContext();
-  const [activeTab, setActiveTab] = useState('Projects'); // Projects vs Events
+  const { containers, workItems, profiles, currentUser, addContainer } = useDataContext();
+  const [typeTab, setTypeTab] = useState('Projects');    // Projects | Events
+  const [modeTab, setModeTab] = useState('Active');      // Active | Saved Templates
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+
+  const safeContainers = containers || [];
+  const safeWorkItems = workItems || [];
+  const safeProfiles = profiles || [];
 
   const getInitials = (name) => {
     if (!name) return 'U';
-    const split = name.split(' ');
-    if (split.length > 1) return (split[0][0] + split[1][0]).toUpperCase();
-    return name.substring(0, 2).toUpperCase();
+    const s = name.split(' ');
+    return s.length > 1 ? (s[0][0] + s[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
   };
 
-  let dbContainers = containers || [];
+  const getProfile = (id) => safeProfiles.find(p => p.id === id);
+  const getLeadName = (id) => getProfile(id)?.name || 'Unassigned';
+
+  let allContainers = safeContainers;
   if (currentUser?.role === 'Assignee') {
-    dbContainers = dbContainers.filter(t => t.created_by === currentUser.id);
+    allContainers = allContainers.filter(c => c.created_by === currentUser.id);
   }
 
-  const activeProjects = dbContainers.filter(c => c.type === 'Project' && c.progress > 0 && c.progress < 100);
-  const activeEvents = dbContainers.filter(c => c.type === 'Event' && c.progress > 0 && c.progress < 100);
-  
-  const displayList = activeTab === 'Projects' ? activeProjects : activeEvents;
+  const filteredType = typeTab === 'Projects'
+    ? allContainers.filter(c => c.type === 'Project')
+    : allContainers.filter(c => c.type === 'Event');
+
+  const activeItems = filteredType.filter(c => !(c.is_template));
+  const templateItems = filteredType.filter(c => c.is_template);
+  const displayList = modeTab === 'Active' ? activeItems : templateItems;
+
+  const getContainerTasks = (id) => safeWorkItems.filter(w => w.container_id === id);
+
+  const progressColor = (p) => {
+    if (p >= 80) return 'bg-green-500';
+    if (p >= 40) return 'bg-primary';
+    return 'bg-amber-400';
+  };
+
+  const statusLabel = (c) => {
+    const p = c.progress || 0;
+    if (p === 0) return { label: 'Planned', cls: 'bg-surface-container text-on-surface-variant' };
+    if (p === 100) return { label: 'Completed', cls: 'bg-green-100 text-green-700' };
+    return { label: 'Ongoing', cls: 'bg-blue-100 text-blue-700' };
+  };
 
   return (
-    <div className="flex flex-col gap-8 max-w-[1400px] mx-auto pb-12">
+    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto pb-16">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">Portfolio Dashboard</h1>
           <p className="text-on-surface-variant font-medium text-sm">Strategic overview of all key initiatives and events.</p>
         </div>
-        <div className="flex gap-4 items-center">
-            <button className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-surface-container transition-colors">
-              <span className="material-symbols-outlined text-[18px]">save</span> Save Template
-            </button>
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-2 hover:opacity-90 transition-opacity"
-            >
-              <span className="material-symbols-outlined text-[18px]">add</span> New {activeTab === 'Projects' ? 'Project' : 'Event'}
-            </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-primary text-white rounded-xl px-4 py-2.5 text-sm font-bold shadow-sm flex items-center gap-2 hover:opacity-90 transition-opacity"
+          >
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            New {typeTab === 'Projects' ? 'Project' : 'Event'}
+          </button>
         </div>
       </div>
 
+      {/* Type Tabs: Projects | Events */}
+      <div className="flex gap-1 bg-surface-container p-1 rounded-xl w-fit">
+        {['Projects', 'Events'].map(t => (
+          <button
+            key={t}
+            onClick={() => setTypeTab(t)}
+            className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${typeTab === t ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Mode Tabs: Active | Saved Templates */}
       <div className="flex gap-6 border-b border-surface-container-high">
-        <button 
-          className={`pb-3 text-sm font-bold tracking-wide transition-colors relative ${activeTab === 'Projects' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
-          onClick={() => setActiveTab('Projects')}
-        >
-          {activeTab === 'Projects' && <span className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t-full"></span>}
-          Key Projects
-        </button>
-        <button 
-          className={`pb-3 text-sm font-bold tracking-wide transition-colors relative ${activeTab === 'Events' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
-          onClick={() => setActiveTab('Events')}
-        >
-          {activeTab === 'Events' && <span className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t-full"></span>}
-          Upcoming Events
-        </button>
-        <button 
-          className="pb-3 text-sm font-bold tracking-wide transition-colors relative text-on-surface-variant hover:text-on-surface ml-auto"
-          onClick={() => setActiveTab('Templates')}
-        >
-          Saved Templates
-        </button>
+        {['Active', 'Saved Templates'].map(m => (
+          <button
+            key={m}
+            onClick={() => setModeTab(m)}
+            className={`pb-3 text-sm font-bold tracking-wide transition-colors relative ${modeTab === m ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+          >
+            {m}
+            {modeTab === m && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full"></span>}
+          </button>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* KPI Summary col (1/4) */}
-        <div className="md:col-span-1 flex flex-col gap-4">
-           <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-5">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Active {activeTab}</h3>
-              <p className="text-4xl font-extrabold font-headline text-on-surface">{displayList.length < 10 ? `0${displayList.length}` : displayList.length}</p>
-           </div>
-           
-           {activeTab === 'Projects' && (
-             <div className="bg-error-container/30 rounded-xl shadow-sm border border-error/20 p-5">
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-error mb-2">At Risk</h3>
-                <p className="text-4xl font-extrabold font-headline text-error">02</p>
-             </div>
-           )}
-
-           <div className="bg-surface-container-low rounded-xl shadow-sm border border-outline-variant/30 p-5">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Completed YTD</h3>
-              <p className="text-4xl font-extrabold font-headline text-on-surface">14</p>
-           </div>
-        </div>
-
-        {/* Data Cards (3/4) */}
-        <div className="md:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-6">
-           {displayList.map(item => (
-              <div key={item.id} className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 flex flex-col">
-                 <div className="flex justify-between items-start mb-4">
-                    <div>
-                       <div className="flex items-center gap-2 mb-1">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${item.progress < 20 ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
-                             {item.progress < 20 ? 'Planning' : 'On Track'}
-                          </span>
-                       </div>
-                       <h3 className="text-lg font-bold text-on-surface">{item.title}</h3>
-                    </div>
-                    <button className="text-on-surface-variant hover:bg-surface-dim p-1 rounded transition-colors"><span className="material-symbols-outlined text-[20px]">more_vert</span></button>
-                 </div>
-                 
-                 <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div>
-                       <p className="text-[10px] uppercase font-bold text-outline">Start Date</p>
-                       <p className="text-sm font-medium text-on-surface-variant">01 Sept 2026</p>
+      {/* Saved Templates Mode */}
+      {modeTab === 'Saved Templates' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {templateItems.length === 0 && (
+            <div className="col-span-2 text-center py-16 text-on-surface-variant">
+              <span className="material-symbols-outlined text-5xl mb-3 block">library_books</span>
+              <p className="font-bold">No saved templates yet.</p>
+              <p className="text-sm mt-1">Create a project or event and save it as a template.</p>
+            </div>
+          )}
+          {templateItems.map(c => {
+            const { label, cls } = statusLabel(c);
+            const tasks = getContainerTasks(c.id);
+            return (
+              <div key={c.id} className="bg-white rounded-2xl border-2 border-outline-variant/30 p-5 flex flex-col gap-4 hover:border-primary/30 hover:shadow-md transition-all">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-indigo-600" style={{fontVariationSettings:"'FILL' 1"}}>{typeTab === 'Projects' ? 'folder_open' : 'event'}</span>
                     </div>
                     <div>
-                       <p className="text-[10px] uppercase font-bold text-outline">Target Deadline</p>
-                       <p className="text-sm font-medium text-on-surface-variant">15 Nov 2026</p>
+                      <p className="font-bold text-on-surface">{c.name}</p>
+                      <p className="text-[10px] text-on-surface-variant">Template · {tasks.length} checklist items</p>
                     </div>
-                 </div>
-
-                 <div className="mt-auto">
-                    <div className="flex justify-between text-xs font-bold mb-2">
-                       <span className="text-on-surface-variant">Progress</span>
-                       <span className="text-primary">{item.progress}%</span>
-                    </div>
-                    <div className="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
-                       <div className="h-full bg-primary rounded-full transition-all duration-500" style={{width: `${item.progress}%`}}></div>
-                    </div>
-                 </div>
-                 
-                 <div className="mt-6 flex justify-between items-center border-t border-surface-container pt-4">
-                    <div className="flex -space-x-2">
-                       {/* Mock avatars */}
-                       <div className="w-8 h-8 rounded-full border-2 border-white bg-error-container text-on-error-container flex items-center justify-center text-[10px] font-bold z-30">AB</div>
-                       <div className="w-8 h-8 rounded-full border-2 border-white bg-primary-container text-on-primary-container flex items-center justify-center text-[10px] font-bold z-20">CD</div>
-                       <div className="w-8 h-8 rounded-full border-2 border-white bg-surface-dim text-on-surface-variant flex items-center justify-center text-[10px] font-bold z-10">+3</div>
-                    </div>
-                    <button className="text-sm font-bold text-primary hover:text-primary-container transition-colors">View Details</button>
-                 </div>
+                  </div>
+                  <span className="text-[9px] font-bold uppercase tracking-widest bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">TEMPLATE</span>
+                </div>
+                {c.description && <p className="text-sm text-on-surface-variant">{c.description}</p>}
+                <div className="flex gap-2 mt-auto">
+                  <button className="flex-1 py-2 text-sm font-bold border border-outline-variant/40 rounded-xl hover:bg-surface-container transition-colors">View Structure</button>
+                  <button className="flex-1 py-2 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 transition-opacity">Start</button>
+                </div>
               </div>
-           ))}
-           {displayList.length === 0 && (
-             <div className="lg:col-span-2 p-12 text-center border-2 border-dashed border-outline-variant/30 rounded-xl">
-               <span className="material-symbols-outlined text-4xl text-outline mb-2">inbox</span>
-               <p className="text-on-surface-variant font-medium">No active {activeTab.toLowerCase()} found.</p>
-             </div>
-           )}
+            );
+          })}
         </div>
-      </div>
+      )}
 
-      <CreateModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        defaultType={activeTab === 'Projects' ? 'Project' : 'Event'}
-      />
+      {/* Active Mode */}
+      {modeTab === 'Active' && (
+        <div className="flex flex-col gap-4">
+          {displayList.length === 0 && (
+            <div className="text-center py-16 text-on-surface-variant bg-white rounded-2xl border border-outline-variant/30">
+              <span className="material-symbols-outlined text-5xl mb-3 block">{typeTab === 'Projects' ? 'folder_open' : 'event'}</span>
+              <p className="font-bold">No active {typeTab.toLowerCase()} yet.</p>
+              <p className="text-sm mt-1">Click "New {typeTab === 'Projects' ? 'Project' : 'Event'}" to get started.</p>
+            </div>
+          )}
+          {displayList.map(c => {
+            const progress = c.progress || 0;
+            const { label, cls } = statusLabel(c);
+            const tasks = getContainerTasks(c.id);
+            const isExpanded = expandedId === c.id;
+
+            return (
+              <div key={c.id} className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm overflow-hidden">
+                {/* Card Header */}
+                <div
+                  className="p-5 cursor-pointer hover:bg-surface-container-low/40 transition-colors"
+                  onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings:"'FILL' 1"}}>{typeTab === 'Projects' ? 'folder_open' : 'event'}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-on-surface">{c.name}</p>
+                          <span className="text-[9px] font-bold uppercase tracking-widest border border-primary/30 text-primary px-1.5 py-0.5 rounded">
+                            {typeTab === 'Projects' ? 'PROJECT' : 'EVENT'}
+                          </span>
+                          <span className={`text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${cls}`}>{label}</span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-on-surface-variant">
+                          {c.lead_id && (
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[12px]">person</span>
+                              Lead: {getLeadName(c.lead_id)}
+                            </span>
+                          )}
+                          {c.expected_date && (
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[12px]">calendar_today</span>
+                              {c.expected_date}
+                            </span>
+                          )}
+                          <span>{tasks.length} tasks</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="text-right">
+                        <p className="text-lg font-black text-on-surface">{progress}%</p>
+                        <p className="text-[10px] text-on-surface-variant">Overall</p>
+                      </div>
+                      <span className="material-symbols-outlined text-on-surface-variant transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }}>expand_more</span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="mt-4">
+                    <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${progressColor(progress)}`} style={{ width: `${progress}%` }}></div>
+                    </div>
+                    {tasks.length > 0 && (
+                      <p className="text-[10px] text-on-surface-variant mt-1">
+                        {tasks.filter(t => t.status === 'Completed').length} tasks completed · {tasks.length - tasks.filter(t => t.status === 'Completed').length} remaining
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded Task List */}
+                {isExpanded && tasks.length > 0 && (
+                  <div className="border-t border-surface-container-high px-5 py-4">
+                    <div className="grid grid-cols-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest pb-2 border-b border-surface-container-low mb-2">
+                      <span className="col-span-2">Checklist Item</span>
+                      <span>Assignee</span>
+                      <span className="text-right">Status</span>
+                    </div>
+                    <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto">
+                      {tasks.map(t => {
+                        const isDone = t.status === 'Completed';
+                        const assignee = getProfile(t.assignee_id);
+                        return (
+                          <div key={t.id} className="grid grid-cols-4 items-center py-2 text-sm">
+                            <div className="col-span-2 flex items-center gap-2">
+                              <span className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${isDone ? 'border-green-500 bg-green-500' : 'border-outline-variant'}`}>
+                                {isDone && <span className="material-symbols-outlined text-white text-[10px]">check</span>}
+                              </span>
+                              <span className={`font-medium truncate ${isDone ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{t.title}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {assignee && (
+                                <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary flex-shrink-0">
+                                  {getInitials(assignee.name)}
+                                </div>
+                              )}
+                              <span className="text-xs text-on-surface-variant truncate">{assignee ? assignee.name.split(' ')[0] : '—'}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${isDone ? 'bg-green-100 text-green-700' : 'bg-surface-container text-on-surface-variant'}`}>
+                                {t.status || 'Assigned'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {isExpanded && tasks.length === 0 && (
+                  <div className="border-t border-surface-container-high px-5 py-4 text-center text-sm text-on-surface-variant italic">No tasks added yet.</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {isModalOpen && (
+        <CreateModal
+          defaultType={typeTab === 'Projects' ? 'Project' : 'Event'}
+          onClose={() => setIsModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
