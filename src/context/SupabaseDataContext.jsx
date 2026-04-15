@@ -237,12 +237,18 @@ export function SupabaseDataProvider({ children, session }) {
       }
     });
 
-    // After signup, immediately store the email in profiles table
+    // Use upsert to guarantee email is stored in profiles
+    // (avoids race condition with the DB trigger)
     if (!error && data?.user) {
-      await supabase
-        .from('profiles')
-        .update({ email })
-        .eq('id', data.user.id);
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        name: full_name,
+        role: role || 'Assignee',
+        staff_group: staff_group || 'Office Staff',
+        department: department || null,
+        manager: manager || null,
+        email,
+      }, { onConflict: 'id' });
     }
 
     return { data, error };

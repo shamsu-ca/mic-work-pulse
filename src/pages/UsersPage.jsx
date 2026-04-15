@@ -6,7 +6,7 @@ const generateEmail = (name) => {
   if (!name) return '';
   return name.trim().toLowerCase()
     .replace(/\s+/g, '.')
-    .replace(/[^a-z0-9.]/g, '') + '@mic.internal';
+    .replace(/[^a-z0-9.]/g, '') + '@mic.edu';
 };
 
 // Generate a secure temp password
@@ -175,45 +175,64 @@ function ResetPasswordModal({ profile, onClose, onReset }) {
 // --- Credentials Created Modal ---
 function CredentialsModal({ name, email, password, onClose }) {
   const [copied, setCopied] = useState(false);
-  const text = `Name: ${name}\nLogin Email: ${email}\nPassword: ${password}`;
+  const text = `MIC WorkPulse Login Credentials\n\nName: ${name}\nLogin Email: ${email}\nPassword: ${password}\n\nPlease log in at the app and change your password.`;
+
+  // Auto-copy when modal opens
+  React.useEffect(() => {
+    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {});
+  }, []);
+
   const handleCopy = () => {
     navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 2500);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1002] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[1002] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl border border-outline-variant/30 w-full max-w-md flex flex-col">
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-surface-container bg-green-50 rounded-t-2xl">
-          <span className="material-symbols-outlined text-green-600 text-2xl">check_circle</span>
+        <div className="flex items-center gap-3 px-6 py-5 bg-green-50 border-b border-green-100 rounded-t-2xl">
+          <span className="material-symbols-outlined text-green-600 text-3xl" style={{fontVariationSettings:"'FILL' 1"}}>check_circle</span>
           <div>
-            <p className="font-bold text-on-surface font-headline">User Created!</p>
-            <p className="text-xs text-on-surface-variant">Share these credentials with the staff member</p>
+            <p className="font-bold text-on-surface font-headline text-lg">User Created!</p>
+            <p className="text-xs text-green-700 font-medium">Credentials auto-copied to clipboard ✓</p>
           </div>
         </div>
         <div className="p-6 flex flex-col gap-4">
-          <div className="bg-surface-container rounded-xl p-4 flex flex-col gap-2 font-mono text-sm">
+          <p className="text-sm text-on-surface-variant">Share these credentials with <strong className="text-on-surface">{name}</strong>. They must sign in and change their password.</p>
+          <div className="bg-slate-50 border border-outline-variant/40 rounded-xl p-4 flex flex-col gap-3">
             <div className="flex justify-between items-center">
-              <span className="text-on-surface-variant text-xs font-sans font-bold uppercase tracking-wider">Name</span>
-              <span className="font-bold text-on-surface">{name}</span>
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Name</span>
+              <span className="font-semibold text-on-surface text-sm">{name}</span>
             </div>
-            <div className="flex justify-between items-center border-t border-outline-variant/30 pt-2">
-              <span className="text-on-surface-variant text-xs font-sans font-bold uppercase tracking-wider">Login Email</span>
-              <span className="font-bold text-primary text-xs">{email}</span>
+            <div className="h-px bg-outline-variant/30"></div>
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Login Email</span>
+              <span className="font-mono font-bold text-primary text-sm">{email}</span>
             </div>
-            <div className="flex justify-between items-center border-t border-outline-variant/30 pt-2">
-              <span className="text-on-surface-variant text-xs font-sans font-bold uppercase tracking-wider">Temp Password</span>
-              <span className="font-bold text-error">{password}</span>
+            <div className="h-px bg-outline-variant/30"></div>
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Temp Password</span>
+              <span className="font-mono font-bold text-error text-sm tracking-widest">{password}</span>
             </div>
           </div>
-          <p className="text-xs text-on-surface-variant text-center">⚠ Copy and share these now. You can always reset the password later.</p>
+
           <div className="flex gap-3">
-            <button className="flex-1 py-2.5 text-sm font-bold border border-outline-variant rounded-xl hover:bg-surface-container transition-colors flex items-center justify-center gap-2" onClick={handleCopy}>
+            <button
+              className={`flex-1 py-2.5 text-sm font-bold border rounded-xl flex items-center justify-center gap-2 transition-colors ${
+                copied ? 'border-green-400 bg-green-50 text-green-700' : 'border-outline-variant hover:bg-surface-container text-on-surface'
+              }`}
+              onClick={handleCopy}
+            >
               <span className="material-symbols-outlined text-[16px]">{copied ? 'check' : 'content_copy'}</span>
-              {copied ? 'Copied!' : 'Copy Credentials'}
+              {copied ? 'Copied!' : 'Copy Again'}
             </button>
-            <button className="flex-1 py-2.5 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 transition-opacity" onClick={onClose}>Done</button>
+            <button
+              className="flex-1 py-2.5 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 transition-opacity"
+              onClick={onClose}
+            >
+              Done
+            </button>
           </div>
         </div>
       </div>
@@ -334,7 +353,7 @@ export default function UsersPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface-variant">Full Name <span className="text-error">*</span></label>
-                <input required className={inputCls} placeholder="e.g. John Doe" value={newName} onChange={e => setNewName(e.target.value)} />
+                <input required className={inputCls} placeholder="e.g. Name AB" value={newName} onChange={e => setNewName(e.target.value)} />
                 {newName && (
                   <p className="text-[10px] text-primary font-semibold">
                     → Login email will be: <span className="font-mono">{generateEmail(newName)}</span>
