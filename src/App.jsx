@@ -17,20 +17,18 @@ import SettingsPage from './pages/SettingsPage';
 
 function AppContent() {
   const { currentUser, loadingInitial } = useDataContext();
-  const [staffGroup, setStaffGroup] = useState('Office Staff');
 
   if (loadingInitial || !currentUser) {
     return <div className="h-screen w-full flex items-center justify-center font-bold text-on-surface-variant font-headline">Loading application data...</div>;
   }
 
-  // Fallback if currentUser is missing somehow but session exists
   const role = currentUser?.role || 'Assignee';
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<AppLayout userRole={role} staffGroup={staffGroup} setStaffGroup={setStaffGroup} currentUser={currentUser} />}>
-          <Route path="/" element={<DashboardPage staffGroup={staffGroup} />} />
+        <Route element={<AppLayout userRole={role} currentUser={currentUser} />}>
+          <Route path="/" element={<DashboardPage />} />
           <Route path="/tasks" element={<AllTasksPage />} />
           <Route path="/planning" element={<PlanningPage />} />
           <Route path="/projects-events" element={<ProjectsEventsPage />} />

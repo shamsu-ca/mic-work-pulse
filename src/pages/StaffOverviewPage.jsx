@@ -3,14 +3,15 @@ import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus } from '../lib/statusUtils';
 
 export default function StaffOverviewPage() {
-  const { profiles, workItems, containers } = useDataContext();
+  const { profiles, workItems, containers, staffGroup } = useDataContext();
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
   const safeContainers = containers || [];
 
   const [departmentFilter, setDepartmentFilter] = useState('All');
 
-  const staffList = safeProfiles.filter(p => p.role !== 'Admin');
+  // Filter staff by the active staffGroup toggle AND non-Admin role
+  const staffList = safeProfiles.filter(p => p.role !== 'Admin' && p.staff_group === staffGroup);
   
   const getAvatarInitials = (name) => {
     if (!name) return 'U';

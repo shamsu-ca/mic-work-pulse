@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
+import { useDataContext } from '../../context/SupabaseDataContext';
 import ProfileModal from '../common/ProfileModal';
 
-export default function AppLayout({ userRole, staffGroup, setStaffGroup, currentUser }) {
+export default function AppLayout({ userRole, currentUser }) {
+  const { staffGroup, setStaffGroup } = useDataContext();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const navigate = useNavigate();

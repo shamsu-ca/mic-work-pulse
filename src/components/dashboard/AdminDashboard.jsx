@@ -3,8 +3,8 @@ import { useDataContext } from '../../context/SupabaseDataContext';
 import { getDisplayStatus, getStatusBadgeClass } from '../../lib/statusUtils';
 
 
-export default function AdminDashboard({ staffGroup }) {
-  const { profiles, workItems, containers } = useDataContext();
+export default function AdminDashboard() {
+  const { profiles, workItems, containers, staffGroup } = useDataContext();
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
   const safeContainers = containers || [];

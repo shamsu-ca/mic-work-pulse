@@ -10,6 +10,7 @@ export function SupabaseDataProvider({ children, session }) {
   const [workItems, setWorkItems] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
+  const [staffGroup, setStaffGroup] = useState('Office Staff');
 
   useEffect(() => {
     if (!session?.user) {
@@ -292,6 +293,8 @@ export function SupabaseDataProvider({ children, session }) {
       containers,
       workItems,
       notifications,
+      staffGroup,
+      setStaffGroup,
       getUnreadNotifications,
       markNotificationRead,
       startWorkItem,
