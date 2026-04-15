@@ -3,11 +3,13 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import ProfileModal from '../common/ProfileModal';
+import CreateItemModal from '../common/CreateItemModal';
 
 export default function AppLayout({ userRole, currentUser }) {
   const { staffGroup, setStaffGroup } = useDataContext();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -147,7 +149,7 @@ export default function AppLayout({ userRole, currentUser }) {
            </nav>
 
            <div className="px-6 mt-auto border-t border-outline/30 pt-4">
-              <button className="w-full py-2 bg-primary text-white font-bold rounded-md shadow-md hover:opacity-90 active:scale-95 transition-all text-sm flex items-center justify-center gap-2">
+              <button onClick={() => setIsCreateOpen(true)} className="w-full py-2.5 bg-primary text-white font-bold rounded-md shadow-md hover:opacity-90 active:scale-95 transition-all text-sm flex items-center justify-center gap-2">
                  <span className="material-symbols-outlined text-lg">add</span>
                  Create New
               </button>
@@ -160,29 +162,56 @@ export default function AppLayout({ userRole, currentUser }) {
         </main>
       </div>
 
-      {/* Mobile Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-outline flex justify-around py-3 px-2 z-50 pb-safe">
-        {navItems.slice(0, 5).map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) => 
-              `flex flex-col items-center gap-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
-            }
+      {/* Mobile Nav — 4 items + FAB in centre */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-outline z-50">
+        <div className="flex justify-around items-center py-2 px-2 relative">
+          {/* First 2 nav items */}
+          {navItems.slice(0, 2).map((item) => (
+            <NavLink key={item.path} to={item.path}
+              className={({ isActive }) => `flex flex-col items-center gap-0.5 px-3 py-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}
+            >
+              {({ isActive }) => (
+                <>
+                  <span className="material-symbols-outlined text-[22px]" style={{fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0"}}>{item.icon}</span>
+                  <span className="text-[9px] font-bold">{item.label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+
+          {/* FAB Centre */}
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            className="w-14 h-14 -mt-6 rounded-full bg-primary shadow-lg shadow-primary/40 flex items-center justify-center text-white hover:opacity-90 active:scale-95 transition-all border-4 border-white"
           >
-            {({ isActive }) => (
-              <>
-                <span className="material-symbols-outlined" style={{fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0"}}>{item.icon}</span>
-                <span className="text-[10px] font-bold">{item.label}</span>
-              </>
-            )}
-          </NavLink>
-        ))}
+            <span className="material-symbols-outlined text-2xl">add</span>
+          </button>
+
+          {/* Last 2 nav items */}
+          {navItems.slice(2, 4).map((item) => (
+            <NavLink key={item.path} to={item.path}
+              className={({ isActive }) => `flex flex-col items-center gap-0.5 px-3 py-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}
+            >
+              {({ isActive }) => (
+                <>
+                  <span className="material-symbols-outlined text-[22px]" style={{fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0"}}>{item.icon}</span>
+                  <span className="text-[9px] font-bold">{item.label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
+        <div className="h-safe-bottom bg-white"></div>
       </nav>
 
       {/* Profile Modal */}
       {isProfileModalOpen && (
         <ProfileModal onClose={() => setIsProfileModalOpen(false)} currentUser={currentUser} />
+      )}
+
+      {/* Create New Modal */}
+      {isCreateOpen && (
+        <CreateItemModal onClose={() => setIsCreateOpen(false)} />
       )}
     </div>
   );
