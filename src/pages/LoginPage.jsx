@@ -1,31 +1,24 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-const INTERNAL_DOMAIN = '@mic.internal';
-
 export default function LoginPage() {
-  const [loginId, setLoginId] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!loginId || !password) {
-      setError("Please enter your Login ID and password.");
+    if (!email || !password) {
+      setError("Please enter your email and password.");
       return;
     }
     setLoading(true);
     setError(null);
 
-    // If the user typed a full email (contains @), use it directly.
-    // Otherwise treat it as a Login ID and append the internal domain.
-    const raw = loginId.trim();
-    const email = raw.includes('@') ? raw : raw.toLowerCase() + INTERNAL_DOMAIN;
-
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) {
-      setError("Invalid Login ID or password. Please try again.");
+      setError("Invalid email or password. Please try again.");
     }
     setLoading(false);
   };
@@ -39,7 +32,6 @@ export default function LoginPage() {
       </div>
 
       <div className="relative w-full max-w-md">
-        {/* Card */}
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl shadow-primary/10 border border-white/60 p-8 flex flex-col gap-6">
           
           {/* Logo + Title */}
@@ -66,24 +58,22 @@ export default function LoginPage() {
 
           {/* Form */}
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            {/* Login ID */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Login ID</label>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Email Address</label>
               <div className="relative">
-                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">badge</span>
+                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">mail</span>
                 <input
-                  type="text"
+                  type="email"
                   className="w-full bg-slate-50 border border-outline-variant rounded-xl pl-10 pr-4 py-3 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary focus:bg-white transition-all"
-                  placeholder="Your assigned Login ID"
-                  value={loginId}
-                  onChange={(e) => setLoginId(e.target.value)}
-                  autoComplete="username"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   required
                 />
               </div>
             </div>
 
-            {/* Password */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Password</label>
               <div className="relative">
@@ -100,7 +90,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -120,7 +109,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Footer */}
           <p className="text-center text-xs text-on-surface-variant/70 font-medium">
             Need access? Contact your Administrator.
           </p>

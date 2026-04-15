@@ -234,6 +234,7 @@ export function SupabaseDataProvider({ children, session }) {
           department,
           manager,
           login_id,
+          email_display: email,  // store display email for profiles table
         }
       }
     });
@@ -249,11 +250,17 @@ export function SupabaseDataProvider({ children, session }) {
     return { data, error };
   };
 
-  const adminResetUserPassword = async (targetUserId, newPassword) => {
+  // Admin: update password and/or email via secure edge function
+  const adminUpdateUser = async (targetUserId, { newPassword, newEmail }) => {
     const { data, error } = await supabase.functions.invoke('update-user-password', {
-      body: { targetUserId, newPassword }
+      body: { targetUserId, newPassword, newEmail }
     });
     return { data, error };
+  };
+
+  // Keep old name as alias for compatibility
+  const adminResetUserPassword = async (targetUserId, newPassword) => {
+    return adminUpdateUser(targetUserId, { newPassword });
   };
 
   // Notifications
@@ -283,6 +290,7 @@ export function SupabaseDataProvider({ children, session }) {
       createUser,
       updateProfile,
       adminResetUserPassword,
+      adminUpdateUser,
       loadingInitial
     }}>
       {children}
