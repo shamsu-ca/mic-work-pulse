@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Keep some base styles from original */
+body {
+  font-family: 'Inter', sans-serif;
+  color: #131b2e;
+  background-color: #faf8ff;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Custom Gradients from their HTML */
+.primary-gradient {
+  background: linear-gradient(135deg, #0051d5 0%, #4648d4 100%);
+}
+
+.premium-gradient {
+  background: linear-gradient(135deg, #0051d5 0%, #4648d4 100%);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px);
+}
+
+.glass-effect {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.architectural-grid {
+  background-size: 40px 40px;
+  background-image: radial-gradient(circle, #DFE1E6 1px, transparent 1px);
+}
+
+.obsidian-card {
+  background: white;
+  border: 1px solid #DFE1E6;
+  border-radius: 6px;
+  box-shadow: 0 1px 1px rgba(9, 30, 66, 0.25);
+}
+
+/* We leave the old classes here just in case some legacy component is still not converted yet */
+.surface-card {
+  background-color: var(--surface-container-lowest, #ffffff);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  border: none;
+}
+.input-base {
+  min-height: 44px;
+  background-color: #e2e4ed;
+  border: none;
+  border-radius: 0.375rem;
+  padding: 0 1rem;
+  width: 100%;
+}

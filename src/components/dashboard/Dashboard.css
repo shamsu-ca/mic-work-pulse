@@ -1,0 +1,225 @@
+/* Dashboard Architect Layout */
+
+.dashboard-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* SECTION GRIDS */
+.alerts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.main-dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.staff-grid-inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .alerts-grid { grid-template-columns: repeat(2, 1fr); }
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  .main-dashboard-grid {
+    grid-template-columns: 2fr 1fr;
+  }
+  .staff-grid-inner { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* SPECIFIC CARD STYLES */
+
+.alert-card-epic {
+  border-radius: var(--radius-lg);
+  display: flex;
+  background-color: #fff0f0; /* Default overdue */
+  padding: 1.5rem;
+  overflow: hidden;
+  position: relative;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.alert-card-epic.warning {
+  background-color: #fff5eb;
+}
+
+.alert-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+}
+
+.bg-red { background-color: #d32f2f; }
+.bg-orange { background-color: #ed6c02; }
+
+/* KPI CARDS */
+.kpi-card-epic {
+  background-color: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+}
+
+.kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kpi-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.kpi-icon {
+  color: var(--primary);
+}
+
+.kpi-numbers {
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.kpi-stat-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-stat-val {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--on-surface);
+}
+
+.kpi-stat-label {
+  font-size: 0.75rem;
+  color: var(--on-surface-variant);
+  margin-bottom: 0.25rem;
+}
+
+/* TOP PRIORITY CARD */
+.top-priority-card {
+  background-color: var(--primary-fixed-variant, #003d9b);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  color: white;
+  box-shadow: 0 10px 25px rgba(0, 61, 155, 0.2);
+}
+
+.priority-item {
+  background-color: rgba(255,255,255,0.1);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+/* STAFF AVATAR GRID CARD */
+.staff-epic-card {
+  background-color: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+}
+
+.staff-epic-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.staff-epic-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: var(--surface-dim);
+}
+
+.staff-epic-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+}
+
+.stat-box.overdue { background-color: #fef2f2; color: #991b1b; }
+.stat-box.pending { background-color: #f3f4f6; color: #374151; }
+.stat-box.done { background-color: #ecfdf5; color: #065f46; }
+
+.stat-box .val {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+.stat-box .lbl {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+
+/* TODAY'S FOCUS LIST */
+.focus-item {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  background-color: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  border-left: 3px solid var(--primary);
+  margin-bottom: 0.75rem;
+}
+
+.recent-activity-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  margin-top: 0.25rem;
+}
