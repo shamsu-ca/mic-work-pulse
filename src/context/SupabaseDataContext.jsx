@@ -11,6 +11,8 @@ export function SupabaseDataProvider({ children, session }) {
   const [notifications, setNotifications] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [staffGroup, setStaffGroup] = useState('Office Staff');
+  const [dateFilter, setDateFilter] = useState('week'); // today | week | month | custom
+  const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
 
   useEffect(() => {
     if (!session?.user) {
@@ -318,6 +320,10 @@ export function SupabaseDataProvider({ children, session }) {
       notifications,
       staffGroup,
       setStaffGroup,
+      dateFilter,
+      setDateFilter,
+      customDateRange,
+      setCustomDateRange,
       getUnreadNotifications,
       markNotificationRead,
       startWorkItem,

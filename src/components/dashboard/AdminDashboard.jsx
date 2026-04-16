@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import { getDisplayStatus } from '../../lib/statusUtils';
+import { isItemInDateRange } from '../../lib/dateUtils';
+import FilterBar from '../common/FilterBar';
 
 export default function AdminDashboard() {
-  const { profiles, workItems, containers, staffGroup } = useDataContext();
+  const { profiles, workItems, containers, staffGroup, dateFilter, customDateRange } = useDataContext();
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
   const safeContainers = containers || [];
+
+  // Apply date filter to work items
+  const filteredWorkItems = safeWorkItems.filter(w => isItemInDateRange(w, dateFilter, customDateRange));
 
   const filteredProfiles = safeProfiles.filter(p => p.staff_group === staffGroup && p.role !== 'Admin');
 
@@ -21,11 +26,11 @@ export default function AdminDashboard() {
     return p?.name || 'Unassigned';
   };
 
-  // ── Stats ──
-  const totalTasks = safeWorkItems.filter(w => !w.is_recurring).length;
-  const assignedTasks = safeWorkItems.filter(w => getDisplayStatus(w) === 'Assigned' || getDisplayStatus(w) === 'Not Started').length;
-  const ongoingTasks = safeWorkItems.filter(w => getDisplayStatus(w) === 'Ongoing').length;
-  const doneTasks = safeWorkItems.filter(w => getDisplayStatus(w) === 'Completed').length;
+  // ── Stats (date-filtered) ──
+  const totalTasks = filteredWorkItems.filter(w => !w.is_recurring).length;
+  const assignedTasks = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Assigned' || getDisplayStatus(w) === 'Not Started').length;
+  const ongoingTasks = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Ongoing').length;
+  const doneTasks = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Completed').length;
 
   const activeProjects = safeContainers.filter(c => c.type === 'Project').length;
   const plannedProj = safeContainers.filter(c => c.type === 'Project' && (c.progress || 0) === 0).length;
@@ -37,9 +42,9 @@ export default function AdminDashboard() {
   const endedEvents = safeContainers.filter(c => c.type === 'Event' && (c.progress || 0) === 100).length;
   const inviteEvents = totalEvents - ongoingEvents - endedEvents;
 
-  // ── Critical items ──
-  const overdueItems = safeWorkItems.filter(w => getDisplayStatus(w) === 'Overdue');
-  const notStartedItems = safeWorkItems.filter(w => getDisplayStatus(w) === 'Not Started');
+  // ── Critical items (date-filtered) ──
+  const overdueItems = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Overdue');
+  const notStartedItems = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Not Started');
 
   // Group overdue by assignee
   const overdueByPerson = filteredProfiles.map(p => ({
@@ -52,14 +57,14 @@ export default function AdminDashboard() {
     count: notStartedItems.filter(w => w.assignee_id === p.id).length
   })).filter(x => x.count > 0).slice(0, 4);
 
-  // ── Today's Focus: high priority, non-completed ──
-  const todaysFocus = [...safeWorkItems]
-    .filter(w => getDisplayStatus(w) !== 'Completed' && w.priority === 'High' || w.priority === 'Critical')
+  // ── Today's Focus: high priority, non-completed (date-filtered) ──
+  const todaysFocus = [...filteredWorkItems]
+    .filter(w => getDisplayStatus(w) !== 'Completed' && (w.priority === 'High' || w.priority === 'Critical'))
     .sort((a, b) => (a.expected_date || '').localeCompare(b.expected_date || ''))
     .slice(0, 4);
 
-  // ── Priority Queue ──
-  const priorityQueue = [...safeWorkItems]
+  // ── Priority Queue (date-filtered) ──
+  const priorityQueue = [...filteredWorkItems]
     .filter(w => getDisplayStatus(w) !== 'Completed')
     .sort((a, b) => {
       const pOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
@@ -83,12 +88,15 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex flex-col gap-6 max-w-[1400px] mx-auto pb-16 animate-fade-in">
-      {/* Page Title */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">System Overview</h1>
-          <p className="text-sm text-on-surface-variant font-medium">Real-time enterprise performance metrics · <span className="font-bold text-primary">{staffGroup}</span></p>
+      {/* Page Title + FilterBar */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">System Overview</h1>
+            <p className="text-sm text-on-surface-variant font-medium">Real-time enterprise performance metrics</p>
+          </div>
         </div>
+        <FilterBar showToggle={true} showDateFilter={true} />
       </div>
 
       {/* ── Alert Banners ── */}
