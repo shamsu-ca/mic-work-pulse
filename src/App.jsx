@@ -12,8 +12,7 @@ import AllTasksPage from './pages/AllTasksPage';
 import PlanningPage from './pages/PlanningPage';
 import ProjectsEventsPage from './pages/ProjectsEventsPage';
 import ReportsPage from './pages/ReportsPage';
-import UsersPage from './pages/UsersPage';
-import SettingsPage from './pages/SettingsPage';
+import MyTeamPage from './pages/MyTeamPage';
 
 function AppContent() {
   const { currentUser, loadingInitial } = useDataContext();
@@ -34,15 +33,20 @@ function AppContent() {
           <Route path="/projects-events" element={<ProjectsEventsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           
-          {/* Management Routes */}
+          {/* Admin-only routes */}
           {role === 'Admin' && (
-            <>
-              <Route path="/staff" element={<StaffOverviewPage />} />
-              <Route path="/users" element={<UsersPage />} />
-            </>
+            <Route path="/staff" element={<StaffOverviewPage />} />
           )}
-          
 
+          {/* Manager routes */}
+          {(role === 'Manager') && (
+            <Route path="/my-team" element={<MyTeamPage />} />
+          )}
+
+          {/* Routes for all non-admin authenticated users */}
+          {role !== 'Admin' && (
+            <Route path="/staff" element={<Navigate to="/" replace />} />
+          )}
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

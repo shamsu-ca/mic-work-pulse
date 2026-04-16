@@ -271,17 +271,33 @@ export function SupabaseDataProvider({ children, session }) {
     return { data, error };
   };
 
-  // Admin: update password and/or email via secure edge function
-  const adminUpdateUser = async (targetUserId, { newPassword, newEmail }) => {
+  // Admin: update profile fields via edge function (service role, bypasses RLS)
+  const adminUpdateProfile = async (targetUserId, profileUpdates) => {
     const { data, error } = await supabase.functions.invoke('update-user-password', {
-      body: { targetUserId, newPassword, newEmail }
+      body: { action: 'updateProfile', targetUserId, profileUpdates }
+    });
+    if (!error) {
+      // Refresh profiles list
+      const { data: allProfiles } = await supabase.from('profiles').select('*');
+      if (allProfiles) setProfiles(allProfiles);
+    }
+    return { data, error };
+  };
+
+  // Admin: reset password via edge function
+  const adminResetUserPassword = async (targetUserId, newPassword) => {
+    const { data, error } = await supabase.functions.invoke('update-user-password', {
+      body: { action: 'resetPassword', targetUserId, newPassword }
     });
     return { data, error };
   };
 
-  // Keep old name as alias for compatibility
-  const adminResetUserPassword = async (targetUserId, newPassword) => {
-    return adminUpdateUser(targetUserId, { newPassword });
+  // Admin: update password and/or email via edge function
+  const adminUpdateUser = async (targetUserId, { newPassword, newEmail }) => {
+    const { data, error } = await supabase.functions.invoke('update-user-password', {
+      body: { action: 'resetPassword', targetUserId, newPassword, newEmail }
+    });
+    return { data, error };
   };
 
   // Notifications
@@ -312,6 +328,7 @@ export function SupabaseDataProvider({ children, session }) {
       addContainer,
       createUser,
       updateProfile,
+      adminUpdateProfile,
       adminResetUserPassword,
       adminUpdateUser,
       loadingInitial

@@ -17,25 +17,36 @@ export default function AppLayout({ userRole, currentUser }) {
     navigate('/login');
   };
 
+  // Admin: 6 pages — Manage Staff is inside Staff Overview (not a nav item)
   const adminNav = [
-    { label: 'Dashboard', path: '/', icon: 'dashboard' },
-    { label: 'Work Pipeline', path: '/tasks', icon: 'assignment' },
-    { label: 'Projects', path: '/projects-events', icon: 'folder_open' },
-    { label: 'Planning Pool', path: '/planning', icon: 'account_tree' },
-    { label: 'Staff Overview', path: '/staff', icon: 'group' },
-    { label: 'Reports', path: '/reports', icon: 'analytics' },
-    { label: 'Manage Staff', path: '/users', icon: 'manage_accounts' }
+    { label: 'Dashboard',     path: '/',               icon: 'dashboard' },
+    { label: 'Staff Overview',path: '/staff',           icon: 'group' },
+    { label: 'Work Pipeline', path: '/tasks',           icon: 'assignment' },
+    { label: 'Planning',      path: '/planning',        icon: 'account_tree' },
+    { label: 'Projects',      path: '/projects-events', icon: 'folder_open' },
+    { label: 'Reports',       path: '/reports',         icon: 'analytics' },
   ];
 
+  // Assignee: 4 pages
   const assigneeNav = [
-    { label: 'Dashboard', path: '/', icon: 'dashboard' },
-    { label: 'Tasks', path: 'tasks', icon: 'assignment' },
-    { label: 'Projects', path: 'projects', icon: 'layers' },
-    { label: 'Planning Pool', path: 'planning', icon: 'group_work' },
-    { label: 'Reports', path: 'reports', icon: 'analytics' }
+    { label: 'Dashboard',     path: '/',        icon: 'dashboard' },
+    { label: 'Work Pipeline', path: '/tasks',   icon: 'assignment' },
+    { label: 'Planning',      path: '/planning',icon: 'account_tree' },
+    { label: 'Reports',       path: '/reports', icon: 'analytics' },
   ];
 
-  const navItems = userRole === 'Admin' ? adminNav : assigneeNav;
+  // Manager: 5 pages
+  const managerNav = [
+    { label: 'Dashboard',     path: '/',         icon: 'dashboard' },
+    { label: 'Work Pipeline', path: '/tasks',    icon: 'assignment' },
+    { label: 'Planning',      path: '/planning', icon: 'account_tree' },
+    { label: 'Reports',       path: '/reports',  icon: 'analytics' },
+    { label: 'My Team',       path: '/my-team',  icon: 'supervised_user_circle' },
+  ];
+
+  const navItems = userRole === 'Admin' ? adminNav
+    : userRole === 'Manager' ? managerNav
+    : assigneeNav;
 
   const getAvatarInitials = (name) => {
     if (!name) return 'U';
@@ -162,44 +173,54 @@ export default function AppLayout({ userRole, currentUser }) {
         </main>
       </div>
 
-      {/* Mobile Nav — 4 items + FAB in centre */}
+      {/* Mobile Bottom Nav — 3 items + FAB + 3 items */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-outline z-50">
-        <div className="flex justify-around items-center py-2 px-2 relative">
-          {/* First 2 nav items */}
-          {navItems.slice(0, 2).map((item) => (
-            <NavLink key={item.path} to={item.path}
-              className={({ isActive }) => `flex flex-col items-center gap-0.5 px-3 py-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}
-            >
-              {({ isActive }) => (
-                <>
-                  <span className="material-symbols-outlined text-[22px]" style={{fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0"}}>{item.icon}</span>
-                  <span className="text-[9px] font-bold">{item.label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
+        <div className="flex items-center py-1 px-1">
+          {/* Left 3 */}
+          <div className="flex flex-1 justify-around">
+            {navItems.slice(0, 3).map((item) => (
+              <NavLink key={item.path} to={item.path}
+                className={({ isActive }) =>
+                  `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${
+                    isActive ? 'text-primary' : 'text-on-surface-variant'
+                  }`}
+              >
+                {({ isActive }) => (
+                  <>
+                    <span className="material-symbols-outlined text-[20px]" style={{fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0"}}>{item.icon}</span>
+                    <span className="text-[8px] font-bold leading-none text-center">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
 
-          {/* FAB Centre */}
+          {/* Centre FAB */}
           <button
             onClick={() => setIsCreateOpen(true)}
-            className="w-14 h-14 -mt-6 rounded-full bg-primary shadow-lg shadow-primary/40 flex items-center justify-center text-white hover:opacity-90 active:scale-95 transition-all border-4 border-white"
+            className="w-12 h-12 -mt-5 mx-1 rounded-full bg-primary shadow-lg shadow-primary/40 flex items-center justify-center text-white active:scale-95 transition-all border-4 border-white flex-shrink-0"
           >
-            <span className="material-symbols-outlined text-2xl">add</span>
+            <span className="material-symbols-outlined text-xl">add</span>
           </button>
 
-          {/* Last 2 nav items */}
-          {navItems.slice(2, 4).map((item) => (
-            <NavLink key={item.path} to={item.path}
-              className={({ isActive }) => `flex flex-col items-center gap-0.5 px-3 py-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}
-            >
-              {({ isActive }) => (
-                <>
-                  <span className="material-symbols-outlined text-[22px]" style={{fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0"}}>{item.icon}</span>
-                  <span className="text-[9px] font-bold">{item.label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
+          {/* Right 3 */}
+          <div className="flex flex-1 justify-around">
+            {navItems.slice(3, 6).map((item) => (
+              <NavLink key={item.path} to={item.path}
+                className={({ isActive }) =>
+                  `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${
+                    isActive ? 'text-primary' : 'text-on-surface-variant'
+                  }`}
+              >
+                {({ isActive }) => (
+                  <>
+                    <span className="material-symbols-outlined text-[20px]" style={{fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0"}}>{item.icon}</span>
+                    <span className="text-[8px] font-bold leading-none text-center">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
         </div>
         <div className="h-safe-bottom bg-white"></div>
       </nav>

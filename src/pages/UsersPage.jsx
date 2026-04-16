@@ -78,6 +78,7 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Role</label>
               <select className={inputCls} value={editData.role} onChange={e => setEditData({...editData, role: e.target.value})}>
                 <option value="Assignee">Assignee</option>
+                <option value="Manager">Manager</option>
                 <option value="Admin">Admin</option>
               </select>
             </div>
@@ -242,7 +243,7 @@ function CredentialsModal({ name, email, password, onClose }) {
 
 // --- Main Page ---
 export default function UsersPage() {
-  const { profiles, createUser, updateProfile, adminResetUserPassword } = useDataContext();
+  const { profiles, createUser, adminUpdateProfile, adminResetUserPassword } = useDataContext();
   const safeProfiles = profiles || [];
 
   const [isOpen, setIsOpen] = useState(false);
@@ -299,7 +300,8 @@ export default function UsersPage() {
   };
 
   const handleSaveEdit = async (id, editData) => {
-    const { error } = await updateProfile(id, {
+    // Use edge function (service role) to bypass RLS for admin editing other profiles
+    const { error } = await adminUpdateProfile(id, {
       name: editData.name,
       email: editData.email,
       role: editData.role,
@@ -307,7 +309,8 @@ export default function UsersPage() {
       staff_group: editData.staff_group,
       manager: editData.manager,
     });
-    return { error: error?.message || null };
+    if (error) return { error: error.message || JSON.stringify(error) };
+    return { error: null };
   };
 
   const handleResetPassword = async (targetId, newPassword) => {
@@ -370,6 +373,7 @@ export default function UsersPage() {
                 <label className="text-xs font-bold text-on-surface-variant">Role</label>
                 <select className={inputCls} value={newRole} onChange={e => setNewRole(e.target.value)}>
                   <option value="Assignee">Assignee</option>
+                  <option value="Manager">Manager</option>
                   <option value="Admin">Admin</option>
                 </select>
               </div>
