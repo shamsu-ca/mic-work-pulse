@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
-import { useDataContext } from '../../context/SupabaseDataContext';
 import ProfileModal from '../common/ProfileModal';
 import CreateItemModal from '../common/CreateItemModal';
 
 export default function AppLayout({ userRole, currentUser }) {
-  const { staffGroup, setStaffGroup } = useDataContext();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -62,23 +60,6 @@ export default function AppLayout({ userRole, currentUser }) {
         <div className="flex items-center gap-8">
           <span className="text-xl font-bold tracking-tighter text-on-surface font-headline">MIC WorkPulse</span>
         </div>
-        
-        {userRole === 'Admin' && (
-          <div className="hidden md:flex bg-background p-1 rounded-lg border border-outline absolute left-1/2 -translate-x-1/2">
-            <button 
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${staffGroup === 'Office Staff' ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
-              onClick={() => setStaffGroup('Office Staff')}
-            >
-              Office Staff
-            </button>
-            <button 
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${staffGroup === 'Institution' ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
-              onClick={() => setStaffGroup('Institution')}
-            >
-              Institution
-            </button>
-          </div>
-        )}
 
         <div className="flex items-center gap-4">
           <div className="relative w-full max-w-xs hidden md:block group">

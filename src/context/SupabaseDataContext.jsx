@@ -11,7 +11,7 @@ export function SupabaseDataProvider({ children, session }) {
   const [notifications, setNotifications] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [staffGroup, setStaffGroup] = useState('Office Staff');
-  const [dateFilter, setDateFilter] = useState('week'); // today | week | month | custom
+  const [dateFilter, setDateFilter] = useState('today'); // today | week | month | custom
   const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
 
   useEffect(() => {
@@ -223,6 +223,18 @@ export function SupabaseDataProvider({ children, session }) {
     return { data, error };
   };
 
+  const updateContainer = async (id, updates) => {
+    const { data, error } = await supabase.from('containers').update(updates).eq('id', id).select();
+    if (error) console.error("Error updating container:", error);
+    return { data, error };
+  };
+
+  const deleteContainer = async (id) => {
+    const { error } = await supabase.from('containers').delete().eq('id', id);
+    if (error) console.error("Error deleting container:", error);
+    return { error };
+  };
+
   // User Management
   const createUser = async (userData) => {
     const { email, password, full_name, role, staff_group, department, manager } = userData;
@@ -273,21 +285,27 @@ export function SupabaseDataProvider({ children, session }) {
     return { data, error };
   };
 
-  // Admin: update profile fields via edge function (service role, bypasses RLS)
+  // Admin: update profile fields - direct update
   const adminUpdateProfile = async (targetUserId, profileUpdates) => {
-    const { data, error } = await supabase.functions.invoke('update-user-password', {
-      body: { action: 'updateProfile', targetUserId, profileUpdates }
+    // Filter out undefined/null values
+    const updates = {};
+    Object.keys(profileUpdates).forEach(key => {
+      if (profileUpdates[key] !== undefined && profileUpdates[key] !== null && profileUpdates[key] !== '') {
+        updates[key] = profileUpdates[key];
+      }
     });
+    
+    const { data, error } = await supabase.from('profiles').update(updates).eq('id', targetUserId).select();
     if (!error) {
-      // Refresh profiles list
       const { data: allProfiles } = await supabase.from('profiles').select('*');
       if (allProfiles) setProfiles(allProfiles);
     }
     return { data, error };
   };
 
-  // Admin: reset password via edge function
+  // Admin: reset password
   const adminResetUserPassword = async (targetUserId, newPassword) => {
+    // Use edge function only - password reset requires auth admin
     const { data, error } = await supabase.functions.invoke('update-user-password', {
       body: { action: 'resetPassword', targetUserId, newPassword }
     });
@@ -332,6 +350,8 @@ export function SupabaseDataProvider({ children, session }) {
       updateWorkItem,
       deleteWorkItem,
       addContainer,
+      updateContainer,
+      deleteContainer,
       createUser,
       updateProfile,
       adminUpdateProfile,

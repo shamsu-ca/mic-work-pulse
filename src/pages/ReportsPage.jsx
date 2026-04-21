@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
-import { getDisplayStatus } from '../lib/statusUtils';
+import { getDisplayStatus, isOverdue, getActionableUnits } from '../lib/statusUtils';
+import { isItemInDateRange } from '../lib/dateUtils';
+import FilterBar from '../components/common/FilterBar';
 
 export default function ReportsPage() {
-  const { workItems, profiles, currentUser } = useDataContext();
-  const [dateFilter, setDateFilter] = useState('this-month');
+  const { workItems, profiles, currentUser, dateFilter, customDateRange, staffGroup } = useDataContext();
 
   // Helpers
   const getAvatarInitials = (name) => {
@@ -25,18 +26,20 @@ export default function ReportsPage() {
   // --- Assignee View ---
   if (currentUser.role === 'Assignee') {
     // strict isolation
-    const myItems = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
+    const myItemsAll = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
+    const myItems = getActionableUnits(myItemsAll);
     const completed = myItems.filter(w => w.status === 'Completed');
-    const overdue = myItems.filter(w => w.status === 'Overdue');
-    const productivityScore = myItems.length === 0 ? 0 : Math.round((completed.length / myItems.length) * 100);
+    const overdue = myItems.filter(w => isOverdue(w) && w.status !== 'Completed');
+    const notStarted = myItems.filter(w => w.status === 'Assigned');
+    const effDenom = completed.length + overdue.length + notStarted.length;
+    const productivityScore = effDenom === 0 ? 100 : Math.round((completed.length / effDenom) * 100);
 
     return (
       <div className="flex flex-col gap-8 max-w-[1400px] mx-auto pb-12">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">My Performance Report</h1>
-            <p className="text-on-surface-variant font-medium text-sm">Personal operational analytics and milestones.</p>
-          </div>
+         <div>
+           <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">My Performance Report</h1>
+         </div>
           <button className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm shadow-black/5 hover:bg-surface transition-colors flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px]">download</span> Download PDF
           </button>
@@ -126,74 +129,80 @@ export default function ReportsPage() {
     );
   }
 
-  // --- Admin View ---
-  const allCompleted = safeWorkItems.filter(w => w.status === 'Completed');
-  const allOverdue = safeWorkItems.filter(w => w.status === 'Overdue');
-  const allTasks = safeWorkItems.length;
-  const globalCompletion = allTasks === 0 ? 0 : Math.round((allCompleted.length / allTasks) * 100);
+   // --- Admin View ---
+   // Apply date filtering to work items
+   const filteredAdminItems = safeWorkItems.filter(w => isItemInDateRange(w, dateFilter, customDateRange));
+   // Only count actionable, non-recurring units
+   const nonRecurringAdmin = filteredAdminItems.filter(w => !w.is_recurring);
+   const actionableAdminItems = getActionableUnits(nonRecurringAdmin);
 
-  // Group by Staff
-  const staffArray = safeProfiles.filter(p => p.role !== 'Admin');
-  const staffStats = staffArray.map(p => {
-    const tasks = safeWorkItems.filter(w => w.assignee_id === p.id);
-    const comps = tasks.filter(w => w.status === 'Completed').length;
-    const overdues = tasks.filter(w => w.status === 'Overdue').length;
-    const load = tasks.length;
-    const score = load === 0 ? 0 : Math.round((comps / load) * 100);
-    return { ...p, comps, overdues, load, score };
-  }).sort((a, b) => b.score - a.score);
+   const allCompleted = actionableAdminItems.filter(w => w.status === 'Completed');
+   const allOverdue = actionableAdminItems.filter(w => isOverdue(w) && w.status !== 'Completed');
+   const allNotStarted = actionableAdminItems.filter(w => w.status === 'Assigned');
+   const allOngoing = actionableAdminItems.filter(w => w.status === 'Ongoing');
+
+   // Group by Staff - filter by staff group too
+   const staffArray = safeProfiles.filter(p => p.role !== 'Admin' && p.staff_group === staffGroup);
+   const staffStats = staffArray.map(p => {
+     const tasks = actionableAdminItems.filter(w => w.assignee_id === p.id);
+     const comps = tasks.filter(w => w.status === 'Completed').length;
+     const overdues = tasks.filter(w => isOverdue(w) && w.status !== 'Completed').length;
+     const notStarts = tasks.filter(w => w.status === 'Assigned').length;
+     const load = tasks.length;
+     const effD = comps + overdues + notStarts;
+     const score = effD === 0 ? 100 : Math.round((comps / effD) * 100);
+     return { ...p, comps, overdues, notStarts, load, score };
+   }).sort((a, b) => b.score - a.score);
 
   return (
     <div className="flex flex-col gap-8 max-w-[1400px] mx-auto pb-12">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">Reporting Dashboard</h1>
-          <p className="text-on-surface-variant font-medium text-sm">Enterprise performance analytics and team efficiency.</p>
-        </div>
+         <div>
+           <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">Reporting Dashboard</h1>
+         </div>
         <div className="flex gap-4 items-center">
-            <select 
-              className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-            >
-               <option value="today">Today</option>
-               <option value="this-month">This Month</option>
-               <option value="this-quarter">This Quarter</option>
-            </select>
+            <FilterBar showToggle={true} showDateFilter={true} />
             <button className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-2 hover:opacity-90 transition-opacity">
               <span className="material-symbols-outlined text-[18px]">download</span> Export Report
             </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 border-l-4 border-primary flex items-center justify-between">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-5 border-l-4 border-primary flex items-center justify-between">
            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Global Completion</p>
-              <p className="text-3xl font-black font-headline text-on-surface">{globalCompletion}%</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Assigned</p>
+              <p className="text-3xl font-black font-headline text-on-surface">{allNotStarted.length}</p>
            </div>
-           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary"><span className="material-symbols-outlined">trending_up</span></div>
+           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><span className="material-symbols-outlined text-[20px]">assignment_ind</span></div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 border-l-4 border-green-500 flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-5 border-l-4 border-blue-500 flex items-center justify-between">
            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Total Completed</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Ongoing</p>
+              <p className="text-3xl font-black font-headline text-on-surface">{allOngoing.length}</p>
+           </div>
+           <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><span className="material-symbols-outlined text-[20px]">autorenew</span></div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-5 border-l-4 border-green-500 flex items-center justify-between">
+           <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Completed</p>
               <p className="text-3xl font-black font-headline text-on-surface">{allCompleted.length}</p>
            </div>
-           <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600"><span className="material-symbols-outlined">check_circle</span></div>
+           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600"><span className="material-symbols-outlined text-[20px]">check_circle</span></div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 border-l-4 border-error flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-5 border-l-4 border-error flex items-center justify-between">
            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Total Overdue</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Overdue</p>
               <p className="text-3xl font-black font-headline text-error">{allOverdue.length}</p>
            </div>
-           <div className="w-12 h-12 rounded-full bg-error-container flex items-center justify-center text-error"><span className="material-symbols-outlined">warning</span></div>
+           <div className="w-10 h-10 rounded-full bg-error-container flex items-center justify-center text-error"><span className="material-symbols-outlined text-[20px]">warning</span></div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 border-l-4 border-blue-500 flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-5 border-l-4 border-amber-400 flex items-center justify-between">
            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Total Work Load</p>
-              <p className="text-3xl font-black font-headline text-on-surface">{allTasks}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1">Not Started</p>
+              <p className="text-3xl font-black font-headline text-amber-600">{allNotStarted.length}</p>
            </div>
-           <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><span className="material-symbols-outlined">assignment</span></div>
+           <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600"><span className="material-symbols-outlined text-[20px]">schedule</span></div>
         </div>
       </div>
 
@@ -213,7 +222,8 @@ export default function ReportsPage() {
                         <th className="px-6 py-4 text-center">Workload</th>
                         <th className="px-6 py-4 text-center">Done</th>
                         <th className="px-6 py-4 text-center">Overdue</th>
-                        <th className="px-6 py-4 text-center">Efficiency Rate</th>
+                        <th className="px-6 py-4 text-center">Not Started</th>
+                        <th className="px-6 py-4 text-center">Efficiency</th>
                      </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container-low text-sm font-medium">
@@ -230,6 +240,7 @@ export default function ReportsPage() {
                           <td className="px-6 py-4 text-center">{s.load}</td>
                           <td className="px-6 py-4 text-center text-green-600">{s.comps}</td>
                           <td className="px-6 py-4 text-center text-error">{s.overdues > 0 ? s.overdues : '-'}</td>
+                          <td className="px-6 py-4 text-center text-amber-600">{s.notStarts > 0 ? s.notStarts : '-'}</td>
                           <td className="px-6 py-4">
                              <div className="flex items-center justify-center gap-2">
                                <div className="w-16 h-1.5 bg-surface-container-high rounded-full overflow-hidden">

@@ -326,7 +326,6 @@ export default function UsersPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">User Management</h1>
-          <p className="text-on-surface-variant font-medium text-sm">Login emails are auto-generated from staff names. Passwords can be reset anytime.</p>
         </div>
         <button
           className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-2 hover:opacity-90 transition-opacity"

@@ -14,18 +14,20 @@ export function getDateRange(dateFilter, customDateRange) {
     return { from: today, to: end };
   }
 
-  if (dateFilter === 'week') {
-    const day = today.getDay(); // 0=Sun
-    const diff = day === 0 ? -6 : 1 - day; // Monday start
-    const from = new Date(today); from.setDate(today.getDate() + diff);
-    const to = new Date(from); to.setDate(from.getDate() + 6); to.setHours(23, 59, 59, 999);
+  // Last 7 days (including today)
+  if (dateFilter === 'last7days') {
+    const from = new Date(today);
+    from.setDate(today.getDate() - 6); // 6 days back + today = 7 days total
+    const to = new Date(today); to.setHours(23, 59, 59, 999);
     return { from, to };
   }
 
-  if (dateFilter === 'month') {
-    const from = new Date(today.getFullYear(), today.getMonth(), 1);
-    const to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    to.setHours(23, 59, 59, 999);
+  // Last month (previous calendar month)
+  if (dateFilter === 'lastmonth') {
+    const year = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
+    const month = today.getMonth() === 0 ? 11 : today.getMonth() - 1;
+    const from = new Date(year, month, 1);
+    const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
     return { from, to };
   }
 
@@ -59,8 +61,8 @@ export function isItemInDateRange(item, dateFilter, customDateRange) {
 /** Human-readable label for the current filter */
 export function getFilterLabel(dateFilter, customDateRange) {
   if (dateFilter === 'today') return 'Today';
-  if (dateFilter === 'week') return 'This Week';
-  if (dateFilter === 'month') return 'This Month';
+  if (dateFilter === 'last7days') return 'Last 7 Days';
+  if (dateFilter === 'lastmonth') return 'Last Month';
   if (dateFilter === 'custom' && customDateRange?.from && customDateRange?.to) {
     return `${customDateRange.from} → ${customDateRange.to}`;
   }

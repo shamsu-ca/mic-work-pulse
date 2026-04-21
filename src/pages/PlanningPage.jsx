@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
+import { getActionableUnits } from '../lib/statusUtils';
 import CreateModal from '../components/common/CreateModal';
 
 export default function PlanningPage() {
@@ -24,7 +25,8 @@ export default function PlanningPage() {
   };
 
   // The Planning Pool only shows unassigned standard tasks that are in the pool.
-  const planningPool = safeWorkItems.filter(w => w.in_planning_pool && !w.is_recurring);
+  const planningPoolRaw = safeWorkItems.filter(w => w.in_planning_pool && !w.is_recurring);
+  const planningPool = getActionableUnits(planningPoolRaw);
 
   const toggleTaskSelection = (id) => {
     if (selectedTaskIds.includes(id)) {
@@ -57,7 +59,6 @@ export default function PlanningPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">Task Allocation Pool</h1>
-          <p className="text-on-surface-variant font-medium text-sm">Review unassigned work items and allocate to staff members.</p>
         </div>
         <div className="flex gap-4 items-center">
             <button 

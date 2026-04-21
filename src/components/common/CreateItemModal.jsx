@@ -159,7 +159,7 @@ export default function CreateItemModal({ onClose }) {
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Project/Event</label>
                   <select className={inputCls} value={taskContainer} onChange={e => setTaskContainer(e.target.value)}>
                     <option value="">— None —</option>
-                    {safeContainers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {safeContainers.map(c => <option key={c.id} value={c.id}>{c.title ?? c.name}</option>)}
                   </select>
                 </div>
               </div>

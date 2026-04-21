@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
-import { getDisplayStatus } from '../../lib/statusUtils';
+import { getDisplayStatus, isOverdue, getActionableUnits } from '../../lib/statusUtils';
 import { isItemInDateRange } from '../../lib/dateUtils';
 import FilterBar from '../common/FilterBar';
 
@@ -15,6 +15,7 @@ export default function AdminDashboard() {
 
   const filteredProfiles = safeProfiles.filter(p => p.staff_group === staffGroup && p.role !== 'Admin');
 
+  // Helper functions
   const getAvatarInitials = (name) => {
     if (!name) return 'U';
     const s = name.split(' ');
@@ -26,12 +27,17 @@ export default function AdminDashboard() {
     return p?.name || 'Unassigned';
   };
 
-  // ── Stats (date-filtered) ──
-  const totalTasks = filteredWorkItems.filter(w => !w.is_recurring).length;
-  const assignedTasks = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Assigned' || getDisplayStatus(w) === 'Not Started').length;
-  const ongoingTasks = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Ongoing').length;
-  const doneTasks = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Completed').length;
+  // Only consider non-recurring, lowest-level actionable units for stats
+  const nonRecurring = filteredWorkItems.filter(w => !w.is_recurring);
+  const actionableItems = getActionableUnits(nonRecurring);
 
+  // ── Stats (actionable only) ──
+  const totalTasks = actionableItems.length;
+  const assignedTasks = actionableItems.filter(w => w.status === 'Assigned').length;
+  const ongoingTasks = actionableItems.filter(w => w.status === 'Ongoing').length;
+  const doneTasks = actionableItems.filter(w => w.status === 'Completed').length;
+
+  // ── Projects & Events stats ──
   const activeProjects = safeContainers.filter(c => c.type === 'Project').length;
   const plannedProj = safeContainers.filter(c => c.type === 'Project' && (c.progress || 0) === 0).length;
   const closedProj = safeContainers.filter(c => c.type === 'Project' && (c.progress || 0) === 100).length;
@@ -42,30 +48,19 @@ export default function AdminDashboard() {
   const endedEvents = safeContainers.filter(c => c.type === 'Event' && (c.progress || 0) === 100).length;
   const inviteEvents = totalEvents - ongoingEvents - endedEvents;
 
-  // ── Critical items (date-filtered) ──
-  const overdueItems = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Overdue');
-  const notStartedItems = filteredWorkItems.filter(w => getDisplayStatus(w) === 'Not Started');
+  // ── Critical items (actionable only) ──
+  const overdueItems = actionableItems.filter(w => isOverdue(w) && w.status !== 'Completed');
+  const notStartedItems = actionableItems.filter(w => w.status === 'Assigned');
 
-  // Group overdue by assignee
-  const overdueByPerson = filteredProfiles.map(p => ({
-    p,
-    count: overdueItems.filter(w => w.assignee_id === p.id).length
-  })).filter(x => x.count > 0).slice(0, 4);
-
-  const notStartedByPerson = filteredProfiles.map(p => ({
-    p,
-    count: notStartedItems.filter(w => w.assignee_id === p.id).length
-  })).filter(x => x.count > 0).slice(0, 4);
-
-  // ── Today's Focus: high priority, non-completed (date-filtered) ──
-  const todaysFocus = [...filteredWorkItems]
-    .filter(w => getDisplayStatus(w) !== 'Completed' && (w.priority === 'High' || w.priority === 'Critical'))
+  // ── Today's Focus ──
+  const todaysFocus = [...actionableItems]
+    .filter(w => w.status !== 'Completed' && (w.priority === 'High' || w.priority === 'Critical'))
     .sort((a, b) => (a.expected_date || '').localeCompare(b.expected_date || ''))
     .slice(0, 4);
 
-  // ── Priority Queue (date-filtered) ──
-  const priorityQueue = [...filteredWorkItems]
-    .filter(w => getDisplayStatus(w) !== 'Completed')
+  // ── Priority Queue ──
+  const priorityQueue = [...actionableItems]
+    .filter(w => w.status !== 'Completed')
     .sort((a, b) => {
       const pOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
       return (pOrder[a.priority] ?? 2) - (pOrder[b.priority] ?? 2);
@@ -80,12 +75,6 @@ export default function AdminDashboard() {
     return 'bg-surface-container text-on-surface-variant';
   };
 
-  const priorityCls = (p) => {
-    if (p === 'Critical') return 'bg-red-100 text-red-700';
-    if (p === 'High') return 'bg-orange-100 text-orange-700';
-    return 'bg-surface-container text-on-surface-variant';
-  };
-
   return (
     <div className="flex flex-col gap-6 max-w-[1400px] mx-auto pb-16 animate-fade-in">
       {/* Page Title + FilterBar */}
@@ -93,69 +82,39 @@ export default function AdminDashboard() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">System Overview</h1>
-            <p className="text-sm text-on-surface-variant font-medium">Real-time enterprise performance metrics</p>
           </div>
         </div>
         <FilterBar showToggle={true} showDateFilter={true} />
       </div>
 
-      {/* ── Alert Banners ── */}
-      {(overdueItems.length > 0 || notStartedItems.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {overdueItems.length > 0 && (
-            <div className="bg-white border-l-4 border-error rounded-xl p-4 shadow-sm flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-error text-[18px]" style={{fontVariationSettings:"'FILL' 1"}}>warning</span>
-                </div>
-                <div>
-                  <p className="text-xs font-black text-error uppercase tracking-widest">Critical Overdue</p>
-                  <p className="text-xs text-on-surface-variant">{overdueItems.length} tasks requiring immediate attention</p>
-                </div>
-              </div>
-              {overdueByPerson.length > 0 && (
-                <div className="flex gap-4 flex-wrap">
-                  {overdueByPerson.map(({ p, count }) => (
-                    <div key={p.id} className="flex items-center gap-1.5">
-                      <div className="w-6 h-6 rounded-full bg-red-200 flex items-center justify-center text-[8px] font-black text-red-700">{getAvatarInitials(p.name)}</div>
-                      <div>
-                        <p className="text-[9px] font-bold text-on-surface uppercase">{p.name.split(' ')[0]}</p>
-                        <p className="text-xs font-black text-error">{count}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+      {/* OVERDUE & NOT STARTED ALERT CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border-l-4 border-error shadow-sm p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+              <span className="material-symbols-outlined text-error" style={{fontVariationSettings:"'FILL' 1"}}>warning</span>
             </div>
-          )}
-          {notStartedItems.length > 0 && (
-            <div className="bg-white border-l-4 border-amber-400 rounded-xl p-4 shadow-sm flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-amber-600 text-[18px]" style={{fontVariationSettings:"'FILL' 1"}}>chat_bubble</span>
-                </div>
-                <div>
-                  <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Not Started</p>
-                  <p className="text-xs text-on-surface-variant">High priority items pending kick-off</p>
-                </div>
-              </div>
-              {notStartedByPerson.length > 0 && (
-                <div className="flex gap-4 flex-wrap">
-                  {notStartedByPerson.map(({ p, count }) => (
-                    <div key={p.id} className="flex items-center gap-1.5">
-                      <div className="w-6 h-6 rounded-full bg-amber-200 flex items-center justify-center text-[8px] font-black text-amber-700">{getAvatarInitials(p.name)}</div>
-                      <div>
-                        <p className="text-[9px] font-bold text-on-surface uppercase">{p.name.split(' ')[0]}</p>
-                        <p className="text-xs font-black text-amber-700">{count}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div>
+              <p className="text-xs font-black text-error uppercase tracking-widest">Overdue</p>
+              <p className="text-[10px] text-on-surface-variant">Tasks past due date</p>
             </div>
-          )}
+          </div>
+          <p className="text-4xl font-black text-error ml-13">{overdueItems.length}</p>
         </div>
-      )}
+
+        <div className="bg-white rounded-2xl border-l-4 border-amber-400 shadow-sm p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+              <span className="material-symbols-outlined text-amber-600" style={{fontVariationSettings:"'FILL' 1"}}>schedule</span>
+            </div>
+            <div>
+              <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Not Started</p>
+              <p className="text-[10px] text-on-surface-variant">Pending kick-off</p>
+            </div>
+          </div>
+          <p className="text-4xl font-black text-amber-600 ml-13">{notStartedItems.length}</p>
+        </div>
+      </div>
 
       {/* ── Stat Cards ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -271,81 +230,36 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low">
-                  {priorityQueue.map(t => {
-                    const s = getDisplayStatus(t);
-                    return (
-                      <tr key={t.id} className="text-sm">
-                        <td className="py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.priority === 'Critical' ? 'bg-error' : t.priority === 'High' ? 'bg-orange-500' : 'bg-primary'}`}></span>
-                            <span className="font-medium text-on-surface truncate max-w-[150px]">{t.title}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary">{getAvatarInitials(getAssigneeName(t.assignee_id))}</div>
-                            <span className="text-on-surface-variant">{getAssigneeName(t.assignee_id).split(' ')[0]}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5">
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${statusBadgeCls(t)}`}>{s}</span>
-                        </td>
-                        <td className="py-2.5 text-on-surface-variant">{t.expected_date || '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {priorityQueue.length === 0 && <p className="text-center py-6 text-on-surface-variant text-sm italic">All clear!</p>}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Activity (Staff workload) */}
-        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-on-surface font-headline">Staff Workload</h2>
-            <span className="text-[10px] text-primary font-bold">VIEW ALL</span>
-          </div>
-          <div className="flex flex-col gap-3 flex-1">
-            {filteredProfiles.slice(0, 6).map(p => {
-              const tasks = safeWorkItems.filter(w => w.assignee_id === p.id);
-              const completed = tasks.filter(w => getDisplayStatus(w) === 'Completed').length;
-              const total = tasks.length;
-              const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
-              const overdue = tasks.filter(w => getDisplayStatus(w) === 'Overdue').length;
-              return (
-                <div key={p.id} className="flex items-center gap-3">
-                  {p.avatar_url
-                    ? <img src={p.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                    : <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-black text-primary flex-shrink-0">{getAvatarInitials(p.name)}</div>
-                  }
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-on-surface truncate">{p.name}</p>
-                      {overdue > 0 && <span className="text-[9px] font-bold text-error">{overdue} late</span>}
-                    </div>
-                    <div className="h-1.5 bg-surface-container-high rounded-full mt-1 overflow-hidden">
-                      <div className={`h-full rounded-full ${overdue > 0 ? 'bg-error' : 'bg-primary'}`} style={{ width: `${pct}%` }}></div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-bold text-on-surface-variant w-8 text-right flex-shrink-0">{pct}%</span>
-                </div>
-              );
-            })}
-            {filteredProfiles.length === 0 && <p className="text-sm text-on-surface-variant italic text-center mt-4">No staff in {staffGroup}.</p>}
-          </div>
-
-          {/* Weekly efficiency */}
-          <div className="mt-4 bg-primary rounded-xl p-4">
-            <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest">WEEKLY EFFICIENCY</p>
-            <p className="text-2xl font-black text-white mt-1">
-              {safeWorkItems.length === 0 ? '0%' : `${Math.round((safeWorkItems.filter(w => getDisplayStatus(w) === 'Completed').length / safeWorkItems.length) * 100)}%`}
-            </p>
-            <p className="text-[10px] text-white/70 mt-1">completion rate across all tasks</p>
+                {priorityQueue.map(t => {
+                  const s = getDisplayStatus(t);
+                  return (
+                    <tr key={t.id} className="text-sm">
+                      <td className="py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.priority === 'Critical' ? 'bg-error' : t.priority === 'High' ? 'bg-orange-500' : 'bg-primary'}`}></span>
+                          <span className="font-medium text-on-surface truncate max-w-[150px]">{t.title}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary">{getAvatarInitials(getAssigneeName(t.assignee_id))}</div>
+                          <span className="text-on-surface-variant">{getAssigneeName(t.assignee_id).split(' ')[0]}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5">
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${statusBadgeCls(t)}`}>{s}</span>
+                      </td>
+                      <td className="py-2.5 text-on-surface-variant">{t.expected_date || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {priorityQueue.length === 0 && <p className="text-center py-6 text-on-surface-variant text-sm italic">All clear!</p>}
           </div>
         </div>
       </div>
     </div>
+  </div>
   );
 }

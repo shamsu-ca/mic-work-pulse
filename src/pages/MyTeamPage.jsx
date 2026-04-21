@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
-import { getDisplayStatus } from '../lib/statusUtils';
+import { getDisplayStatus, getActionableUnits } from '../lib/statusUtils';
 import CreateItemModal from '../components/common/CreateItemModal';
 
 export default function MyTeamPage() {
@@ -22,7 +22,7 @@ export default function MyTeamPage() {
     p.manager === currentUser?.name && p.role !== 'Admin'
   );
 
-  const getMemberTasks = (id) => safeWorkItems.filter(w => w.assignee_id === id);
+  const getMemberTasks = (id) => getActionableUnits(safeWorkItems.filter(w => w.assignee_id === id));
 
   const getMetrics = (id) => {
     const tasks = getMemberTasks(id);
@@ -46,9 +46,6 @@ export default function MyTeamPage() {
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-on-surface font-headline tracking-tight">My Team</h1>
-          <p className="text-sm text-on-surface-variant font-medium mt-1">
-            Staff reporting to <span className="font-bold text-primary">{currentUser?.name}</span>
-          </p>
         </div>
         <button
           onClick={() => setIsCreateOpen(true)}

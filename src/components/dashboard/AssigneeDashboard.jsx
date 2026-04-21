@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
-import { getDisplayStatus, getStatusBadgeClass } from '../../lib/statusUtils';
+import { getDisplayStatus, getStatusBadgeClass, isOverdue, getActionableUnits } from '../../lib/statusUtils';
 
 // Reusable Work Item Card for Kanban
 function WorkItemCard({ item, showStart = false, showComplete = false, onStart, onComplete }) {
@@ -56,17 +56,18 @@ export default function AssigneeDashboard() {
 
   const safeWorkItems = workItems || [];
   const unreadNotifs = getUnreadNotifications() || [];
-  
+   
   // Assignee Privacy: Strict isolation using their ID
-  const myItems = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
+  const myItemsAll = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
+  const myItems = getActionableUnits(myItemsAll); // Only lowest-level actionable units
 
-  // Categories
-  const overdueItems = myItems.filter(w => w.status === 'Overdue');
-  const notStartedItems = myItems.filter(w => getDisplayStatus(w) === 'Not Started');
+  // Categories (using raw status and derived overdue)
+  const overdueItems = myItems.filter(w => isOverdue(w) && w.status !== 'Completed');
+  const notStartedItems = myItems.filter(w => w.status === 'Assigned');
   const todayFocusItems = myItems.filter(w => w.priority <= 2 && w.status !== 'Completed').slice(0, 4);
 
   // Pipeline
-  const assignedItems = myItems.filter(w => getDisplayStatus(w) === 'Assigned');
+  const assignedItems = myItems.filter(w => w.status === 'Assigned');
   const ongoingItems = myItems.filter(w => w.status === 'Ongoing');
   const dbCompletedItems = myItems.filter(w => w.status === 'Completed').slice(0, 5); // recent 5
 
@@ -77,7 +78,6 @@ export default function AssigneeDashboard() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">Welcome back, {(currentUser.name || 'User').split(' ')[0]}</h1>
-          <p className="text-on-surface-variant font-medium text-sm">Here is your operational focus for today.</p>
         </div>
       </div>
 
