@@ -14,6 +14,11 @@ export default function CreateItemModal({ onClose }) {
   const [taskPriority, setTaskPriority] = useState('Medium');
   const [taskDate, setTaskDate] = useState('');
   const [taskEstMins, setTaskEstMins] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState('daily');
+  const [recurrenceDay, setRecurrenceDay] = useState('1');
+  const [recurrenceDate, setRecurrenceDate] = useState('1');
+  const [recurrenceInterval, setRecurrenceInterval] = useState('7');
 
   // Plan form
   const [planTitle, setPlanTitle] = useState('');
@@ -25,6 +30,15 @@ export default function CreateItemModal({ onClose }) {
   const safeProfiles = profiles || [];
   const assigneeList = safeProfiles.filter(p => p.role !== 'Admin');
 
+  const buildRecurrenceRule = () => {
+    if (recurrenceType === 'daily') return { type: 'daily' };
+    if (recurrenceType === 'weekly') return { type: 'weekly', day: Number(recurrenceDay) };
+    if (recurrenceType === 'monthly') return { type: 'monthly', date: Number(recurrenceDate) };
+    if (recurrenceType === 'every_x_days') return { type: 'every_x_days', interval: Number(recurrenceInterval) };
+    if (recurrenceType === 'every_x_months') return { type: 'every_x_months', interval: Number(recurrenceInterval) };
+    return { type: 'daily' };
+  };
+
   const handleCreateTask = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -33,10 +47,11 @@ export default function CreateItemModal({ onClose }) {
       description: taskDesc,
       assignee_id: taskAssignee || null,
       priority: taskPriority,
-      expected_date: taskDate || null,
+      expected_date: isRecurring ? null : (taskDate || null),
       status: 'Assigned',
       type: 'Task',
       ...(taskEstMins ? { estimated_hours: Number(taskEstMins) } : {}),
+      ...(isRecurring ? { is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true } : {}),
     });
     setLoading(false);
     setSuccess(true);
@@ -152,16 +167,55 @@ export default function CreateItemModal({ onClose }) {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Due Date</label>
-                  <input type="date" className={inputCls} value={taskDate} onChange={e => setTaskDate(e.target.value)} />
+              <div className="flex items-center gap-3 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30">
+                <label className="flex items-center gap-2 cursor-pointer flex-1">
+                  <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isRecurring ? 'bg-primary' : 'bg-outline-variant'}`}
+                    onClick={() => setIsRecurring(v => !v)}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isRecurring ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </div>
+                  <span className="text-xs font-bold text-on-surface">Recurring Task</span>
+                </label>
+              </div>
+              {isRecurring ? (
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Recurrence</label>
+                  <select className={inputCls} value={recurrenceType} onChange={e => setRecurrenceType(e.target.value)}>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="every_x_days">Every X Days</option>
+                    <option value="every_x_months">Every X Months</option>
+                  </select>
+                  {recurrenceType === 'weekly' && (
+                    <select className={inputCls} value={recurrenceDay} onChange={e => setRecurrenceDay(e.target.value)}>
+                      {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) => <option key={i} value={i}>{d}</option>)}
+                    </select>
+                  )}
+                  {recurrenceType === 'monthly' && (
+                    <input type="number" min="1" max="31" placeholder="Day of month (1-31)" className={inputCls} value={recurrenceDate} onChange={e => setRecurrenceDate(e.target.value)} />
+                  )}
+                  {(recurrenceType === 'every_x_days' || recurrenceType === 'every_x_months') && (
+                    <input type="number" min="1" placeholder={recurrenceType === 'every_x_days' ? 'Every X days' : 'Every X months'} className={inputCls} value={recurrenceInterval} onChange={e => setRecurrenceInterval(e.target.value)} />
+                  )}
                 </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Due Date</label>
+                    <input type="date" className={inputCls} value={taskDate} onChange={e => setTaskDate(e.target.value)} />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>
+                    <input type="number" min="0" placeholder="e.g. 90" className={inputCls} value={taskEstMins} onChange={e => setTaskEstMins(e.target.value)} />
+                  </div>
+                </div>
+              )}
+              {isRecurring && (
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>
                   <input type="number" min="0" placeholder="e.g. 90" className={inputCls} value={taskEstMins} onChange={e => setTaskEstMins(e.target.value)} />
                 </div>
-              </div>
+              )}
             </div>
             <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
               <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, getStatusBadgeClass, getActionableUnits, isOverdue } from '../lib/statusUtils';
-import CreateModal from '../components/common/CreateModal';
 import FilterBar from '../components/common/FilterBar';
 
 // Priority helpers — stored as integers (1=Critical 2=High 3=Medium 4=Low)
@@ -176,8 +175,6 @@ export default function AllTasksPage() {
   const [expandedId, setExpandedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createDefaultType, setCreateDefaultType] = useState('Task');
   const [editingItem, setEditingItem] = useState(null);
 
   const safeProfiles = profiles || [];
@@ -226,7 +223,6 @@ export default function AllTasksPage() {
   const displayHistory = applyFilters(historyItems);
 
   const toggleExpand = (id) => setExpandedId(prev => prev === id ? null : id);
-  const openCreate = (type) => { setCreateDefaultType(type); setIsCreateOpen(true); };
 
   // Shared expanded detail row
   const renderExpandedRow = (item) => {
@@ -385,28 +381,6 @@ export default function AllTasksPage() {
           <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">Work Pipeline</h1>
           <p className="text-sm text-on-surface-variant mt-0.5">Tasks · Subtasks · Milestones · Checklists</p>
         </div>
-        {currentUser.role === 'Admin' && (
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => openCreate('Task')}
-              className="bg-primary text-white rounded-xl px-3 py-2 text-xs font-bold flex items-center gap-1.5 hover:opacity-90 transition-opacity shadow-sm"
-            >
-              <span className="material-symbols-outlined text-[14px]">add</span> New Task
-            </button>
-            <button
-              onClick={() => openCreate('Project')}
-              className="bg-white border border-outline-variant/40 text-on-surface rounded-xl px-3 py-2 text-xs font-bold flex items-center gap-1.5 hover:bg-surface-container transition-colors"
-            >
-              <span className="material-symbols-outlined text-[14px]">add</span> New Project
-            </button>
-            <button
-              onClick={() => openCreate('Event')}
-              className="bg-white border border-outline-variant/40 text-on-surface rounded-xl px-3 py-2 text-xs font-bold flex items-center gap-1.5 hover:bg-surface-container transition-colors"
-            >
-              <span className="material-symbols-outlined text-[14px]">add</span> New Event
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Controls */}
@@ -648,12 +622,6 @@ export default function AllTasksPage() {
           </div>
         </div>
       )}
-
-      <CreateModal
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-        defaultType={createDefaultType}
-      />
 
       {editingItem && (
         <EditItemModal

@@ -418,11 +418,11 @@ export default function StaffOverviewPage() {
                 <div className="px-5 pb-3 grid grid-cols-2 gap-3">
                   <div className={`rounded-xl p-3 ${m.overdue > 0 ? 'bg-red-50 border border-red-100' : 'bg-surface-container-low'}`}>
                     <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${m.overdue > 0 ? 'text-error' : 'text-on-surface-variant'}`}>Overdue</p>
-                    <p className={`text-2xl font-black ${m.overdue > 0 ? 'text-error' : 'text-on-surface-variant'}`}>{String(m.overdue).padStart(2,'0')}</p>
+                    <p className={`text-2xl font-black ${m.overdue > 0 ? 'text-error' : 'text-on-surface-variant'}`}>{m.overdue}</p>
                   </div>
                   <div className={`rounded-xl p-3 ${m.notStarted > 0 ? 'bg-amber-50 border border-amber-100' : 'bg-surface-container-low'}`}>
                     <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${m.notStarted > 0 ? 'text-amber-700' : 'text-on-surface-variant'}`}>Not Started</p>
-                    <p className={`text-2xl font-black ${m.notStarted > 0 ? 'text-amber-600' : 'text-on-surface'}`}>{String(m.notStarted).padStart(2,'0')}</p>
+                    <p className={`text-2xl font-black ${m.notStarted > 0 ? 'text-amber-600' : 'text-on-surface'}`}>{m.notStarted}</p>
                   </div>
                 </div>
 
@@ -435,7 +435,7 @@ export default function StaffOverviewPage() {
                   ].map(({ label, val, cls }) => (
                     <div key={label} className="bg-surface-container-low rounded-xl py-2.5">
                       <p className="text-[8px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">{label}</p>
-                      <p className={`text-lg font-black ${cls}`}>{String(val).padStart(2,'0')}</p>
+                      <p className={`text-lg font-black ${cls}`}>{val}</p>
                     </div>
                   ))}
                 </div>

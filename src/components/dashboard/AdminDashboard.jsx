@@ -205,9 +205,9 @@ export default function AdminDashboard() {
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Active Projects</p>
           <div className="h-px bg-outline-variant/20 mb-3"></div>
           <div className="grid grid-cols-3 text-center gap-2">
-            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Assigned</p><p className="font-black text-on-surface">{String(projMilestonesAssigned).padStart(2,'0')}</p></div>
-            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Ongoing</p><p className="font-black text-on-surface">{String(projMilestonesOngoing).padStart(2,'0')}</p></div>
-            <div><p className="text-[10px] text-green-600 font-bold uppercase">Done</p><p className="font-black text-green-600">{String(projMilestonesDone).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Assigned</p><p className="font-black text-on-surface">{projMilestonesAssigned}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Ongoing</p><p className="font-black text-on-surface">{projMilestonesOngoing}</p></div>
+            <div><p className="text-[10px] text-green-600 font-bold uppercase">Done</p><p className="font-black text-green-600">{projMilestonesDone}</p></div>
           </div>
           <p className="text-[9px] text-on-surface-variant mt-2 text-center">milestone breakdown</p>
           <div className="mt-2 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
@@ -226,9 +226,9 @@ export default function AdminDashboard() {
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Active Events</p>
           <div className="h-px bg-outline-variant/20 mb-3"></div>
           <div className="grid grid-cols-3 text-center gap-2">
-            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Assigned</p><p className="font-black text-on-surface">{String(evtChecklistsAssigned).padStart(2,'0')}</p></div>
-            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Ongoing</p><p className="font-black text-on-surface">{String(evtChecklistsOngoing).padStart(2,'0')}</p></div>
-            <div><p className="text-[10px] text-green-600 font-bold uppercase">Done</p><p className="font-black text-green-600">{String(evtChecklistsDone).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Assigned</p><p className="font-black text-on-surface">{evtChecklistsAssigned}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Ongoing</p><p className="font-black text-on-surface">{evtChecklistsOngoing}</p></div>
+            <div><p className="text-[10px] text-green-600 font-bold uppercase">Done</p><p className="font-black text-green-600">{evtChecklistsDone}</p></div>
           </div>
           <p className="text-[9px] text-on-surface-variant mt-2 text-center">checklist breakdown</p>
           <div className="mt-2 h-1.5 bg-surface-container-high rounded-full overflow-hidden">

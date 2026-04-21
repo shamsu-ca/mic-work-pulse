@@ -390,11 +390,15 @@ export default function ProjectsEventsPage() {
           <div className="flex flex-col gap-3">
             <input autoFocus className={inputCls} placeholder="Milestone title…"
               value={milestoneForm.title} onChange={e => setMilestoneForm(f => ({ ...f, title: e.target.value }))} />
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1 block">Expected Date</label>
-              <input type="date" className={inputCls} value={milestoneForm.date}
-                onChange={e => setMilestoneForm(f => ({ ...f, date: e.target.value }))} />
-            </div>
+            {!safeContainers.find(c => c.id === milestoneTarget)?.is_template ? (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1 block">Expected Date</label>
+                <input type="date" className={inputCls} value={milestoneForm.date}
+                  onChange={e => setMilestoneForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+            ) : (
+              <p className="text-[11px] text-on-surface-variant italic">Deadlines are set when this template is deployed as an active project.</p>
+            )}
             <button onClick={submitMilestone} disabled={submitting || !milestoneForm.title.trim()} className={btnPrimary}>
               {submitting ? 'Adding…' : 'Add Milestone'}
             </button>
@@ -408,13 +412,17 @@ export default function ProjectsEventsPage() {
           <div className="flex flex-col gap-3">
             <input autoFocus className={inputCls} placeholder="Phase name (e.g. Pre-Planning)…"
               value={phaseForm.title} onChange={e => setPhaseForm(f => ({ ...f, title: e.target.value }))} />
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1 block">
-                Phase Deadline <span className="text-on-surface-variant/60 normal-case">(assignees see this day's checklists)</span>
-              </label>
-              <input type="date" className={inputCls} value={phaseForm.date}
-                onChange={e => setPhaseForm(f => ({ ...f, date: e.target.value }))} />
-            </div>
+            {!safeContainers.find(c => c.id === phaseTarget)?.is_template ? (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1 block">
+                  Phase Deadline <span className="text-on-surface-variant/60 normal-case">(assignees see this day's checklists)</span>
+                </label>
+                <input type="date" className={inputCls} value={phaseForm.date}
+                  onChange={e => setPhaseForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+            ) : (
+              <p className="text-[11px] text-on-surface-variant italic">Deadlines are assigned when this template is deployed as an active event.</p>
+            )}
             <button onClick={submitPhase} disabled={submitting || !phaseForm.title.trim()} className={btnPrimary}>
               {submitting ? 'Adding…' : 'Add Phase'}
             </button>
@@ -457,12 +465,14 @@ export default function ProjectsEventsPage() {
       {deactivateTarget && (
         <Modal title="Deactivate?" onClose={() => setDeactivateTarget(null)}>
           <p className="text-sm text-on-surface-variant">
-            {deactivateTarget.source_template_id
+            {deactivateTarget.type === 'Event'
               ? `"${cName(deactivateTarget)}" will be hidden from all active views.`
-              : `"${cName(deactivateTarget)}" has no saved template. Save it before deactivating?`}
+              : deactivateTarget.source_template_id
+                ? `"${cName(deactivateTarget)}" will be hidden from all active views.`
+                : `"${cName(deactivateTarget)}" has no saved template. Save it before deactivating?`}
           </p>
           <div className="flex flex-col gap-2">
-            {!deactivateTarget.source_template_id && (
+            {deactivateTarget.type === 'Project' && !deactivateTarget.source_template_id && (
               <button onClick={() => doDeactivate(deactivateTarget, true)} className={btnPrimary}>
                 Save & Deactivate
               </button>
@@ -471,7 +481,7 @@ export default function ProjectsEventsPage() {
               onClick={() => doDeactivate(deactivateTarget, false)}
               className="w-full bg-error/10 text-error border border-error/20 px-4 py-2 rounded-xl text-sm font-bold hover:bg-error/20 transition-colors"
             >
-              {deactivateTarget.source_template_id ? 'Deactivate' : 'Deactivate Anyway'}
+              {deactivateTarget.type === 'Project' && !deactivateTarget.source_template_id ? 'Deactivate Anyway' : 'Deactivate'}
             </button>
             <button onClick={() => setDeactivateTarget(null)} className={btnSecondary}>Cancel</button>
           </div>
@@ -662,7 +672,7 @@ export default function ProjectsEventsPage() {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-black flex items-center justify-center">
-                            {String(i + 1).padStart(2, '0')}
+                            {i + 1}
                           </span>
                           <span className="text-xs font-black text-on-surface uppercase tracking-wide">{ph.title}</span>
                           {ph.expected_date && (
@@ -862,7 +872,7 @@ export default function ProjectsEventsPage() {
                     {milestones.map((m, i) => (
                       <div key={m.id} className="flex items-center gap-3 p-3 bg-surface-container-low rounded-xl group">
                         <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center">
-                          {String(i + 1).padStart(2, '0')}
+                          {i + 1}
                         </span>
                         <span className="flex-1 text-sm font-medium text-on-surface">{m.title}</span>
                         {m.expected_date && <span className="text-[10px] text-on-surface-variant">{m.expected_date}</span>}
@@ -891,7 +901,7 @@ export default function ProjectsEventsPage() {
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <span className="w-6 h-6 rounded-full bg-surface-container text-on-surface-variant text-[10px] font-black flex items-center justify-center">
-                                {String(i + 1).padStart(2, '0')}
+                                {i + 1}
                               </span>
                               <h3 className="text-sm font-black text-on-surface">{ph.title}</h3>
                               {ph.expected_date && (
