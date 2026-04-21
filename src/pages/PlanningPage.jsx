@@ -1,14 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getActionableUnits } from '../lib/statusUtils';
-import CreateModal from '../components/common/CreateModal';
-
 export default function PlanningPage() {
   const { workItems, profiles, updateWorkItem } = useDataContext();
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
   const [allocationAssignee, setAllocationAssignee] = useState('');
   const [allocationDate, setAllocationDate] = useState('');
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [allocationEstMins, setAllocationEstMins] = useState('');
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
 
@@ -45,13 +43,15 @@ export default function PlanningPage() {
           assignee_id: allocationAssignee,
           expected_date: allocationDate,
           in_planning_pool: false,
-          status: 'Not Started'
+          status: 'Assigned',
+          ...(allocationEstMins ? { estimated_hours: Number(allocationEstMins) } : {}),
        });
     }
-    
+
     setSelectedTaskIds([]);
     setAllocationAssignee('');
     setAllocationDate('');
+    setAllocationEstMins('');
   };
 
   return (
@@ -59,14 +59,6 @@ export default function PlanningPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">Task Allocation Pool</h1>
-        </div>
-        <div className="flex gap-4 items-center">
-            <button 
-              onClick={() => setIsCreateOpen(true)}
-              className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-2 hover:opacity-90 transition-opacity"
-            >
-              <span className="material-symbols-outlined text-[18px]">add</span> Add To Pool
-            </button>
         </div>
       </div>
 
@@ -171,11 +163,26 @@ export default function PlanningPage() {
                     <label className="block text-[11px] font-bold uppercase tracking-widest text-outline mb-2">Target Date</label>
                     <div className="relative">
                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">calendar_month</span>
-                       <input 
+                       <input
                          type="date"
                          className="w-full bg-white border border-outline-variant rounded-lg py-2.5 pl-10 pr-4 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
                          value={allocationDate}
                          onChange={(e) => setAllocationDate(e.target.value)}
+                       />
+                    </div>
+                 </div>
+
+                 <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-widest text-outline mb-2">Est. Time (minutes)</label>
+                    <div className="relative">
+                       <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">timer</span>
+                       <input
+                         type="number"
+                         min="0"
+                         placeholder="e.g. 90"
+                         className="w-full bg-white border border-outline-variant rounded-lg py-2.5 pl-10 pr-4 text-sm font-medium text-on-surface focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                         value={allocationEstMins}
+                         onChange={(e) => setAllocationEstMins(e.target.value)}
                        />
                     </div>
                  </div>
@@ -196,10 +203,6 @@ export default function PlanningPage() {
         </div>
       </div>
       
-      <CreateModal 
-         isOpen={isCreateOpen}
-         onClose={() => setIsCreateOpen(false)}
-      />
     </div>
   );
 }

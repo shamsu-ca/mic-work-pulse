@@ -10,47 +10,60 @@ export default function AdminDashboard() {
   const safeWorkItems = workItems || [];
   const safeContainers = containers || [];
 
-  // Apply date filter to work items
   const filteredWorkItems = safeWorkItems.filter(w => isItemInDateRange(w, dateFilter, customDateRange));
-
   const filteredProfiles = safeProfiles.filter(p => p.staff_group === staffGroup && p.role !== 'Admin');
 
-  // Helper functions
   const getAvatarInitials = (name) => {
     if (!name) return 'U';
     const s = name.split(' ');
     return s.length > 1 ? (s[0][0] + s[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
   };
 
-  const getAssigneeName = (id) => {
-    const p = safeProfiles.find(p => p.id === id);
-    return p?.name || 'Unassigned';
-  };
+  const getAssigneeName = (id) => safeProfiles.find(p => p.id === id)?.name || 'Unassigned';
 
-  // Only consider non-recurring, lowest-level actionable units for stats
+  // Actionable units
   const nonRecurring = filteredWorkItems.filter(w => !w.is_recurring);
   const actionableItems = getActionableUnits(nonRecurring);
 
-  // ── Stats (actionable only) ──
+  // ── Task stats ──
   const totalTasks = actionableItems.length;
   const assignedTasks = actionableItems.filter(w => w.status === 'Assigned').length;
   const ongoingTasks = actionableItems.filter(w => w.status === 'Ongoing').length;
   const doneTasks = actionableItems.filter(w => w.status === 'Completed').length;
 
-  // ── Projects & Events stats ──
-  const activeProjects = safeContainers.filter(c => c.type === 'Project').length;
-  const plannedProj = safeContainers.filter(c => c.type === 'Project' && (c.progress || 0) === 0).length;
-  const closedProj = safeContainers.filter(c => c.type === 'Project' && (c.progress || 0) === 100).length;
-  const activeContProj = activeProjects - plannedProj - closedProj;
+  // ── Active-only Projects & Events (exclude templates & inactive) ──
+  const activeProjects = safeContainers.filter(c => c.type === 'Project' && c.is_active !== false && !c.is_template);
+  const activeEvents = safeContainers.filter(c => c.type === 'Event' && c.is_active !== false && !c.is_template);
 
-  const totalEvents = safeContainers.filter(c => c.type === 'Event').length;
-  const ongoingEvents = safeContainers.filter(c => c.type === 'Event' && (c.progress || 0) > 0 && (c.progress || 0) < 100).length;
-  const endedEvents = safeContainers.filter(c => c.type === 'Event' && (c.progress || 0) === 100).length;
-  const inviteEvents = totalEvents - ongoingEvents - endedEvents;
+  const activeProjectIds = new Set(activeProjects.map(c => c.id));
+  const activeEventIds = new Set(activeEvents.map(c => c.id));
 
-  // ── Critical items (actionable only) ──
+  // Milestones inside active projects (for project sub-counts)
+  const projMilestones = safeWorkItems.filter(w => w.type === 'Milestone' && activeProjectIds.has(w.container_id));
+  const projMilestonesAssigned = projMilestones.filter(w => w.status === 'Assigned').length;
+  const projMilestonesOngoing = projMilestones.filter(w => w.status === 'Ongoing').length;
+  const projMilestonesDone = projMilestones.filter(w => w.status === 'Completed').length;
+
+  // Checklists inside active events (for event sub-counts)
+  const evtChecklists = safeWorkItems.filter(w => w.type === 'Checklist' && activeEventIds.has(w.container_id));
+  const evtChecklistsAssigned = evtChecklists.filter(w => w.status === 'Assigned').length;
+  const evtChecklistsOngoing = evtChecklists.filter(w => w.status === 'Ongoing').length;
+  const evtChecklistsDone = evtChecklists.filter(w => w.status === 'Completed').length;
+
+  // ── Overdue & Not Started — grouped by assignee ──
   const overdueItems = actionableItems.filter(w => isOverdue(w) && w.status !== 'Completed');
-  const notStartedItems = actionableItems.filter(w => w.status === 'Assigned');
+  const notStartedItems = actionableItems.filter(w => w.status === 'Assigned' && !isOverdue(w));
+
+  const groupByAssignee = (items) => {
+    const map = {};
+    items.forEach(w => {
+      const name = getAssigneeName(w.assignee_id);
+      map[name] = (map[name] || 0) + 1;
+    });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  };
+  const overdueByAssignee = groupByAssignee(overdueItems);
+  const notStartedByAssignee = groupByAssignee(notStartedItems);
 
   // ── Today's Focus ──
   const todaysFocus = [...actionableItems]
@@ -66,6 +79,19 @@ export default function AdminDashboard() {
       return (pOrder[a.priority] ?? 2) - (pOrder[b.priority] ?? 2);
     })
     .slice(0, 5);
+
+  // ── Recent Activity (derive from work item status changes) ──
+  const recentActivity = [...safeWorkItems]
+    .filter(w => (w.status === 'Completed' || w.status === 'Ongoing') && !w.is_recurring)
+    .sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''))
+    .slice(0, 6)
+    .map(w => ({
+      id: w.id,
+      title: w.title,
+      assigneeName: getAssigneeName(w.assignee_id),
+      action: w.status === 'Completed' ? 'completed' : 'started',
+      time: w.updated_at ? new Date(w.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—',
+    }));
 
   const statusBadgeCls = (w) => {
     const s = getDisplayStatus(w);
@@ -87,7 +113,7 @@ export default function AdminDashboard() {
         <FilterBar showToggle={true} showDateFilter={true} />
       </div>
 
-      {/* OVERDUE & NOT STARTED ALERT CARDS */}
+      {/* OVERDUE & NOT STARTED — with assignee breakdown */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-2xl border-l-4 border-error shadow-sm p-5">
           <div className="flex items-center gap-3 mb-3">
@@ -98,8 +124,23 @@ export default function AdminDashboard() {
               <p className="text-xs font-black text-error uppercase tracking-widest">Overdue</p>
               <p className="text-[10px] text-on-surface-variant">Tasks past due date</p>
             </div>
+            <p className="text-4xl font-black text-error ml-auto">{overdueItems.length}</p>
           </div>
-          <p className="text-4xl font-black text-error ml-13">{overdueItems.length}</p>
+          {overdueByAssignee.length > 0 ? (
+            <div className="flex flex-col gap-1.5 mt-2">
+              {overdueByAssignee.map(([name, count]) => (
+                <div key={name} className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center text-[8px] font-black text-red-700 flex-shrink-0">{getAvatarInitials(name)}</div>
+                    <span className="text-xs font-medium text-on-surface truncate max-w-[140px]">{name}</span>
+                  </div>
+                  <span className="text-xs font-black text-error bg-red-50 px-2 py-0.5 rounded-full">{count}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-green-600 font-bold mt-2">All clear!</p>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl border-l-4 border-amber-400 shadow-sm p-5">
@@ -111,8 +152,23 @@ export default function AdminDashboard() {
               <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Not Started</p>
               <p className="text-[10px] text-on-surface-variant">Pending kick-off</p>
             </div>
+            <p className="text-4xl font-black text-amber-600 ml-auto">{notStartedItems.length}</p>
           </div>
-          <p className="text-4xl font-black text-amber-600 ml-13">{notStartedItems.length}</p>
+          {notStartedByAssignee.length > 0 ? (
+            <div className="flex flex-col gap-1.5 mt-2">
+              {notStartedByAssignee.map(([name, count]) => (
+                <div key={name} className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-[8px] font-black text-amber-700 flex-shrink-0">{getAvatarInitials(name)}</div>
+                    <span className="text-xs font-medium text-on-surface truncate max-w-[140px]">{name}</span>
+                  </div>
+                  <span className="text-xs font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{count}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-green-600 font-bold mt-2">All clear!</p>
+          )}
         </div>
       </div>
 
@@ -138,51 +194,53 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Projects */}
+        {/* Projects — active only, milestone sub-counts */}
         <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
               <span className="material-symbols-outlined text-indigo-600" style={{fontVariationSettings:"'FILL' 1"}}>folder_open</span>
             </div>
-            <p className="text-4xl font-black text-on-surface">{activeProjects}</p>
+            <p className="text-4xl font-black text-on-surface">{activeProjects.length}</p>
           </div>
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Active Projects</p>
           <div className="h-px bg-outline-variant/20 mb-3"></div>
           <div className="grid grid-cols-3 text-center gap-2">
-            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Planned</p><p className="font-black text-on-surface">{String(plannedProj).padStart(2,'0')}</p></div>
-            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Active</p><p className="font-black text-on-surface">{String(activeContProj).padStart(2,'0')}</p></div>
-            <div><p className="text-[10px] text-green-600 font-bold uppercase">Closed</p><p className="font-black text-green-600">{String(closedProj).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Assigned</p><p className="font-black text-on-surface">{String(projMilestonesAssigned).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Ongoing</p><p className="font-black text-on-surface">{String(projMilestonesOngoing).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-green-600 font-bold uppercase">Done</p><p className="font-black text-green-600">{String(projMilestonesDone).padStart(2,'0')}</p></div>
           </div>
-          <div className="mt-3 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-            <div className="h-full bg-indigo-500 rounded-full" style={{ width: activeProjects === 0 ? '0%' : `${(activeContProj / activeProjects) * 100}%` }}></div>
+          <p className="text-[9px] text-on-surface-variant mt-2 text-center">milestone breakdown</p>
+          <div className="mt-2 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+            {(() => { const t = projMilestones.length; return <div className="h-full bg-indigo-500 rounded-full" style={{ width: t === 0 ? '0%' : `${(projMilestonesDone / t) * 100}%` }}></div>; })()}
           </div>
         </div>
 
-        {/* Events */}
+        {/* Events — active only, checklist sub-counts */}
         <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
               <span className="material-symbols-outlined text-green-600" style={{fontVariationSettings:"'FILL' 1"}}>event</span>
             </div>
-            <p className="text-4xl font-black text-on-surface">{totalEvents}</p>
+            <p className="text-4xl font-black text-on-surface">{activeEvents.length}</p>
           </div>
-          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Scheduled Events</p>
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">Active Events</p>
           <div className="h-px bg-outline-variant/20 mb-3"></div>
           <div className="grid grid-cols-3 text-center gap-2">
-            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Invites</p><p className="font-black text-on-surface">{String(inviteEvents).padStart(2,'0')}</p></div>
-            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Live</p><p className="font-black text-on-surface">{String(ongoingEvents).padStart(2,'0')}</p></div>
-            <div><p className="text-[10px] text-green-600 font-bold uppercase">Ended</p><p className="font-black text-green-600">{String(endedEvents).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Assigned</p><p className="font-black text-on-surface">{String(evtChecklistsAssigned).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-on-surface-variant font-bold uppercase">Ongoing</p><p className="font-black text-on-surface">{String(evtChecklistsOngoing).padStart(2,'0')}</p></div>
+            <div><p className="text-[10px] text-green-600 font-bold uppercase">Done</p><p className="font-black text-green-600">{String(evtChecklistsDone).padStart(2,'0')}</p></div>
           </div>
-          <div className="mt-3 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-            <div className="h-full bg-green-500 rounded-full" style={{ width: totalEvents === 0 ? '0%' : `${(ongoingEvents / totalEvents) * 100}%` }}></div>
+          <p className="text-[9px] text-on-surface-variant mt-2 text-center">checklist breakdown</p>
+          <div className="mt-2 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+            {(() => { const t = evtChecklists.length; return <div className="h-full bg-green-500 rounded-full" style={{ width: t === 0 ? '0%' : `${(evtChecklistsDone / t) * 100}%` }}></div>; })()}
           </div>
         </div>
       </div>
 
-      {/* ── Bottom Split Layout ── */}
+      {/* ── Bottom Split: Focus + Queue (left) · Recent Activity (right) ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Today's Focus */}
         <div className="md:col-span-2 flex flex-col gap-4">
+          {/* Today's Focus */}
           <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -195,18 +253,18 @@ export default function AdminDashboard() {
               {todaysFocus.length === 0 && <p className="text-sm text-on-surface-variant text-center py-6 italic">No high priority items right now 🎉</p>}
               {todaysFocus.map(t => {
                 const s = getDisplayStatus(t);
-                const isOverdue = s === 'Overdue';
+                const od = s === 'Overdue';
                 return (
-                  <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border-l-4 ${isOverdue ? 'border-error bg-red-50' : 'border-primary/30 bg-surface-container-low'}`}>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-red-100' : 'bg-primary/10'}`}>
-                      <span className="material-symbols-outlined text-[16px] text-primary" style={{fontVariationSettings:"'FILL' 1"}}>{isOverdue ? 'warning' : 'assignment'}</span>
+                  <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border-l-4 ${od ? 'border-error bg-red-50' : 'border-primary/30 bg-surface-container-low'}`}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${od ? 'bg-red-100' : 'bg-primary/10'}`}>
+                      <span className="material-symbols-outlined text-[16px] text-primary" style={{fontVariationSettings:"'FILL' 1"}}>{od ? 'warning' : 'assignment'}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">{t.type || 'Task'} · {s}</p>
                       <p className="text-sm font-semibold text-on-surface truncate">{t.title}</p>
                       {t.expected_date && <p className="text-[10px] text-on-surface-variant">Due {t.expected_date}</p>}
                     </div>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-surface-container text-on-surface-variant'}`}>{isOverdue ? 'URGENT' : 'STABLE'}</span>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${od ? 'bg-red-100 text-red-700' : 'bg-surface-container text-on-surface-variant'}`}>{od ? 'URGENT' : 'STABLE'}</span>
                   </div>
                 );
               })}
@@ -230,36 +288,68 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low">
-                {priorityQueue.map(t => {
-                  const s = getDisplayStatus(t);
-                  return (
-                    <tr key={t.id} className="text-sm">
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.priority === 'Critical' ? 'bg-error' : t.priority === 'High' ? 'bg-orange-500' : 'bg-primary'}`}></span>
-                          <span className="font-medium text-on-surface truncate max-w-[150px]">{t.title}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary">{getAvatarInitials(getAssigneeName(t.assignee_id))}</div>
-                          <span className="text-on-surface-variant">{getAssigneeName(t.assignee_id).split(' ')[0]}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5">
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${statusBadgeCls(t)}`}>{s}</span>
-                      </td>
-                      <td className="py-2.5 text-on-surface-variant">{t.expected_date || '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {priorityQueue.length === 0 && <p className="text-center py-6 text-on-surface-variant text-sm italic">All clear!</p>}
+                  {priorityQueue.map(t => {
+                    const s = getDisplayStatus(t);
+                    return (
+                      <tr key={t.id} className="text-sm">
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.priority === 'Critical' ? 'bg-error' : t.priority === 'High' ? 'bg-orange-500' : 'bg-primary'}`}></span>
+                            <span className="font-medium text-on-surface truncate max-w-[150px]">{t.title}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary">{getAvatarInitials(getAssigneeName(t.assignee_id))}</div>
+                            <span className="text-on-surface-variant">{getAssigneeName(t.assignee_id).split(' ')[0]}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${statusBadgeCls(t)}`}>{s}</span>
+                        </td>
+                        <td className="py-2.5 text-on-surface-variant">{t.expected_date || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {priorityQueue.length === 0 && <p className="text-center py-6 text-on-surface-variant text-sm italic">All clear!</p>}
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="md:col-span-1">
+          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5 h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-1 h-5 bg-green-500 rounded-full"></div>
+              <h2 className="font-bold text-on-surface font-headline">Recent Activity</h2>
+            </div>
+            <div className="flex flex-col gap-3 flex-1">
+              {recentActivity.length === 0 && (
+                <p className="text-sm text-on-surface-variant italic text-center py-8">No activity yet.</p>
+              )}
+              {recentActivity.map(act => (
+                <div key={act.id} className="flex items-start gap-2.5">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${act.action === 'completed' ? 'bg-green-100' : 'bg-blue-100'}`}>
+                    <span className={`material-symbols-outlined text-[13px] ${act.action === 'completed' ? 'text-green-600' : 'text-blue-600'}`} style={{fontVariationSettings:"'FILL' 1"}}>
+                      {act.action === 'completed' ? 'check_circle' : 'play_circle'}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-on-surface leading-snug">
+                      <span className="font-bold">{act.assigneeName.split(' ')[0]}</span>
+                      {' '}<span className={`font-medium ${act.action === 'completed' ? 'text-green-600' : 'text-blue-600'}`}>{act.action}</span>{' '}
+                      <span className="truncate">{act.title}</span>
+                    </p>
+                    <p className="text-[10px] text-on-surface-variant mt-0.5">{act.time}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
   );
 }

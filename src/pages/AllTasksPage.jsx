@@ -73,20 +73,112 @@ const EmptyState = ({ icon, label, cols = 7 }) => (
   </tr>
 );
 
+function EditItemModal({ item, profiles, containers, onClose, onSave }) {
+  const safeProfiles = profiles || [];
+  const safeContainers = containers || [];
+  const [title, setTitle] = useState(item.title || '');
+  const [desc, setDesc] = useState(item.description || '');
+  const [assigneeId, setAssigneeId] = useState(item.assignee_id || '');
+  const [priority, setPriority] = useState(item.priority || 'Medium');
+  const [dueDate, setDueDate] = useState(item.expected_date || '');
+  const [status, setStatus] = useState(item.status || 'Assigned');
+  const [estMins, setEstMins] = useState(item.estimated_hours != null ? String(item.estimated_hours) : '');
+  const [loading, setLoading] = useState(false);
+
+  const cls = "bg-slate-50 border border-outline-variant rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary w-full";
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    await onSave(item.id, {
+      title,
+      description: desc || null,
+      assignee_id: assigneeId || null,
+      priority,
+      expected_date: dueDate || null,
+      status,
+      ...(estMins !== '' ? { estimated_hours: Number(estMins) } : {}),
+    });
+    setLoading(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-container">
+          <h2 className="font-bold text-base font-headline text-on-surface flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-[18px]">edit</span> Edit Item
+          </h2>
+          <button onClick={onClose}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
+        </div>
+        <form onSubmit={handleSave} className="p-6 flex flex-col gap-3 max-h-[70vh] overflow-y-auto">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Title *</label>
+            <input required className={cls} value={title} onChange={e => setTitle(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Description</label>
+            <textarea className={cls + " resize-none"} rows={2} value={desc} onChange={e => setDesc(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Assignee</label>
+              <select className={cls} value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
+                <option value="">— Unassigned —</option>
+                {safeProfiles.filter(p => p.role !== 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Status</label>
+              <select className={cls} value={status} onChange={e => setStatus(e.target.value)}>
+                <option value="Assigned">Assigned</option>
+                <option value="Ongoing">Ongoing</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Priority</label>
+              <select className={cls} value={priority} onChange={e => setPriority(e.target.value)}>
+                <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Due Date</label>
+              <input type="date" className={cls} value={dueDate} onChange={e => setDueDate(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>
+            <input type="number" min="0" placeholder="e.g. 90" className={cls} value={estMins} onChange={e => setEstMins(e.target.value)} />
+          </div>
+        </form>
+        <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
+          <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
+          <button onClick={handleSave} disabled={loading} className="flex-1 py-2.5 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
+            <span className="material-symbols-outlined text-[16px]">save</span>{loading ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AllTasksPage() {
   const {
     workItems, profiles, currentUser, containers,
-    startWorkItem, completeWorkItem, updateWorkItem, staffGroup,
+    startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, staffGroup,
   } = useDataContext();
 
   const [activeTab, setActiveTab] = useState('Active');
   const [expandedId, setExpandedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
-  const [showOverdueOnly, setShowOverdueOnly] = useState(false);
-  const [showNotStartedOnly, setShowNotStartedOnly] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createDefaultType, setCreateDefaultType] = useState('Task');
+  const [editingItem, setEditingItem] = useState(null);
 
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
@@ -126,8 +218,6 @@ export default function AllTasksPage() {
     let r = items;
     if (searchQuery) r = r.filter(w => w.title.toLowerCase().includes(searchQuery.toLowerCase()));
     if (filterPriority) r = r.filter(w => getPriorityLabel(w.priority) === filterPriority);
-    if (showOverdueOnly) r = r.filter(w => isOverdue(w) && w.status !== 'Completed');
-    if (showNotStartedOnly) r = r.filter(w => w.status === 'Assigned');
     return r;
   };
 
@@ -193,11 +283,19 @@ export default function AllTasksPage() {
                 </button>
               )}
               <button
-                onClick={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); setEditingItem(item); }}
                 className="flex items-center gap-1.5 bg-white border border-outline-variant/40 text-on-surface-variant text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-surface-container transition-colors"
               >
                 <span className="material-symbols-outlined text-[14px]">edit</span> Edit
               </button>
+              {currentUser.role === 'Admin' && (
+                <button
+                  onClick={e => { e.stopPropagation(); if (window.confirm('Delete this item?')) deleteWorkItem(item.id); }}
+                  className="flex items-center gap-1.5 bg-white border border-red-200 text-red-600 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[14px]">delete</span> Delete
+                </button>
+              )}
             </div>
           </div>
         </td>
@@ -216,7 +314,12 @@ export default function AllTasksPage() {
     return (
       <React.Fragment key={item.id}>
         <tr
-          className={`hover:bg-surface-container-low/40 transition-colors cursor-pointer ${isExpanded ? 'bg-surface-container-low/60' : ''}`}
+          className={`transition-colors cursor-pointer ${
+            isExpanded ? 'bg-surface-container-low/60' :
+            ds === 'Overdue' ? 'bg-red-50/60 hover:bg-red-50' :
+            ds === 'Not Started' ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+            'hover:bg-surface-container-low/40'
+          }`}
           onClick={() => toggleExpand(item.id)}
         >
           <td className="w-8 px-3 py-3">
@@ -336,20 +439,6 @@ export default function AllTasksPage() {
             </select>
             <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[16px]">arrow_drop_down</span>
           </div>
-          {/* Overdue filter */}
-          <button
-            onClick={() => { setShowOverdueOnly(v => !v); setShowNotStartedOnly(false); }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors ${showOverdueOnly ? 'bg-error text-white border-error' : 'bg-white border-outline-variant/40 text-on-surface-variant hover:bg-surface-container'}`}
-          >
-            <span className="material-symbols-outlined text-[14px]">warning</span> Overdue
-          </button>
-          {/* Not Started filter */}
-          <button
-            onClick={() => { setShowNotStartedOnly(v => !v); setShowOverdueOnly(false); }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors ${showNotStartedOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border-outline-variant/40 text-on-surface-variant hover:bg-surface-container'}`}
-          >
-            <span className="material-symbols-outlined text-[14px]">schedule</span> Not Started
-          </button>
         </div>
       </div>
 
@@ -565,6 +654,16 @@ export default function AllTasksPage() {
         onClose={() => setIsCreateOpen(false)}
         defaultType={createDefaultType}
       />
+
+      {editingItem && (
+        <EditItemModal
+          item={editingItem}
+          profiles={profiles}
+          containers={containers}
+          onClose={() => setEditingItem(null)}
+          onSave={async (id, updates) => { await updateWorkItem(id, updates); setEditingItem(null); }}
+        />
+      )}
     </div>
   );
 }

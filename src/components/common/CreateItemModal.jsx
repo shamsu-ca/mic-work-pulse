@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
 
 export default function CreateItemModal({ onClose }) {
-  const { addWorkItem, addContainer, profiles, containers, currentUser } = useDataContext();
+  const { addWorkItem, profiles } = useDataContext();
   const [step, setStep] = useState('choose'); // 'choose' | 'task' | 'plan'
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -13,16 +13,16 @@ export default function CreateItemModal({ onClose }) {
   const [taskAssignee, setTaskAssignee] = useState('');
   const [taskPriority, setTaskPriority] = useState('Medium');
   const [taskDate, setTaskDate] = useState('');
-  const [taskContainer, setTaskContainer] = useState('');
+  const [taskEstMins, setTaskEstMins] = useState('');
 
   // Plan form
   const [planTitle, setPlanTitle] = useState('');
   const [planDesc, setPlanDesc] = useState('');
   const [planAssignee, setPlanAssignee] = useState('');
   const [planPriority, setPlanPriority] = useState('Medium');
+  const [planEstMins, setPlanEstMins] = useState('');
 
   const safeProfiles = profiles || [];
-  const safeContainers = containers || [];
   const assigneeList = safeProfiles.filter(p => p.role !== 'Admin');
 
   const handleCreateTask = async (e) => {
@@ -32,11 +32,11 @@ export default function CreateItemModal({ onClose }) {
       title: taskTitle,
       description: taskDesc,
       assignee_id: taskAssignee || null,
-      container_id: taskContainer || null,
       priority: taskPriority,
       expected_date: taskDate || null,
       status: 'Assigned',
       type: 'Task',
+      ...(taskEstMins ? { estimated_hours: Number(taskEstMins) } : {}),
     });
     setLoading(false);
     setSuccess(true);
@@ -53,7 +53,9 @@ export default function CreateItemModal({ onClose }) {
       priority: planPriority,
       status: 'Assigned',
       type: 'Plan',
+      in_planning_pool: true,
       is_recurring: false,
+      ...(planEstMins ? { estimated_hours: Number(planEstMins) } : {}),
     });
     setLoading(false);
     setSuccess(true);
@@ -156,11 +158,8 @@ export default function CreateItemModal({ onClose }) {
                   <input type="date" className={inputCls} value={taskDate} onChange={e => setTaskDate(e.target.value)} />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Project/Event</label>
-                  <select className={inputCls} value={taskContainer} onChange={e => setTaskContainer(e.target.value)}>
-                    <option value="">— None —</option>
-                    {safeContainers.map(c => <option key={c.id} value={c.id}>{c.title ?? c.name}</option>)}
-                  </select>
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>
+                  <input type="number" min="0" placeholder="e.g. 90" className={inputCls} value={taskEstMins} onChange={e => setTaskEstMins(e.target.value)} />
                 </div>
               </div>
             </div>
@@ -207,6 +206,10 @@ export default function CreateItemModal({ onClose }) {
                     <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
                   </select>
                 </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>
+                <input type="number" min="0" placeholder="e.g. 120" className={inputCls} value={planEstMins} onChange={e => setPlanEstMins(e.target.value)} />
               </div>
             </div>
             <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">

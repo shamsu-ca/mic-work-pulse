@@ -334,183 +334,225 @@ export default function StaffOverviewPage() {
       </div>
 
       {pageTab === 'Overview' && (
-        <div className="flex flex-col gap-6">
-          {/* Metric Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Assigned */}
-            <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center">
-                  <span className="material-symbols-outlined text-on-surface-variant" style={{fontVariationSettings:"'FILL' 1"}}>assignment_ind</span>
-                </div>
-                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Assigned</p>
-              </div>
-              <p className="text-3xl font-black text-on-surface">
-                {filteredStaff.reduce((acc, s) => acc + getMetrics(s.id).assigned, 0)}
-              </p>
-              <p className="text-[10px] text-on-surface-variant mt-1">tasks assigned to team</p>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredStaff.map(staff => {
+            const m = getMetrics(staff.id);
+            const isExpanded = expandedId === staff.id;
+            const isOverloaded = m.overdue > 0;
 
-            {/* Ongoing */}
-            <div className="bg-white rounded-2xl border border-primary/30 shadow-sm p-5">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-blue-600" style={{fontVariationSettings:"'FILL' 1"}}>pending</span>
-                </div>
-                <p className="text-xs font-bold text-blue-600 uppercase tracking-widest">Ongoing</p>
-              </div>
-              <p className="text-3xl font-black text-blue-600">
-                {filteredStaff.reduce((acc, s) => acc + getMetrics(s.id).ongoing, 0)}
-              </p>
-              <p className="text-[10px] text-on-surface-variant mt-1">tasks in progress</p>
-            </div>
+            // Group tasks by display status for expanded view
+            const activeTasks = m.tasks.filter(t => getDisplayStatus(t) !== 'Completed');
+            const overdueTasks = activeTasks.filter(t => getDisplayStatus(t) === 'Overdue');
+            const ongoingTasks = activeTasks.filter(t => getDisplayStatus(t) === 'Ongoing');
+            const notStartedTasks = activeTasks.filter(t => getDisplayStatus(t) === 'Not Started');
+            const assignedTasks = activeTasks.filter(t => getDisplayStatus(t) === 'Assigned');
 
-            {/* Completed */}
-            <div className="bg-white rounded-2xl border border-green-500/30 shadow-sm p-5">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-green-600" style={{fontVariationSettings:"'FILL' 1"}}>check_circle</span>
-                </div>
-                <p className="text-xs font-bold text-green-600 uppercase tracking-widest">Completed</p>
-              </div>
-              <p className="text-3xl font-black text-green-600">
-                {filteredStaff.reduce((acc, s) => acc + getMetrics(s.id).completed, 0)}
-              </p>
-              <p className="text-[10px] text-on-surface-variant mt-1">tasks done in period</p>
-            </div>
-          </div>
+            // Recent activity: last 3 completed/started tasks
+            const recentAct = [...m.tasks]
+              .filter(t => t.status === 'Completed' || t.status === 'Ongoing')
+              .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+              .slice(0, 3);
 
-          {/* Staff Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredStaff.map(staff => {
-              const m = getMetrics(staff.id);
-              const isExpanded = expandedId === staff.id;
-              const isOverloaded = m.overdue > 0;
+            const typeChip = (type) => {
+              const map = {
+                Task: 'bg-blue-100 text-blue-700',
+                Milestone: 'bg-purple-100 text-purple-700',
+                Checklist: 'bg-green-100 text-green-700',
+                Event: 'bg-emerald-100 text-emerald-700',
+                Project: 'bg-indigo-100 text-indigo-700',
+              };
+              return map[type] || 'bg-surface-container text-on-surface-variant';
+            };
 
+            const statusChip = (s) => {
+              if (s === 'Overdue') return 'bg-red-100 text-red-700';
+              if (s === 'Ongoing') return 'bg-blue-100 text-blue-700';
+              if (s === 'Completed') return 'bg-green-100 text-green-700';
+              if (s === 'Not Started') return 'bg-amber-100 text-amber-700';
+              return 'bg-surface-container text-on-surface-variant';
+            };
+
+            const taskRow = (t) => {
+              const s = getDisplayStatus(t);
               return (
-                <div
-                  key={staff.id}
-                  className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-all duration-300 ${isExpanded ? 'border-primary/40 shadow-md md:col-span-2' : 'border-outline-variant/30 hover:shadow-md cursor-pointer'}`}
-                  onClick={() => setExpandedId(isExpanded ? null : staff.id)}
-                >
-                  <div className="px-5 pt-5 pb-3 flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      {staff.avatar_url
-                        ? <img src={staff.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-outline-variant/20 flex-shrink-0" />
-                        : <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-black text-primary text-sm border-2 border-primary/20 flex-shrink-0">{getAvatarInitials(staff.name)}</div>
-                      }
-                      <div>
-                        <p className="font-bold text-on-surface leading-tight">{staff.name}</p>
-                        <p className="text-xs text-on-surface-variant font-medium">{staff.department || staff.staff_group}</p>
-                        {staff.manager && <p className="text-[10px] text-on-surface-variant">↑ {staff.manager}</p>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-full ${isOverloaded ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                        {isOverloaded ? '⚠ OVERLOADED' : '● ACTIVE'}
-                      </span>
-                      <span className="material-symbols-outlined text-on-surface-variant text-[18px] transition-transform duration-200 flex-shrink-0" style={{transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}}>expand_more</span>
+                <div key={t.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-outline-variant/20">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s === 'Overdue' ? 'bg-error' : s === 'Ongoing' ? 'bg-blue-500' : s === 'Completed' ? 'bg-green-500' : 'bg-amber-400'}`}></span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-on-surface truncate">{t.title}</p>
+                    <p className="text-[10px] text-on-surface-variant">{t.expected_date ? `Due ${t.expected_date}` : 'No date'}</p>
+                  </div>
+                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${typeChip(t.type)}`}>{t.type || 'Task'}</span>
+                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                    <span className="text-[8px] font-bold uppercase text-on-surface-variant tracking-wider">STATUS</span>
+                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${statusChip(s)}`}>{s}</span>
+                  </div>
+                </div>
+              );
+            };
+
+            return (
+              <div
+                key={staff.id}
+                className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-all duration-300 ${isExpanded ? 'border-primary/40 shadow-md md:col-span-2' : 'border-outline-variant/30 hover:shadow-md cursor-pointer'}`}
+                onClick={() => setExpandedId(isExpanded ? null : staff.id)}
+              >
+                {/* ── Card Header ── */}
+                <div className="px-5 pt-5 pb-4 flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    {staff.avatar_url
+                      ? <img src={staff.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-outline-variant/20 flex-shrink-0" />
+                      : <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center font-black text-primary text-sm border-2 border-primary/20 flex-shrink-0">{getAvatarInitials(staff.name)}</div>
+                    }
+                    <div>
+                      <p className="font-bold text-on-surface leading-tight">{staff.name}</p>
+                      <p className="text-xs text-on-surface-variant font-medium uppercase tracking-wide">{staff.role?.replace('_', ' ') || 'Assignee'}</p>
+                      {staff.department && <p className="text-[10px] text-primary font-bold mt-0.5">{staff.department}</p>}
                     </div>
                   </div>
+                  <span className={`text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full border ${isOverloaded ? 'bg-red-50 border-red-200 text-red-600' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                    ● {isOverloaded ? 'AT RISK' : 'ACTIVE'}
+                  </span>
+                </div>
 
-                  <div className="px-5 pb-3 flex flex-col gap-2">
-                    <div className="flex justify-between text-[10px] font-bold text-on-surface-variant mb-1">
-                      <span>WORK EFFICIENCY</span>
-                      <span className="text-primary font-black">{m.efficiency}% AVERAGE</span>
-                    </div>
-                    <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
-                      <div className="h-full bg-primary rounded-full transition-all" style={{width: `${m.efficiency}%`}}></div>
-                    </div>
+                {/* ── Overdue + Not Started ── */}
+                <div className="px-5 pb-3 grid grid-cols-2 gap-3">
+                  <div className={`rounded-xl p-3 ${m.overdue > 0 ? 'bg-red-50 border border-red-100' : 'bg-surface-container-low'}`}>
+                    <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${m.overdue > 0 ? 'text-error' : 'text-on-surface-variant'}`}>Overdue</p>
+                    <p className={`text-2xl font-black ${m.overdue > 0 ? 'text-error' : 'text-on-surface-variant'}`}>{String(m.overdue).padStart(2,'0')}</p>
                   </div>
+                  <div className={`rounded-xl p-3 ${m.notStarted > 0 ? 'bg-amber-50 border border-amber-100' : 'bg-surface-container-low'}`}>
+                    <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${m.notStarted > 0 ? 'text-amber-700' : 'text-on-surface-variant'}`}>Not Started</p>
+                    <p className={`text-2xl font-black ${m.notStarted > 0 ? 'text-amber-600' : 'text-on-surface'}`}>{String(m.notStarted).padStart(2,'0')}</p>
+                  </div>
+                </div>
 
-                  {isExpanded && (
-                    <div className="border-t border-surface-container-high mx-5 pt-4 pb-5" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center gap-4 mb-3">
-                        <span className="text-xs font-bold text-primary border-b-2 border-primary pb-1">Active Tasks ({m.tasks.filter(t => getDisplayStatus(t) !== 'Completed').length})</span>
-                        <span className="text-xs text-on-surface-variant">Queue ({m.ongoing})</span>
-                        <span className="text-xs text-on-surface-variant">Archived ({m.completed})</span>
-                      </div>
-                      <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
-                        {m.tasks.filter(t => getDisplayStatus(t) !== 'Completed').map(t => {
-                          const s = getDisplayStatus(t);
-                          const isOverdue = s === 'Overdue';
-                          return (
-                            <div key={t.id} className="flex items-center justify-between p-3 bg-surface-container-low rounded-xl">
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isOverdue ? 'bg-error' : 'bg-primary'}`}></span>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-semibold text-on-surface truncate">{t.title}</p>
-                                  <p className="text-[10px] text-on-surface-variant">{t.type || 'Task'}{t.expected_date ? ` · Due ${t.expected_date}` : ''}</p>
-                                </div>
-                              </div>
-                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded flex-shrink-0 ml-2 ${isOverdue ? 'bg-red-100 text-red-700' : s === 'Ongoing' ? 'bg-blue-100 text-blue-700' : 'bg-surface-container text-on-surface-variant'}`}>{s}</span>
-                            </div>
-                          );
-                        })}
-                        {m.tasks.filter(t => getDisplayStatus(t) !== 'Completed').length === 0 && (
+                {/* ── Assigned / Ongoing / Completed ── */}
+                <div className="px-5 pb-3 grid grid-cols-3 gap-2 text-center">
+                  {[
+                    { label: 'Assigned', val: m.assigned, cls: 'text-on-surface' },
+                    { label: 'Ongoing',  val: m.ongoing,  cls: 'text-blue-600' },
+                    { label: 'Completed',val: m.completed, cls: 'text-green-600' },
+                  ].map(({ label, val, cls }) => (
+                    <div key={label} className="bg-surface-container-low rounded-xl py-2.5">
+                      <p className="text-[8px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">{label}</p>
+                      <p className={`text-lg font-black ${cls}`}>{String(val).padStart(2,'0')}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Work Efficiency ── */}
+                <div className="px-5 pb-2">
+                  <div className="flex justify-between text-[9px] font-bold text-on-surface-variant mb-1">
+                    <span>WORK EFFICIENCY</span>
+                    <span className="text-primary font-black">{m.efficiency}% AVERAGE</span>
+                  </div>
+                  <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${m.efficiency < 40 ? 'bg-error' : m.efficiency < 70 ? 'bg-amber-400' : 'bg-primary'}`} style={{width:`${m.efficiency}%`}}></div>
+                  </div>
+                </div>
+
+                {/* ── Workload Capacity ── */}
+                <div className="px-5 pb-4">
+                  <div className="flex justify-between text-[9px] font-bold text-on-surface-variant mb-1">
+                    <span>WORKLOAD CAPACITY</span>
+                    <span className={`font-black ${m.workload > 85 ? 'text-error' : 'text-primary'}`}>{m.workload}% CAP</span>
+                  </div>
+                  <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${m.workload > 85 ? 'bg-error' : m.workload > 60 ? 'bg-amber-400' : 'bg-primary'}`} style={{width:`${m.workload}%`}}></div>
+                  </div>
+                </div>
+
+                {/* ── Expanded Detail ── */}
+                {isExpanded && (
+                  <div className="border-t border-surface-container-high mx-0 px-5 pt-5 pb-5 bg-surface-container-low/30 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+
+                    {/* Work Items Summary */}
+                    <div>
+                      <p className="text-xs font-black text-on-surface uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[14px]">list_alt</span>
+                        Work Items Summary
+                      </p>
+                      <div className="flex flex-col gap-3">
+                        {overdueTasks.length > 0 && (
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-error mb-1.5 flex items-center gap-1">
+                              <span className="w-2 h-2 bg-error rounded-full inline-block"></span>
+                              Overdue ({overdueTasks.length})
+                            </p>
+                            <div className="flex flex-col gap-1.5">{overdueTasks.slice(0,3).map(taskRow)}</div>
+                          </div>
+                        )}
+                        {ongoingTasks.length > 0 && (
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-1.5 flex items-center gap-1">
+                              <span className="w-2 h-2 bg-blue-500 rounded-full inline-block"></span>
+                              Ongoing ({ongoingTasks.length})
+                            </p>
+                            <div className="flex flex-col gap-1.5">{ongoingTasks.slice(0,3).map(taskRow)}</div>
+                          </div>
+                        )}
+                        {notStartedTasks.length > 0 && (
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-700 mb-1.5 flex items-center gap-1">
+                              <span className="w-2 h-2 bg-amber-400 rounded-full inline-block"></span>
+                              Not Started ({notStartedTasks.length})
+                            </p>
+                            <div className="flex flex-col gap-1.5">{notStartedTasks.slice(0,3).map(taskRow)}</div>
+                          </div>
+                        )}
+                        {assignedTasks.length > 0 && (
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant mb-1.5 flex items-center gap-1">
+                              <span className="w-2 h-2 bg-outline rounded-full inline-block"></span>
+                              Assigned ({assignedTasks.length})
+                            </p>
+                            <div className="flex flex-col gap-1.5">{assignedTasks.slice(0,3).map(taskRow)}</div>
+                          </div>
+                        )}
+                        {activeTasks.length === 0 && (
                           <p className="text-xs text-on-surface-variant italic text-center py-4">No active tasks in this period.</p>
                         )}
                       </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
 
-             {filteredStaff.length === 0 && (
-               <div className="col-span-2 text-center py-20 text-on-surface-variant bg-white rounded-2xl border border-outline-variant/30">
-                 <span className="material-symbols-outlined text-5xl mb-3 block">group</span>
-                 <p className="font-bold">No staff in <strong>{staffGroup}</strong>{deptFilter !== 'All' ? ` (${deptFilter})` : ''}.</p>
-               </div>
-             )}
-           </div>
+                    {/* Recent Activity */}
+                    {recentAct.length > 0 && (
+                      <div>
+                        <p className="text-xs font-black text-on-surface uppercase tracking-widest mb-3 flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[14px]">history</span>
+                          Recent Activity
+                        </p>
+                        <div className="flex flex-col gap-2">
+                          {recentAct.map(t => (
+                            <div key={t.id} className="flex items-center gap-2">
+                              <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${t.status === 'Completed' ? 'bg-green-100' : 'bg-blue-100'}`}>
+                                <span className={`material-symbols-outlined text-[11px] ${t.status === 'Completed' ? 'text-green-600' : 'text-blue-600'}`} style={{fontVariationSettings:"'FILL' 1"}}>{t.status === 'Completed' ? 'check_circle' : 'play_circle'}</span>
+                              </span>
+                              <p className="text-xs text-on-surface-variant flex-1 truncate">
+                                <span className={`font-bold ${t.status === 'Completed' ? 'text-green-600' : 'text-blue-600'}`}>{t.status === 'Completed' ? 'Completed' : 'Started'}</span>{' '}{t.title}
+                              </p>
+                              <span className="text-[9px] text-on-surface-variant flex-shrink-0">
+                                {t.updated_at ? new Date(t.updated_at).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
-           {/* Staff Workload Section (moved from Admin Dashboard) */}
-           <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5 flex flex-col">
-             <div className="flex items-center justify-between mb-4">
-               <h2 className="font-bold text-on-surface font-headline">Staff Workload</h2>
-               <span className="text-[10px] text-primary font-bold">VIEW ALL</span>
-             </div>
-             <div className="flex flex-col gap-3 flex-1">
-               {filteredStaff.slice(0, 6).map(p => {
-                 const m = getMetrics(p.id);
-                 return (
-                   <div key={p.id} className="flex items-center gap-3">
-                     {p.avatar_url
-                       ? <img src={p.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                       : <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-black text-primary flex-shrink-0">{getAvatarInitials(p.name)}</div>
-                     }
-                     <div className="flex-1 min-w-0">
-                       <div className="flex items-center justify-between">
-                         <p className="text-xs font-bold text-on-surface truncate">{p.name}</p>
-                         {m.overdue > 0 && <span className="text-[9px] font-bold text-error">{m.overdue} late</span>}
-                       </div>
-                       <div className="h-1.5 bg-surface-container-high rounded-full mt-1 overflow-hidden">
-                         <div className={`h-full rounded-full ${m.overdue > 0 ? 'bg-error' : 'bg-primary'}`} style={{ width: `${m.efficiency}%` }}></div>
-                       </div>
-                     </div>
-                     <span className="text-xs font-bold text-on-surface-variant w-8 text-right flex-shrink-0">{m.efficiency}%</span>
-                   </div>
-                 );
-               })}
-               {filteredStaff.length === 0 && <p className="text-sm text-on-surface-variant italic text-center mt-4">No staff in {staffGroup}.</p>}
-             </div>
-
-             {/* Overall Efficiency */}
-             <div className="mt-4 bg-primary rounded-xl p-4">
-               <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest">OVERALL EFFICIENCY</p>
-               <p className="text-2xl font-black text-white mt-1">
-                 {(() => {
-                   const allActionable = getActionableUnits(safeWorkItems.filter(w => filteredStaff.some(fs => fs.id === w.assignee_id)));
-                   const completed = allActionable.filter(w => w.status === 'Completed').length;
-                   return allActionable.length === 0 ? '0%' : `${Math.round((completed / allActionable.length) * 100)}%`;
-                 })()}
-               </p>
-               <p className="text-[10px] text-white/70 mt-1">completion rate across all tasks</p>
-             </div>
-           </div>
-         </div>
-       )}
+          {filteredStaff.length === 0 && (
+            <div className="col-span-2 text-center py-20 text-on-surface-variant bg-white rounded-2xl border border-outline-variant/30">
+              <span className="material-symbols-outlined text-5xl mb-3 block">group</span>
+              <p className="font-bold">No staff in <strong>{staffGroup}</strong>{deptFilter !== 'All' ? ` (${deptFilter})` : ''}.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {pageTab === 'Manage' && (
         <div className="flex flex-col gap-4">
