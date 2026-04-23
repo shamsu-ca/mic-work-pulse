@@ -1,20 +1,43 @@
 {
   "short_name": "WorkPulse",
-  "name": "WorkPulse ERP",
+  "name": "MIC WorkPulse ERP",
+  "description": "Smart work management for your team",
   "icons": [
     {
       "src": "/app-icon-192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any maskable"
     },
     {
       "src": "/app-icon-1024.png",
       "type": "image/png",
-      "sizes": "1024x1024"
+      "sizes": "1024x1024",
+      "purpose": "any"
     }
   ],
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "theme_color": "#faf8ff",
-  "background_color": "#faf8ff"
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait-primary",
+  "theme_color": "#0051d5",
+  "background_color": "#faf8ff",
+  "categories": ["business", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Works",
+      "short_name": "Works",
+      "description": "View daily work items",
+      "url": "/tasks",
+      "icons": [{ "src": "/app-icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Planning",
+      "short_name": "Plan",
+      "description": "View planning board",
+      "url": "/planning",
+      "icons": [{ "src": "/app-icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }

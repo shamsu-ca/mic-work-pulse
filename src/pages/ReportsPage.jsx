@@ -6,7 +6,7 @@ import FilterBar from '../components/common/FilterBar';
 
 export default function ReportsPage() {
   const {
-    workItems, profiles, currentUser, dateFilter, customDateRange, staffGroup, setStaffGroup,
+    workItems, profiles, currentUser, dateFilter, customDateRange,
   } = useDataContext();
 
   const [filterAssignee, setFilterAssignee] = useState('');
@@ -38,7 +38,7 @@ export default function ReportsPage() {
           <div>
             <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">My Performance Report</h1>
           </div>
-          <button className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm hover:bg-surface transition-colors flex items-center gap-2">
+          <button onClick={() => window.print()} className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm hover:bg-surface transition-colors flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px]">download</span> Download PDF
           </button>
         </div>
@@ -137,7 +137,7 @@ export default function ReportsPage() {
   const effLabel = overallEff >= 90 ? 'High Precision' : overallEff >= 70 ? 'Good' : overallEff >= 50 ? 'Moderate' : 'Needs Attention';
   const effLabelColor = overallEff >= 90 ? 'text-blue-600' : overallEff >= 70 ? 'text-green-600' : overallEff >= 50 ? 'text-amber-600' : 'text-red-600';
 
-  const staffArray = safeProfiles.filter(p => p.role !== 'Admin' && p.staff_group === staffGroup);
+  const staffArray = safeProfiles.filter(p => p.role !== 'Admin');
 
   const staffStats = staffArray.map(p => {
     const tasks = actionable.filter(w => w.assignee_id === p.id);
@@ -172,25 +172,69 @@ export default function ReportsPage() {
 
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
+  const handlePdfExport = () => {
+    const printWin = window.open('', '_blank', 'width=900,height=700');
+    if (!printWin) return;
+    const rows = staffStats.map(s => `
+      <tr>
+        <td>${s.name}</td><td>${s.role}</td><td>${s.department ?? '—'}</td>
+        <td style="text-align:center">${s.assigned}</td>
+        <td style="text-align:center">${s.ongoing}</td>
+        <td style="text-align:center">${s.completed}</td>
+        <td style="color:${s.overdue > 0 ? '#dc2626' : '#888'};text-align:center;font-weight:bold">${s.overdue}</td>
+        <td style="color:${s.notStart > 0 ? '#d97706' : '#888'};text-align:center;font-weight:bold">${s.notStart}</td>
+        <td style="text-align:center;font-weight:bold;color:${s.score >= 80 ? '#1d4ed8' : s.score >= 65 ? '#d97706' : '#dc2626'}">${s.score}%</td>
+        <td style="text-align:center">${s.loadPct}%</td>
+      </tr>`).join('');
+    printWin.document.write(`
+      <!DOCTYPE html><html><head><title>WorkPulse Staff Report — ${today}</title>
+      <style>
+        body{font-family:system-ui,sans-serif;padding:32px;color:#111}
+        h1{font-size:22px;font-weight:900;margin-bottom:4px}
+        .meta{color:#666;font-size:12px;margin-bottom:24px}
+        .stats{display:flex;gap:24px;margin-bottom:24px}
+        .stat{background:#f4f4f5;border-radius:12px;padding:16px 24px}
+        .stat .n{font-size:28px;font-weight:900}
+        .stat .l{font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.05em}
+        table{width:100%;border-collapse:collapse;font-size:13px}
+        th{background:#f4f4f5;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#555}
+        td{padding:8px 10px;border-bottom:1px solid #e5e7eb}
+        tr:hover td{background:#fafafa}
+        .footer{margin-top:24px;font-size:11px;color:#999;text-align:right}
+        @media print{body{padding:16px}.footer{position:fixed;bottom:16px;right:16px}}
+      </style></head><body>
+      <h1>Staff Performance Report</h1>
+      <div class="meta">Generated: ${today} &nbsp;·&nbsp; Period: ${dateFilter?.replace(/_/g, ' ')}</div>
+      <div class="stats">
+        <div class="stat"><div class="n">${allCompleted}</div><div class="l">Completed</div></div>
+        <div class="stat"><div class="n" style="color:#dc2626">${allOverdue}</div><div class="l">Overdue</div></div>
+        <div class="stat"><div class="n" style="color:#1d4ed8">${overallEff}%</div><div class="l">Efficiency</div></div>
+        <div class="stat"><div class="n">${staffStats.length}</div><div class="l">Staff Members</div></div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Name</th><th>Role</th><th>Department</th>
+          <th style="text-align:center">Assigned</th><th style="text-align:center">Ongoing</th>
+          <th style="text-align:center">Done</th><th style="text-align:center">Overdue</th>
+          <th style="text-align:center">Not Started</th><th style="text-align:center">Efficiency</th>
+          <th style="text-align:center">Load</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="footer">MIC WorkPulse &nbsp;·&nbsp; Confidential</div>
+      <script>window.onload=()=>{window.print();}</script>
+      </body></html>`);
+    printWin.document.close();
+  };
+
   return (
     <div className="flex flex-col gap-5 max-w-[1400px] mx-auto pb-12">
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex bg-surface-container p-1 rounded-xl gap-0.5">
-          {['Office Staff', 'Institution'].map(g => (
-            <button key={g} onClick={() => setStaffGroup(g)}
-              className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${staffGroup === g ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>
-              {g.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        <div />
         <div className="flex items-center gap-3 ml-auto">
-          <div className="flex items-center gap-2 bg-white border border-outline-variant/40 rounded-lg px-3 py-2 text-sm font-medium text-on-surface-variant">
-            <span className="material-symbols-outlined text-[16px]">calendar_today</span>
-            Today: {today}
-          </div>
-          <button className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity shadow-sm">
+          <button onClick={handlePdfExport} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity shadow-sm">
             <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span> PDF REPORT
           </button>
         </div>

@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 
-// Auto-generate login email from name
-const generateEmail = (name) => {
-  if (!name) return '';
-  return name.trim().toLowerCase()
-    .replace(/\s+/g, '.')
-    .replace(/[^a-z0-9.]/g, '') + '@mic.edu';
-};
 
 // Generate a secure temp password
 const generatePassword = () => {
@@ -19,9 +12,8 @@ const generatePassword = () => {
 function EditUserModal({ profile, profiles, onClose, onSave }) {
   const [editData, setEditData] = useState({
     name: profile.name || '',
-    email: profile.email || '',
+    username: profile.username || '',
     role: profile.role || 'Assignee',
-    staff_group: profile.staff_group || 'Office Staff',
     department: profile.department || '',
     manager: profile.manager || '',
   });
@@ -67,9 +59,8 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
               <input className={inputCls} value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Login Email</label>
-              <input type="email" className={inputCls} value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})} placeholder="user@email.com" />
-              <p className="text-[10px] text-on-surface-variant">Displayed for your records only.</p>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Username</label>
+              <input type="text" className={inputCls} value={editData.username} onChange={e => setEditData({...editData, username: e.target.value})} placeholder="username" />
             </div>
           </div>
 
@@ -78,15 +69,7 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Role</label>
               <select className={inputCls} value={editData.role} onChange={e => setEditData({...editData, role: e.target.value})}>
                 <option value="Assignee">Assignee</option>
-                <option value="Manager">Manager</option>
                 <option value="Admin">Admin</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Group</label>
-              <select className={inputCls} value={editData.staff_group} onChange={e => setEditData({...editData, staff_group: e.target.value})}>
-                <option value="Office Staff">Office Staff</option>
-                <option value="Institution">Institution</option>
               </select>
             </div>
           </div>
@@ -173,10 +156,9 @@ function ResetPasswordModal({ profile, onClose, onReset }) {
   );
 }
 
-// --- Credentials Created Modal ---
-function CredentialsModal({ name, email, password, onClose }) {
+function CredentialsModal({ name, username, password, onClose }) {
   const [copied, setCopied] = useState(false);
-  const text = `MIC WorkPulse Login Credentials\n\nName: ${name}\nLogin Email: ${email}\nPassword: ${password}\n\nPlease log in at the app and change your password.`;
+  const text = `MIC WorkPulse Login Credentials\n\nName: ${name}\nUsername: ${username}\nPassword: ${password}\n\nPlease log in at the app and change your password.`;
 
   // Auto-copy when modal opens
   React.useEffect(() => {
@@ -208,8 +190,8 @@ function CredentialsModal({ name, email, password, onClose }) {
             </div>
             <div className="h-px bg-outline-variant/30"></div>
             <div className="flex justify-between items-center">
-              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Login Email</span>
-              <span className="font-mono font-bold text-primary text-sm">{email}</span>
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Username</span>
+              <span className="font-mono font-bold text-primary text-sm">{username}</span>
             </div>
             <div className="h-px bg-outline-variant/30"></div>
             <div className="flex justify-between items-center">
@@ -250,10 +232,9 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
-  // Create form — simple fields only
   const [newName, setNewName] = useState('');
+  const [newUsername, setNewUsername] = useState('');
   const [newRole, setNewRole] = useState('Assignee');
-  const [newGroup, setNewGroup] = useState('Office Staff');
   const [newDept, setNewDept] = useState('');
   const [newManager, setNewManager] = useState('');
 
@@ -272,19 +253,17 @@ export default function UsersPage() {
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
-    if (!newName.trim()) { setErrorMsg("Full name is required."); return; }
+    if (!newName.trim() || !newUsername.trim()) { setErrorMsg("Full name and username are required."); return; }
     setLoading(true);
     setErrorMsg(null);
 
-    const email = generateEmail(newName);
     const password = generatePassword();
 
     const { error } = await createUser({
-      email,
+      username: newUsername,
       password,
       full_name: newName,
       role: newRole,
-      staff_group: newGroup,
       department: newDept,
       manager: newManager,
     });
@@ -293,8 +272,8 @@ export default function UsersPage() {
       setErrorMsg(error.message);
     } else {
       setIsOpen(false);
-      setNewName(''); setNewDept(''); setNewManager('');
-      setCreatedCreds({ name: newName, email, password });
+      setNewName(''); setNewUsername(''); setNewDept(''); setNewManager('');
+      setCreatedCreds({ name: newName, username: newUsername, password });
     }
     setLoading(false);
   };
@@ -303,10 +282,9 @@ export default function UsersPage() {
     // Use edge function (service role) to bypass RLS for admin editing other profiles
     const { error } = await adminUpdateProfile(id, {
       name: editData.name,
-      email: editData.email,
+      username: editData.username,
       role: editData.role,
       department: editData.department,
-      staff_group: editData.staff_group,
       manager: editData.manager,
     });
     if (error) return { error: error.message || JSON.stringify(error) };
@@ -343,7 +321,7 @@ export default function UsersPage() {
             <span className="material-symbols-outlined text-primary">person_add</span>
             <div>
               <h3 className="font-bold text-lg font-headline text-on-surface">Add New Staff Member</h3>
-              <p className="text-xs text-on-surface-variant">Login email and password will be auto-generated.</p>
+              <p className="text-xs text-on-surface-variant">Password will be auto-generated.</p>
             </div>
           </div>
           {errorMsg && (
@@ -356,11 +334,10 @@ export default function UsersPage() {
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface-variant">Full Name <span className="text-error">*</span></label>
                 <input required className={inputCls} placeholder="e.g. Name AB" value={newName} onChange={e => setNewName(e.target.value)} />
-                {newName && (
-                  <p className="text-[10px] text-primary font-semibold">
-                    → Login email will be: <span className="font-mono">{generateEmail(newName)}</span>
-                  </p>
-                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-on-surface-variant">Username <span className="text-error">*</span></label>
+                <input required className={inputCls} placeholder="username" value={newUsername} onChange={e => setNewUsername(e.target.value)} />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface-variant">Department</label>
@@ -372,15 +349,7 @@ export default function UsersPage() {
                 <label className="text-xs font-bold text-on-surface-variant">Role</label>
                 <select className={inputCls} value={newRole} onChange={e => setNewRole(e.target.value)}>
                   <option value="Assignee">Assignee</option>
-                  <option value="Manager">Manager</option>
                   <option value="Admin">Admin</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant">Group</label>
-                <select className={inputCls} value={newGroup} onChange={e => setNewGroup(e.target.value)}>
-                  <option value="Office Staff">Office Staff</option>
-                  <option value="Institution">Institution</option>
                 </select>
               </div>
               <div className="flex flex-col gap-1">
@@ -411,9 +380,8 @@ export default function UsersPage() {
             <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
               <tr>
                 <th className="px-5 py-4">Name</th>
-                <th className="px-5 py-4">Login Email</th>
+                <th className="px-5 py-4">Username</th>
                 <th className="px-5 py-4 text-center">Role</th>
-                <th className="px-5 py-4 text-center">Group</th>
                 <th className="px-5 py-4">Department</th>
                 <th className="px-5 py-4">Manager</th>
                 <th className="px-5 py-4 text-right">Actions</th>
@@ -432,15 +400,14 @@ export default function UsersPage() {
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    {p.email
-                      ? <span className="text-xs text-on-surface-variant font-mono">{p.email}</span>
+                    {p.username
+                      ? <span className="text-xs text-on-surface-variant font-mono">{p.username}</span>
                       : <span className="text-xs text-outline italic">not set — click Edit</span>
                     }
                   </td>
                   <td className="px-5 py-4 text-center">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${p.role === 'Admin' ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container text-on-surface-variant'}`}>{p.role}</span>
                   </td>
-                  <td className="px-5 py-4 text-center text-xs font-medium text-on-surface-variant">{p.staff_group}</td>
                   <td className="px-5 py-4 text-xs font-medium text-on-surface-variant">{p.department || '—'}</td>
                   <td className="px-5 py-4 text-xs font-medium text-on-surface-variant">{p.manager || '—'}</td>
                   <td className="px-5 py-4 text-right">

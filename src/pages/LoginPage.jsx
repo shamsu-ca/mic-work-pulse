@@ -2,23 +2,24 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError("Please enter your email and password.");
+    if (!loginId || !password) {
+      setError("Please enter your Login ID and password.");
       return;
     }
     setLoading(true);
     setError(null);
-
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    const rawId = loginId.trim().toLowerCase();
+    const email = rawId.includes('@') ? rawId : `${rawId}@erp.mic`;
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      setError("Invalid email or password. Please try again.");
+      setError("Invalid Login ID or password. Please try again.");
     }
     setLoading(false);
   };
@@ -59,16 +60,16 @@ export default function LoginPage() {
           {/* Form */}
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Email Address</label>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Login ID</label>
               <div className="relative">
-                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">mail</span>
+                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">badge</span>
                 <input
-                  type="email"
+                  type="text"
                   className="w-full bg-slate-50 border border-outline-variant rounded-xl pl-10 pr-4 py-3 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary focus:bg-white transition-all"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
+                  placeholder="username or email"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  autoComplete="username"
                   required
                 />
               </div>

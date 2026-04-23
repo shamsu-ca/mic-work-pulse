@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits } from '../lib/statusUtils';
-import { isItemInDateRange } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 
 function EditUserModal({ profile, profiles, onClose, onSave }) {
   const [editData, setEditData] = useState({
     name: profile.name || '',
-    email: profile.email || '',
+    username: profile.username || '',
     role: profile.role || 'Assignee',
-    staff_group: profile.staff_group || 'Office Staff',
     department: profile.department || '',
     manager: profile.manager || '',
+    position: profile.position || '',
+    category: profile.category || 'Office Staff',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -44,8 +44,8 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
               <input className={cls} value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
             </div>
             <div className="flex flex-col gap-1.5 col-span-2 md:col-span-1">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Login Email</label>
-              <input type="email" className={cls} value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})} placeholder="user@mic.edu" />
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Login ID</label>
+              <input type="text" className={cls} value={editData.username} onChange={e => setEditData({...editData, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '')})} placeholder="name" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -53,17 +53,18 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Role</label>
               <select className={cls} value={editData.role} onChange={e => setEditData({...editData, role: e.target.value})}>
                 <option value="Assignee">Assignee</option>
-                <option value="Manager">Manager</option>
                 <option value="Admin">Admin</option>
               </select>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Group</label>
-              <select className={cls} value={editData.staff_group} onChange={e => setEditData({...editData, staff_group: e.target.value})}>
-                <option value="Office Staff">Office Staff</option>
-                <option value="Institution">Institution</option>
-              </select>
-            </div>
+            {editData.role !== 'Admin' && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Staff Category</label>
+                <select className={cls} value={editData.category} onChange={e => setEditData({...editData, category: e.target.value})}>
+                  <option value="Office Staff">Office Staff</option>
+                  <option value="Institution">Institution</option>
+                </select>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
@@ -71,14 +72,18 @@ function EditUserModal({ profile, profiles, onClose, onSave }) {
               <input className={cls} value={editData.department} onChange={e => setEditData({...editData, department: e.target.value})} placeholder="Optional" />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Manager</label>
-              <select className={cls} value={editData.manager} onChange={e => setEditData({...editData, manager: e.target.value})}>
-                <option value="">— None —</option>
-                {profiles.filter(p => p.id !== profile.id).map(p => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
-                ))}
-              </select>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Position / Designation</label>
+              <input className={cls} value={editData.position} onChange={e => setEditData({...editData, position: e.target.value})} placeholder="e.g. HR Officer" />
             </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Manager</label>
+            <select className={cls} value={editData.manager} onChange={e => setEditData({...editData, manager: e.target.value})}>
+              <option value="">— None —</option>
+              {profiles.filter(p => p.id !== profile.id).map(p => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-surface-container">
@@ -153,15 +158,15 @@ function ResetPasswordModal({ profile, onClose, onReset }) {
   );
 }
 
-const generateEmail = (name) => name.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '') + '@mic.edu';
+const generateLoginId = (name) => name.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
 const generatePassword = () => {
   const c = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
   return Array.from({length: 10}, () => c[Math.floor(Math.random() * c.length)]).join('');
 };
 
-function CredentialsModal({ name, email, password, onClose }) {
+function CredentialsModal({ name, loginId, password, onClose }) {
   const [copied, setCopied] = useState(false);
-  const text = `MIC WorkPulse Credentials\n\nName: ${name}\nLogin: ${email}\nPassword: ${password}`;
+  const text = `MIC WorkPulse Credentials\n\nName: ${name}\nLogin ID: ${loginId}\nPassword: ${password}`;
   React.useEffect(() => { navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {}); }, []);
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[1002] flex items-center justify-center p-4">
@@ -177,7 +182,7 @@ function CredentialsModal({ name, email, password, onClose }) {
           <div className="bg-slate-50 border border-outline-variant/40 rounded-xl p-4 flex flex-col gap-3">
             <div className="flex justify-between"><span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Name</span><span className="font-semibold text-sm">{name}</span></div>
             <div className="h-px bg-outline-variant/30"></div>
-            <div className="flex justify-between"><span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Login Email</span><span className="font-mono font-bold text-primary text-sm">{email}</span></div>
+            <div className="flex justify-between"><span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Login ID</span><span className="font-mono font-bold text-primary text-sm">{loginId}</span></div>
             <div className="h-px bg-outline-variant/30"></div>
             <div className="flex justify-between"><span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Password</span><span className="font-mono font-bold text-error tracking-widest">{password}</span></div>
           </div>
@@ -197,7 +202,7 @@ function CredentialsModal({ name, email, password, onClose }) {
 
 export default function StaffOverviewPage() {
   const {
-    profiles, workItems, staffGroup, dateFilter, customDateRange,
+    profiles, workItems,
     createUser, adminUpdateProfile, adminResetUserPassword,
   } = useDataContext();
   const safeProfiles = profiles || [];
@@ -209,9 +214,12 @@ export default function StaffOverviewPage() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newLoginId, setNewLoginId] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('Assignee');
-  const [newGroup, setNewGroup] = useState('Office Staff');
   const [newDept, setNewDept] = useState('');
+  const [newPosition, setNewPosition] = useState('');
+  const [newCategory, setNewCategory] = useState('Office Staff');
   const [newManager, setNewManager] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState(null);
@@ -225,14 +233,13 @@ export default function StaffOverviewPage() {
     return s.length > 1 ? (s[0][0] + s[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
   };
 
-  const staffList = safeProfiles.filter(p => p.role !== 'Admin' && p.staff_group === staffGroup);
+  const staffList = safeProfiles.filter(p => p.role !== 'Admin');
   const departments = ['All', ...new Set(staffList.map(p => p.department).filter(Boolean))];
   const filteredStaff = deptFilter === 'All' ? staffList : staffList.filter(s => s.department === deptFilter);
 
   const getMetrics = (staffId) => {
     const allTasks = safeWorkItems.filter(t => t.assignee_id === staffId);
-    const dateFiltered = allTasks.filter(t => isItemInDateRange(t, dateFilter, customDateRange));
-    const tasks = getActionableUnits(dateFiltered); // Only lowest-level units
+    const tasks = getActionableUnits(allTasks); // live view — no date filter
 
     let assigned = 0, ongoing = 0, completed = 0, overdue = 0;
     tasks.forEach(t => {
@@ -262,26 +269,27 @@ export default function StaffOverviewPage() {
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!newName.trim()) { setCreateError('Name is required.'); return; }
+    if (!newLoginId.trim()) { setCreateError('Login ID is required.'); return; }
+    if (!newPassword.trim()) { setCreateError('Password is required.'); return; }
     setCreateLoading(true); setCreateError(null);
-    const email = generateEmail(newName);
-    const password = generatePassword();
-    const { error } = await createUser({ email, password, full_name: newName, role: newRole, staff_group: newGroup, department: newDept, manager: newManager });
+    const { data, error } = await createUser({ username: newLoginId, password: newPassword, full_name: newName, role: newRole, department: newDept, manager: newManager, position: newPosition, category: newCategory });
     setCreateLoading(false);
-    if (error) { setCreateError(error.message); return; }
+    if (error) { setCreateError(typeof error === 'string' ? error : error?.message || 'Failed to create user.'); return; }
+    const savedLoginId = data?.loginId || newLoginId;
     setIsCreateOpen(false);
-    setNewName(''); setNewDept(''); setNewManager('');
-    setCreatedCreds({ name: newName, email, password });
+    setNewName(''); setNewLoginId(''); setNewPassword(''); setNewDept(''); setNewManager(''); setNewPosition(''); setNewCategory('Office Staff');
+    setCreatedCreds({ name: newName, loginId: savedLoginId, password: newPassword });
   };
 
   const handleSaveEdit = async (id, editData) => {
     console.log('Saving profile:', id, editData);
     const { error } = await adminUpdateProfile(id, {
-      name: editData.name, 
-      email: editData.email || null, 
+      name: editData.name,
+      username: editData.username || null,
       role: editData.role,
-      department: editData.department || null, 
-      staff_group: editData.staff_group, 
+      department: editData.department || null,
       manager: editData.manager || null,
+      position: editData.position || null,
     });
     console.log('Save result:', error);
     return { error: error?.message || error || null };
@@ -296,7 +304,7 @@ export default function StaffOverviewPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
            <div>
              <h1 className="text-2xl font-extrabold text-on-surface font-headline tracking-tight">
-               {pageTab === 'Overview' ? 'Staff Distribution & Velocity' : 'Manage Staff'}
+               Staffs
              </h1>
            </div>
 
@@ -330,7 +338,7 @@ export default function StaffOverviewPage() {
           </div>
         </div>
 
-        <FilterBar showToggle={true} showDateFilter={true} />
+        <FilterBar showToggle={true} showDateFilter={false} />
       </div>
 
       {pageTab === 'Overview' && (
@@ -405,8 +413,15 @@ export default function StaffOverviewPage() {
                     }
                     <div>
                       <p className="font-bold text-on-surface leading-tight">{staff.name}</p>
-                      <p className="text-xs text-on-surface-variant font-medium uppercase tracking-wide">{staff.role?.replace('_', ' ') || 'Assignee'}</p>
-                      {staff.department && <p className="text-[10px] text-primary font-bold mt-0.5">{staff.department}</p>}
+                      {staff.position
+                        ? <p className="text-xs text-primary font-semibold leading-tight">{staff.position}</p>
+                        : <p className="text-xs text-on-surface-variant font-medium uppercase tracking-wide">{staff.role?.replace('_', ' ') || 'Assignee'}</p>
+                      }
+                      <div className="flex items-center gap-1.5 mt-1 text-[10px] text-on-surface-variant font-bold border-t border-outline-variant/10 pt-1">
+                        {staff.department && <span className="uppercase">{staff.department}</span>}
+                        {staff.department && staff.category && <span className="opacity-40">•</span>}
+                        {staff.role !== 'Admin' && staff.category && <span className={staff.category === 'Office Staff' ? 'text-blue-600' : 'text-emerald-600'}>{staff.category}</span>}
+                      </div>
                     </div>
                   </div>
                   <span className={`text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full border ${isOverloaded ? 'bg-red-50 border-red-200 text-red-600' : 'bg-green-50 border-green-200 text-green-700'}`}>
@@ -548,7 +563,7 @@ export default function StaffOverviewPage() {
           {filteredStaff.length === 0 && (
             <div className="col-span-2 text-center py-20 text-on-surface-variant bg-white rounded-2xl border border-outline-variant/30">
               <span className="material-symbols-outlined text-5xl mb-3 block">group</span>
-              <p className="font-bold">No staff in <strong>{staffGroup}</strong>{deptFilter !== 'All' ? ` (${deptFilter})` : ''}.</p>
+              <p className="font-bold">No staff{deptFilter !== 'All' ? ` (${deptFilter})` : ''}.</p>
             </div>
           )}
         </div>
@@ -570,29 +585,25 @@ export default function StaffOverviewPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-on-surface-variant">Full Name *</label>
-                    <input required className={inputCls} placeholder="e.g. Rahul AB" value={newName} onChange={e => setNewName(e.target.value)} />
-                    {newName && <p className="text-[10px] text-primary font-semibold">→ <span className="font-mono">{generateEmail(newName)}</span></p>}
+                    <input required className={inputCls} placeholder="name" value={newName} onChange={e => { setNewName(e.target.value); if (!newLoginId) setNewLoginId(generateLoginId(e.target.value)); }} />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-on-surface-variant">Department</label>
-                    <input className={inputCls} placeholder="Optional" value={newDept} onChange={e => setNewDept(e.target.value)} />
+                    <label className="text-xs font-bold text-on-surface-variant">Login ID *</label>
+                    <input required className={inputCls} placeholder="name" value={newLoginId} onChange={e => setNewLoginId(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))} />
+                    <p className="text-[10px] text-on-surface-variant">Used to sign in. Letters, numbers, dots only.</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-on-surface-variant">Role</label>
-                    <select className={inputCls} value={newRole} onChange={e => setNewRole(e.target.value)}>
-                      <option value="Assignee">Assignee</option>
-                      <option value="Manager">Manager</option>
-                      <option value="Admin">Admin</option>
-                    </select>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-on-surface-variant">Password *</label>
+                  <div className="flex gap-2">
+                    <input required className={inputCls} placeholder="Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                    <button type="button" className="px-3 py-2 text-xs font-bold border border-outline-variant rounded-lg hover:bg-surface-container whitespace-nowrap" onClick={() => setNewPassword(generatePassword())}>Generate</button>
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-on-surface-variant">Group</label>
-                    <select className={inputCls} value={newGroup} onChange={e => setNewGroup(e.target.value)}>
-                      <option value="Office Staff">Office Staff</option>
-                      <option value="Institution">Institution</option>
-                    </select>
+                    <label className="text-xs font-bold text-on-surface-variant">Position / Designation</label>
+                    <input className={inputCls} placeholder="e.g. HR Officer" value={newPosition} onChange={e => setNewPosition(e.target.value)} />
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-on-surface-variant">Manager</label>
@@ -602,6 +613,28 @@ export default function StaffOverviewPage() {
                     </select>
                   </div>
                 </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-bold text-on-surface-variant">Role</label>
+                      <select className={inputCls} value={newRole} onChange={e => setNewRole(e.target.value)}>
+                        <option value="Assignee">Assignee</option>
+                        <option value="Admin">Admin</option>
+                      </select>
+                    </div>
+                    {newRole !== 'Admin' && (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-bold text-on-surface-variant">Staff Category</label>
+                        <select className={inputCls} value={newCategory} onChange={e => setNewCategory(e.target.value)}>
+                          <option value="Office Staff">Office Staff</option>
+                          <option value="Institution">Institution</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-bold text-on-surface-variant">Department</label>
+                      <input className={inputCls} placeholder="Optional" value={newDept} onChange={e => setNewDept(e.target.value)} />
+                    </div>
+                  </div>
                 <div className="flex justify-end gap-3 border-t border-surface-container pt-4">
                   <button type="button" className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-lg" onClick={() => setIsCreateOpen(false)}>Cancel</button>
                   <button type="submit" disabled={createLoading} className="px-5 py-2 text-sm font-bold bg-primary text-white rounded-lg flex items-center gap-2">
@@ -618,10 +651,9 @@ export default function StaffOverviewPage() {
               <table className="w-full text-sm text-left">
                 <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
                   <tr>
-                    <th className="px-5 py-4">Name</th>
-                    <th className="px-5 py-4">Login Email</th>
+                    <th className="px-5 py-4">Name & Position</th>
+                    <th className="px-5 py-4">Login ID</th>
                     <th className="px-5 py-4 text-center">Role</th>
-                    <th className="px-5 py-4 text-center">Group</th>
                     <th className="px-5 py-4">Department</th>
                     <th className="px-5 py-4">Manager</th>
                     <th className="px-5 py-4 text-right">Actions</th>
@@ -636,14 +668,16 @@ export default function StaffOverviewPage() {
                             ? <img src={p.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-outline-variant/30 flex-shrink-0" />
                             : <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-black text-primary flex-shrink-0">{getAvatarInitials(p.name)}</div>
                           }
-                          <span className="font-semibold text-on-surface">{p.name}</span>
+                          <div>
+                            <p className="font-semibold text-on-surface leading-tight">{p.name}</p>
+                            {p.position && <p className="text-[10px] text-primary font-bold">{p.position}</p>}
+                          </div>
                         </div>
                       </td>
                       <td className="px-5 py-3 font-mono text-xs text-on-surface-variant">{p.email || <span className="italic text-outline text-xs">not set</span>}</td>
                       <td className="px-5 py-3 text-center">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${p.role === 'Admin' ? 'bg-primary-container text-on-primary-container' : p.role === 'Manager' ? 'bg-indigo-100 text-indigo-700' : 'bg-surface-container text-on-surface-variant'}`}>{p.role}</span>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${p.role === 'Admin' ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container text-on-surface-variant'}`}>{p.role}</span>
                       </td>
-                      <td className="px-5 py-3 text-center text-xs text-on-surface-variant">{p.staff_group || '—'}</td>
                       <td className="px-5 py-3 text-xs text-on-surface-variant">{p.department || '—'}</td>
                       <td className="px-5 py-3 text-xs text-on-surface-variant">{p.manager || '—'}</td>
                       <td className="px-5 py-3 text-right">
@@ -669,7 +703,7 @@ export default function StaffOverviewPage() {
 
       {editingProfile && <EditUserModal profile={editingProfile} profiles={safeProfiles} onClose={() => setEditingProfile(null)} onSave={handleSaveEdit} />}
       {resettingProfile && <ResetPasswordModal profile={resettingProfile} onClose={() => setResettingProfile(null)} onReset={adminResetUserPassword} />}
-      {createdCreds && <CredentialsModal name={createdCreds.name} email={createdCreds.email} password={createdCreds.password} onClose={() => setCreatedCreds(null)} />}
+      {createdCreds && <CredentialsModal name={createdCreds.name} loginId={createdCreds.loginId} password={createdCreds.password} onClose={() => setCreatedCreds(null)} />}
     </div>
   );
 }

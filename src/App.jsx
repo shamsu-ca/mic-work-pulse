@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SupabaseDataProvider, useDataContext } from './context/SupabaseDataContext';
 import { supabase } from './lib/supabaseClient';
@@ -12,7 +12,7 @@ import AllTasksPage from './pages/AllTasksPage';
 import PlanningPage from './pages/PlanningPage';
 import ProjectsEventsPage from './pages/ProjectsEventsPage';
 import ReportsPage from './pages/ReportsPage';
-import MyTeamPage from './pages/MyTeamPage';
+import NotificationsPage from './pages/NotificationsPage';
 
 function AppContent() {
   const { currentUser, loadingInitial } = useDataContext();
@@ -32,18 +32,11 @@ function AppContent() {
           <Route path="/planning" element={<PlanningPage />} />
           <Route path="/projects-events" element={<ProjectsEventsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
-          
-          {/* Admin-only routes */}
+          <Route path="/notifications" element={<NotificationsPage />} />
+
           {role === 'Admin' && (
             <Route path="/staff" element={<StaffOverviewPage />} />
           )}
-
-          {/* Manager routes */}
-          {(role === 'Manager') && (
-            <Route path="/my-team" element={<MyTeamPage />} />
-          )}
-
-          {/* Routes for all non-admin authenticated users */}
           {role !== 'Admin' && (
             <Route path="/staff" element={<Navigate to="/" replace />} />
           )}
@@ -65,9 +58,7 @@ export default function App() {
       setIsSessionLoading(false);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 

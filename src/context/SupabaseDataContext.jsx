@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { createContext, useContext, useState, useEffect } from 'react';
+import { supabase, supabaseAdmin } from '../lib/supabaseClient';
 
 const DataContext = createContext();
 
@@ -9,10 +9,11 @@ export function SupabaseDataProvider({ children, session }) {
   const [containers, setContainers] = useState([]);
   const [workItems, setWorkItems] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
-  const [staffGroup, setStaffGroup] = useState('Office Staff');
-  const [dateFilter, setDateFilter] = useState('today'); // today | week | month | custom
+  const [dateFilter, setDateFilter] = useState('today');
   const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
+  const [staffGroup, setStaffGroup] = useState('Office Staff');
 
   useEffect(() => {
     if (!session?.user) {
@@ -23,52 +24,49 @@ export function SupabaseDataProvider({ children, session }) {
 
     const fetchAllData = async () => {
       setLoadingInitial(true);
-      
+
       try {
-        // 1. Fetch current user profile safely without .single() throwing
+        // 1. Fetch current user profile
         const { data: profileData } = await supabase
-          .from('profiles')
+          .from('users')
           .select('*')
           .eq('id', session.user.id);
-        
+
         if (profileData && profileData.length > 0) {
-           setCurrentUser(profileData[0]);
+          setCurrentUser(profileData[0]);
         } else {
-           // Fallback: If DB trigger failed, manually insert a profile for this authenticated session so they aren't locked out permanently
-           const { data: newProfile } = await supabase.from('profiles').insert([{ 
-             id: session.user.id, 
-             name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Unknown User',
-             role: session.user.user_metadata?.role || 'Assignee',
-             staff_group: session.user.user_metadata?.staff_group || 'Office Staff' 
-           }]).select();
-           
-           if (newProfile && newProfile.length > 0) {
-             setCurrentUser(newProfile[0]);
-           } else {
-             // Absolute worst case fallback to allow application to load
-             setCurrentUser({ id: session.user.id, name: 'Guest/Error', role: 'Assignee' });
-           }
+          // Fallback: if DB trigger failed, manually insert a profile
+          const { data: newProfile } = await supabase.from('users').insert([{
+            id: session.user.id,
+            name: session.user.user_metadata?.full_name || 'Unknown User',
+            username: session.user.user_metadata?.username || 'unknown',
+            role: session.user.user_metadata?.role || 'Assignee',
+          }]).select();
+
+          if (newProfile && newProfile.length > 0) {
+            setCurrentUser(newProfile[0]);
+          } else {
+            setCurrentUser({ id: session.user.id, name: 'Guest/Error', role: 'Assignee' });
+          }
         }
 
-        // 2. Fetch all profiles (for Assignee dropdowns, Admin views)
-        const { data: allProfiles } = await supabase.from('profiles').select('*');
+        // 2. Fetch all profiles
+        const { data: allProfiles } = await supabase.from('users').select('*');
         if (allProfiles) setProfiles(allProfiles);
 
-        // 3. Fetch all containers (Projects/Events)
+        // 3. Fetch all containers
         const { data: allContainers } = await supabase.from('containers').select('*');
         if (allContainers) setContainers(allContainers);
 
         // 4. Fetch all work items
         let { data: allWorkItems } = await supabase.from('work_items').select('*');
         if (allWorkItems) {
-            // Check and spawn recurring tasks
-            const newItems = await checkAndSpawnRecurringTasks(allWorkItems);
-            // Re-fetch if we spawned new ones
-            if (newItems && newItems.length > 0) {
-               const { data: latestWorkItems } = await supabase.from('work_items').select('*');
-               if (latestWorkItems) allWorkItems = latestWorkItems;
-            }
-            setWorkItems(allWorkItems);
+          const newItems = await checkAndSpawnRecurringTasks(allWorkItems);
+          if (newItems && newItems.length > 0) {
+            const { data: latestWorkItems } = await supabase.from('work_items').select('*');
+            if (latestWorkItems) allWorkItems = latestWorkItems;
+          }
+          setWorkItems(allWorkItems);
         }
 
         // 5. Fetch notifications for current user
@@ -79,8 +77,15 @@ export function SupabaseDataProvider({ children, session }) {
           .order('created_at', { ascending: false });
         if (userNotifications) setNotifications(userNotifications);
 
+        // 6. Fetch announcements
+        const { data: allAnnouncements } = await supabase
+          .from('announcements')
+          .select('*')
+          .order('event_date', { ascending: true });
+        if (allAnnouncements) setAnnouncements(allAnnouncements);
+
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error('Error fetching data:', error);
       } finally {
         setLoadingInitial(false);
       }
@@ -88,27 +93,35 @@ export function SupabaseDataProvider({ children, session }) {
 
     fetchAllData();
 
-    // Setup Realtime Subscriptions
-    const profilesSub = supabase.channel('public:profiles')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, payload => {
-         supabase.from('profiles').select('*').then(({data}) => { if(data) setProfiles(data); });
+    // Realtime subscriptions
+    const profilesSub = supabase.channel('public:users')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        supabase.from('users').select('*').then(({ data }) => { if (data) setProfiles(data); });
       }).subscribe();
 
     const containersSub = supabase.channel('public:containers')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'containers' }, payload => {
-         supabase.from('containers').select('*').then(({data}) => { if(data) setContainers(data); });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'containers' }, () => {
+        supabase.from('containers').select('*').then(({ data }) => { if (data) setContainers(data); });
       }).subscribe();
 
     const workItemsSub = supabase.channel('public:work_items')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_items' }, payload => {
-         supabase.from('work_items').select('*').then(({data}) => { if(data) setWorkItems(data); });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_items' }, () => {
+        supabase.from('work_items').select('*').then(({ data }) => { if (data) setWorkItems(data); });
       }).subscribe();
 
     const notifSub = supabase.channel('public:notifications')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, payload => {
-         supabase.from('notifications').select('*').eq('user_id', session.user.id)
-           .order('created_at', { ascending: false })
-           .then(({data}) => { if(data) setNotifications(data); });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
+        supabase.from('notifications').select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .then(({ data }) => { if (data) setNotifications(data); });
+      }).subscribe();
+
+    const annSub = supabase.channel('public:announcements')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, () => {
+        supabase.from('announcements').select('*')
+          .order('event_date', { ascending: true })
+          .then(({ data }) => { if (data) setAnnouncements(data); });
       }).subscribe();
 
     return () => {
@@ -116,6 +129,7 @@ export function SupabaseDataProvider({ children, session }) {
       supabase.removeChannel(containersSub);
       supabase.removeChannel(workItemsSub);
       supabase.removeChannel(notifSub);
+      supabase.removeChannel(annSub);
     };
   }, [session]);
 
@@ -127,66 +141,61 @@ export function SupabaseDataProvider({ children, session }) {
 
     for (const template of templates) {
       if (!template.recurrence_rule) continue;
-      
+
       const lastGenerated = template.last_generated_at;
-      if (lastGenerated === today) continue; // Already generated today
+      if (lastGenerated === today) continue;
 
       let shouldGenerate = false;
       const rule = template.recurrence_rule;
 
       if (!lastGenerated) {
-          shouldGenerate = true; // First time
+        shouldGenerate = true;
       } else {
-          // Simple rule evaluation
-          const lastDate = new Date(lastGenerated);
-          const currentDate = new Date(today);
-          const diffTime = Math.abs(currentDate - lastDate);
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const lastDate = new Date(lastGenerated);
+        const currentDate = new Date(today);
+        const diffDays = Math.ceil(Math.abs(currentDate - lastDate) / (1000 * 60 * 60 * 24));
 
-          if (rule.type === 'daily') {
-              if (diffDays >= 1) shouldGenerate = true;
-          } else if (rule.type === 'every_x_days' && rule.interval) {
-              if (diffDays >= rule.interval) shouldGenerate = true;
-          } else if (rule.type === 'weekly' && rule.day !== undefined) {
-              // day: 0=Sun, 1=Mon, ..., 6=Sat
-              if (currentDate.getDay() === rule.day && diffDays >= 7) shouldGenerate = true;
-          } else if (rule.type === 'monthly' && rule.date) {
-              if (currentDate.getDate() === rule.date && currentDate.getMonth() !== lastDate.getMonth()) shouldGenerate = true;
-          } else if (rule.type === 'every_x_months' && rule.interval) {
-              const monthDiff = (currentDate.getFullYear() - lastDate.getFullYear()) * 12 + (currentDate.getMonth() - lastDate.getMonth());
-              if (monthDiff >= rule.interval) shouldGenerate = true;
-          }
+        if (rule.type === 'daily') {
+          if (diffDays >= 1) shouldGenerate = true;
+        } else if (rule.type === 'every_x_days' && rule.interval) {
+          if (diffDays >= rule.interval) shouldGenerate = true;
+        } else if (rule.type === 'weekly' && rule.day !== undefined) {
+          if (currentDate.getDay() === rule.day && diffDays >= 7) shouldGenerate = true;
+        } else if (rule.type === 'monthly' && rule.date) {
+          if (currentDate.getDate() === rule.date && currentDate.getMonth() !== lastDate.getMonth()) shouldGenerate = true;
+        } else if (rule.type === 'every_x_months' && rule.interval) {
+          const monthDiff = (currentDate.getFullYear() - lastDate.getFullYear()) * 12 + (currentDate.getMonth() - lastDate.getMonth());
+          if (monthDiff >= rule.interval) shouldGenerate = true;
+        }
       }
 
       if (shouldGenerate) {
-          newInstancesToInsert.push({
-              title: template.title,
-              description: template.description,
-              type: template.type,
-              assignee_id: template.assignee_id,
-              container_id: template.container_id,
-              estimated_hours: template.estimated_hours,
-              priority: template.priority,
-              status: 'Assigned',
-              expected_date: today,
-              is_recurring: false // instances are not recurring templates
-          });
-          templatesToUpdate.push(template.id);
+        newInstancesToInsert.push({
+          title: template.title,
+          description: template.description,
+          type: template.type,
+          assignee_id: template.assignee_id,
+          container_id: template.container_id,
+          estimated_hours: template.estimated_hours,
+          priority: template.priority,
+          status: 'Assigned',
+          expected_date: today,
+          is_recurring: false,
+        });
+        templatesToUpdate.push(template.id);
       }
     }
 
     if (newInstancesToInsert.length > 0) {
-        const { data, error } = await supabase.from('work_items').insert(newInstancesToInsert).select();
-        if (error) {
-            console.error('Failed to spawn recurring tasks:', error);
-            return [];
-        }
-        
-        // Update last_generated_at on templates
-        for (const tid of templatesToUpdate) {
-            await supabase.from('work_items').update({ last_generated_at: today }).eq('id', tid);
-        }
-        return data;
+      const { data, error } = await supabase.from('work_items').insert(newInstancesToInsert).select();
+      if (error) {
+        console.error('Failed to spawn recurring tasks:', error);
+        return [];
+      }
+      for (const tid of templatesToUpdate) {
+        await supabase.from('work_items').update({ last_generated_at: today }).eq('id', tid);
+      }
+      return data;
     }
     return [];
   };
@@ -201,132 +210,154 @@ export function SupabaseDataProvider({ children, session }) {
 
   const addWorkItem = async (itemData) => {
     const { data, error } = await supabase.from('work_items').insert([itemData]).select();
-    if (error) console.error("Error adding work item:", error);
+    if (error) console.error('Error adding work item:', error);
     return { data, error };
   };
 
   const updateWorkItem = async (id, updates) => {
     const { data, error } = await supabase.from('work_items').update(updates).eq('id', id).select();
-    if (error) console.error("Error updating work item:", error);
+    if (error) console.error('Error updating work item:', error);
     return { data, error };
   };
 
   const deleteWorkItem = async (id) => {
     const { error } = await supabase.from('work_items').delete().eq('id', id);
-    if (error) console.error("Error deleting work item:", error);
+    if (error) console.error('Error deleting work item:', error);
     return { error };
   };
 
   const addContainer = async (containerData) => {
     const { data, error } = await supabase.from('containers').insert([containerData]).select();
-    if (error) console.error("Error adding container:", error);
+    if (error) console.error('Error adding container:', error);
     return { data, error };
   };
 
   const updateContainer = async (id, updates) => {
     const { data, error } = await supabase.from('containers').update(updates).eq('id', id).select();
-    if (error) console.error("Error updating container:", error);
+    if (error) console.error('Error updating container:', error);
     return { data, error };
   };
 
-  const deleteContainer = async (id) => {
-    const { error } = await supabase.from('containers').delete().eq('id', id);
-    if (error) console.error("Error deleting container:", error);
-    return { error };
-  };
-
-  // User Management
   const createUser = async (userData) => {
-    const { email, password, full_name, role, staff_group, department, manager } = userData;
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name,
-          role,
-          staff_group: staff_group || 'Office Staff',
-          department,
-          manager,
-        }
-      }
-    });
+    const { username, password, full_name, role, department, manager, position, category } = userData;
 
-    // Use upsert to guarantee email is stored in profiles
-    // (avoids race condition with the DB trigger)
-    if (!error && data?.user) {
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        name: full_name,
-        role: role || 'Assignee',
-        staff_group: staff_group || 'Office Staff',
-        department: department || null,
-        manager: manager || null,
-        email,
-      }, { onConflict: 'id' });
+    if (!supabaseAdmin) {
+      return { data: null, error: new Error("Server configuration error: Admin privileges not securely enabled. Please add your VITE_SUPABASE_SERVICE_ROLE_KEY to your .env.local file to use the direct local generator!") };
     }
 
-    return { data, error };
+    const cleanId = username.trim().toLowerCase();
+    const email = cleanId.includes('@') ? cleanId : `${cleanId}@erp.mic`;
+
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: password,
+      email_confirm: true,
+      user_metadata: { full_name, role, department, manager, position }
+    });
+
+    if (authError) return { data: null, error: authError };
+
+    const { data: insertData, error: insertError } = await supabaseAdmin.from('users').upsert({
+      id: authData.user.id,
+      name: full_name,
+      username: cleanId,
+      role: role || 'Assignee',
+      department: department || null,
+      manager: manager || null,
+      position: position || null,
+      category: category || 'Office Staff',
+    }, { onConflict: 'id' }).select();
+
+    if (insertError) return { data: null, error: insertError };
+
+    const { data: allUsers } = await supabase.from('users').select('*');
+    if (allUsers) setProfiles(allUsers);
+
+    return { data: insertData, error: null };
   };
 
   const updateProfile = async (id, updates) => {
-    const { data, error } = await supabase.from('profiles').update(updates).eq('id', id).select();
+    const { data, error } = await supabase.from('users').update(updates).eq('id', id).select();
     if (error) {
       console.error('updateProfile error:', error);
       return { data, error };
     }
-    // Refresh current user state if they updated themselves
-    if (data && data.length > 0 && id === currentUser?.id) {
-      setCurrentUser(data[0]);
-    }
-    // Always refresh the full profiles list so the table re-renders
-    const { data: allProfiles } = await supabase.from('profiles').select('*');
+    if (data && data.length > 0 && id === currentUser?.id) setCurrentUser(data[0]);
+    const { data: allProfiles } = await supabase.from('users').select('*');
     if (allProfiles) setProfiles(allProfiles);
     return { data, error };
   };
 
-  // Admin: update profile fields - direct update
   const adminUpdateProfile = async (targetUserId, profileUpdates) => {
-    // Filter out undefined/null values
     const updates = {};
     Object.keys(profileUpdates).forEach(key => {
       if (profileUpdates[key] !== undefined && profileUpdates[key] !== null && profileUpdates[key] !== '') {
         updates[key] = profileUpdates[key];
       }
     });
-    
-    const { data, error } = await supabase.from('profiles').update(updates).eq('id', targetUserId).select();
+
+    // If username changes, we must sync the hidden Supabase authentication email as well
+    if (updates.username && supabaseAdmin) {
+      const cleanId = updates.username.trim().toLowerCase();
+      const email = cleanId.includes('@') ? cleanId : `${cleanId}@erp.mic`;
+      await supabaseAdmin.auth.admin.updateUserById(targetUserId, { email });
+    }
+
+    const { data, error } = await supabase.from('users').update(updates).eq('id', targetUserId).select();
     if (!error) {
-      const { data: allProfiles } = await supabase.from('profiles').select('*');
+      const { data: allProfiles } = await supabase.from('users').select('*');
       if (allProfiles) setProfiles(allProfiles);
     }
     return { data, error };
   };
 
-  // Admin: reset password
   const adminResetUserPassword = async (targetUserId, newPassword) => {
-    // Use edge function only - password reset requires auth admin
-    const { data, error } = await supabase.functions.invoke('update-user-password', {
-      body: { action: 'resetPassword', targetUserId, newPassword }
-    });
+    if (!supabaseAdmin) return { data: null, error: new Error("Admin configuration missing: Need Service Role key.") };
+    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, { password: newPassword });
     return { data, error };
   };
 
-  // Admin: update password and/or email via edge function
-  const adminUpdateUser = async (targetUserId, { newPassword, newEmail }) => {
-    const { data, error } = await supabase.functions.invoke('update-user-password', {
-      body: { action: 'resetPassword', targetUserId, newPassword, newEmail }
-    });
+  const adminUpdateUser = async (targetUserId, { newPassword, newUsername }) => {
+    if (!supabaseAdmin) return { data: null, error: new Error("Admin configuration missing: Need Service Role key.") };
+    const updates = {};
+    if (newPassword) updates.password = newPassword;
+    if (newUsername) {
+      const cleanId = newUsername.trim().toLowerCase();
+      updates.email = cleanId.includes('@') ? cleanId : `${cleanId}@erp.mic`;
+    }
+    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, updates);
     return { data, error };
   };
 
-  // Notifications
   const markNotificationRead = async (id) => {
     await supabase.from('notifications').update({ is_read: true }).eq('id', id);
   };
 
-  const getUnreadNotifications = () => {
-    return notifications.filter(n => !n.is_read);
+  const getUnreadNotifications = () => notifications.filter(n => !n.is_read);
+
+  // Announcements
+  const getActiveAnnouncements = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return announcements.filter(a => {
+      // Show from 1 day before event_date through event_date
+      const eventDate = new Date(a.event_date + 'T00:00:00');
+      const dayBefore = new Date(eventDate);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      const todayDate = new Date(today + 'T00:00:00');
+      return todayDate >= dayBefore && todayDate <= eventDate;
+    });
+  };
+
+  const addAnnouncement = async (announcementData) => {
+    const { data, error } = await supabase.from('announcements').insert([announcementData]).select();
+    if (error) console.error('Error adding announcement:', error);
+    return { data, error };
+  };
+
+  const deleteAnnouncement = async (id) => {
+    const { error } = await supabase.from('announcements').delete().eq('id', id);
+    if (error) console.error('Error deleting announcement:', error);
+    return { error };
   };
 
   return (
@@ -336,14 +367,19 @@ export function SupabaseDataProvider({ children, session }) {
       containers,
       workItems,
       notifications,
-      staffGroup,
-      setStaffGroup,
+      announcements,
       dateFilter,
       setDateFilter,
+      staffGroup,
+      setStaffGroup,
       customDateRange,
       setCustomDateRange,
+      loadingInitial,
       getUnreadNotifications,
       markNotificationRead,
+      getActiveAnnouncements,
+      addAnnouncement,
+      deleteAnnouncement,
       startWorkItem,
       completeWorkItem,
       addWorkItem,
@@ -351,13 +387,11 @@ export function SupabaseDataProvider({ children, session }) {
       deleteWorkItem,
       addContainer,
       updateContainer,
-      deleteContainer,
       createUser,
       updateProfile,
       adminUpdateProfile,
       adminResetUserPassword,
       adminUpdateUser,
-      loadingInitial
     }}>
       {children}
     </DataContext.Provider>

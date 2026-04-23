@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(node -e ' *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(grep -E \"\\\\.jsx$\")",
+      "Bash(cat .env)",
+      "Bash(cat .env.local)",
+      "Bash(npx supabase *)"
     ]
   }
 }
