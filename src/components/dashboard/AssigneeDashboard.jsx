@@ -169,7 +169,7 @@ export default function AssigneeDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">
-          Welcome back, {(currentUser.name || 'User').split(' ')[0]}
+          Welcome back, {currentUser.name || 'User'}
         </h1>
         {currentUser.position && (
           <p className="text-sm text-primary font-semibold mt-0.5">{currentUser.position}</p>

@@ -26,6 +26,7 @@ export default function AppLayout({ userRole, currentUser }) {
     { label: 'Dashboard',     path: '/',        icon: 'dashboard' },
     { label: 'Works',         path: '/tasks',   icon: 'assignment' },
     { label: 'Planning',      path: '/planning',icon: 'account_tree' },
+    { label: 'Works Hub',     path: '/projects-events', icon: 'hub' },
     { label: 'Reports',       path: '/reports', icon: 'analytics' },
   ];
 
@@ -49,8 +50,12 @@ export default function AppLayout({ userRole, currentUser }) {
 
   return (
     <div className="bg-background text-on-surface min-h-screen selection:bg-primary/10">
-      {/* Top Header */}
-      <header className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md h-14 flex justify-between items-center px-4 md:px-6 border-b border-outline-variant/50">
+      {/* Top Header — padding-top accounts for PWA/standalone status bar safe area */}
+      <header
+        className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-outline-variant/50"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+      <div className="h-14 flex justify-between items-center px-4 md:px-6">
         <div className="flex items-center gap-3">
           <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
             <span className="material-symbols-outlined text-white text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>shield_with_heart</span>
@@ -105,11 +110,12 @@ export default function AppLayout({ userRole, currentUser }) {
             )}
           </div>
         </div>
+      </div>
       </header>
 
-      <div className="flex min-h-[calc(100vh-56px)] pt-14">
+      <div className="flex" style={{ minHeight: '100dvh', paddingTop: 'calc(56px + env(safe-area-inset-top))' }}>
         {/* Sidebar */}
-        <aside className="hidden md:flex flex-col h-[calc(100vh-56px)] w-60 fixed left-0 top-14 bg-white border-r border-outline-variant/40 py-5 z-40">
+        <aside className="hidden md:flex flex-col w-60 fixed left-0 bg-white border-r border-outline-variant/40 py-5 z-40" style={{ top: 'calc(56px + env(safe-area-inset-top))', height: 'calc(100dvh - 56px - env(safe-area-inset-top))' }}>
           <div className="px-4 mb-6">
             <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl bg-surface-container-low">
               <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -158,13 +164,13 @@ export default function AppLayout({ userRole, currentUser }) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 md:ml-60 p-4 md:p-6 overflow-y-auto bg-surface architectural-grid">
+        <main className="flex-1 md:ml-60 p-4 md:p-6 overflow-y-auto bg-surface architectural-grid" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
           <Outlet />
         </main>
       </div>
 
       {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-outline-variant/40 z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-outline-variant/40 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-center py-1 px-1">
           <div className="flex flex-1 justify-around">
             {navItems.slice(0, Math.floor(navItems.length / 2)).map((item) => (
@@ -205,7 +211,6 @@ export default function AppLayout({ userRole, currentUser }) {
             ))}
           </div>
         </div>
-        <div className="h-safe-bottom bg-white"></div>
       </nav>
 
       {isProfileModalOpen && (

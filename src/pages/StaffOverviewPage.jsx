@@ -202,7 +202,7 @@ function CredentialsModal({ name, loginId, password, onClose }) {
 
 export default function StaffOverviewPage() {
   const {
-    profiles, workItems,
+    profiles, workItems, staffGroup,
     createUser, adminUpdateProfile, adminResetUserPassword,
   } = useDataContext();
   const safeProfiles = profiles || [];
@@ -235,7 +235,9 @@ export default function StaffOverviewPage() {
 
   const staffList = safeProfiles.filter(p => p.role !== 'Admin');
   const departments = ['All', ...new Set(staffList.map(p => p.department).filter(Boolean))];
-  const filteredStaff = deptFilter === 'All' ? staffList : staffList.filter(s => s.department === deptFilter);
+  const filteredStaff = staffList
+    .filter(s => (s.category || 'Office Staff') === staffGroup)
+    .filter(s => deptFilter === 'All' || s.department === deptFilter);
 
   const getMetrics = (staffId) => {
     const allTasks = safeWorkItems.filter(t => t.assignee_id === staffId);

@@ -12,6 +12,7 @@ export default function ReportsPage() {
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterType, setFilterType] = useState('');
   const [selectedStaffId, setSelectedStaffId] = useState(null);
+  const [staffGroup, setStaffGroup] = useState('Office Staff');
 
   const getAvatarInitials = (name) => {
     if (!name) return 'U';
@@ -24,7 +25,8 @@ export default function ReportsPage() {
 
   // ─── Assignee view ────────────────────────────────────────────────────────
   if (currentUser.role === 'Assignee') {
-    const myItemsAll = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
+    let myItemsAll = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
+    myItemsAll = myItemsAll.filter(w => isItemInDateRange(w, dateFilter, customDateRange));
     const myItems = getActionableUnits(myItemsAll);
     const completed = myItems.filter(w => w.status === 'Completed');
     const overdue = myItems.filter(w => isOverdue(w) && w.status !== 'Completed');
@@ -38,9 +40,12 @@ export default function ReportsPage() {
           <div>
             <h1 className="text-3xl font-extrabold text-on-surface tracking-tight mb-1 font-headline">My Performance Report</h1>
           </div>
-          <button onClick={() => window.print()} className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm hover:bg-surface transition-colors flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px]">download</span> Download PDF
-          </button>
+          <div className="flex items-center gap-3">
+            <FilterBar showToggle={false} showDateFilter={true} compact />
+            <button onClick={() => window.print()} className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm hover:bg-surface transition-colors flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">download</span> Download PDF
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-gradient-to-br from-primary to-secondary rounded-xl shadow-sm text-white p-6 relative overflow-hidden">
@@ -137,7 +142,7 @@ export default function ReportsPage() {
   const effLabel = overallEff >= 90 ? 'High Precision' : overallEff >= 70 ? 'Good' : overallEff >= 50 ? 'Moderate' : 'Needs Attention';
   const effLabelColor = overallEff >= 90 ? 'text-blue-600' : overallEff >= 70 ? 'text-green-600' : overallEff >= 50 ? 'text-amber-600' : 'text-red-600';
 
-  const staffArray = safeProfiles.filter(p => p.role !== 'Admin');
+  const staffArray = safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup);
 
   const staffStats = staffArray.map(p => {
     const tasks = actionable.filter(w => w.assignee_id === p.id);
@@ -231,10 +236,17 @@ export default function ReportsPage() {
     <div className="flex flex-col gap-5 max-w-[1400px] mx-auto pb-12">
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div />
-        <div className="flex items-center gap-3 ml-auto">
-          <button onClick={handlePdfExport} className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity shadow-sm">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex bg-surface-container rounded-xl p-1 gap-0.5 w-full md:w-auto">
+          <button onClick={() => { setStaffGroup('Office Staff'); setFilterAssignee(''); setSelectedStaffId(null); }} className={`flex-1 md:flex-none px-6 py-2 text-sm font-bold rounded-lg transition-all ${staffGroup === 'Office Staff' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>
+            Office Staff
+          </button>
+          <button onClick={() => { setStaffGroup('Institution'); setFilterAssignee(''); setSelectedStaffId(null); }} className={`flex-1 md:flex-none px-6 py-2 text-sm font-bold rounded-lg transition-all ${staffGroup === 'Institution' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>
+            Institution
+          </button>
+        </div>
+        <div className="flex items-center gap-3 md:ml-auto w-full md:w-auto">
+          <button onClick={handlePdfExport} className="w-full md:w-auto bg-primary text-white rounded-lg px-4 py-2 text-sm font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-sm">
             <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span> PDF REPORT
           </button>
         </div>

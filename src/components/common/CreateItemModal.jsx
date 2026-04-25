@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
 
 export default function CreateItemModal({ onClose }) {
-  const { addWorkItem, profiles } = useDataContext();
-  const [step, setStep] = useState('choose'); // 'choose' | 'task' | 'plan'
+  const { addWorkItem, profiles, currentUser, addAnnouncement } = useDataContext();
+  const navigate = useNavigate();
+  const [step, setStep] = useState('choose'); // 'choose' | 'task' | 'plan' | 'notification'
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -26,6 +28,10 @@ export default function CreateItemModal({ onClose }) {
   const [planAssignee, setPlanAssignee] = useState('');
   const [planPriority, setPlanPriority] = useState('Medium');
   const [planEstMins, setPlanEstMins] = useState('');
+
+  // Notification form
+  const [notifType, setNotifType] = useState('Text');
+  const [notifForm, setNotifForm] = useState({ message: '', event_date: '', event_time: '', staff_group: 'Both' });
 
   const safeProfiles = profiles || [];
   const assigneeList = safeProfiles.filter(p => p.role !== 'Admin');
@@ -71,6 +77,22 @@ export default function CreateItemModal({ onClose }) {
       in_planning_pool: true,
       is_recurring: false,
       ...(planEstMins ? { estimated_hours: Number(planEstMins) } : {}),
+    });
+    setLoading(false);
+    setSuccess(true);
+    setTimeout(() => onClose(), 1200);
+  };
+
+  const handleCreateNotification = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    await addAnnouncement({
+      title: notifType === 'Program' ? notifForm.message : 'Text',
+      message: notifType === 'Text' ? notifForm.message : null,
+      event_date: notifForm.event_date,
+      event_time: notifType === 'Program' ? (notifForm.event_time || null) : null,
+      type: notifType,
+      staff_group: notifForm.staff_group
     });
     setLoading(false);
     setSuccess(true);
@@ -125,6 +147,25 @@ export default function CreateItemModal({ onClose }) {
                   <p className="text-[10px] text-on-surface-variant">Add to planning pool</p>
                 </div>
               </button>
+              {currentUser?.role === 'Admin' && (
+                <div className="col-span-2 mt-2">
+                  <button
+                    onClick={() => setStep('notification')}
+                    className="w-full flex items-center justify-between p-3 rounded-xl border border-outline-variant/30 hover:border-pink-300 hover:bg-pink-50 transition-all group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-pink-50 flex items-center justify-center group-hover:bg-pink-100 transition-colors">
+                        <span className="material-symbols-outlined text-pink-600 text-[20px]" style={{fontVariationSettings:"'FILL' 1"}}>campaign</span>
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface text-sm leading-none">Broadcast Notification</p>
+                        <p className="text-[10px] text-on-surface-variant mt-1.5 leading-none">Alert staff immediately</p>
+                      </div>
+                    </div>
+                    <span className="material-symbols-outlined text-outline group-hover:text-pink-500 transition-colors text-[20px]">chevron_right</span>
+                  </button>
+                </div>
+              )}
             </div>
             <div className="px-6 pb-5">
               <button onClick={onClose} className="w-full py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors">Cancel</button>
@@ -270,6 +311,89 @@ export default function CreateItemModal({ onClose }) {
               <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
               <button type="submit" disabled={loading} className="flex-1 py-2.5 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                 <span className="material-symbols-outlined text-[16px]">account_tree</span>{loading ? 'Saving...' : 'Save to Planning Pool'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 'notification' && (
+          <form onSubmit={handleCreateNotification}>
+            <div className="flex items-center justify-between px-6 py-5 border-b border-surface-container">
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setStep('choose')} className="text-on-surface-variant hover:text-on-surface flex items-center justify-center">
+                  <span className="material-symbols-outlined">arrow_back</span>
+                </button>
+                <div>
+                  <h2 className="font-bold text-lg font-headline text-on-surface leading-tight">New Notification</h2>
+                  <p className="text-[10px] text-on-surface-variant">Broadcast to staff directly</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => { onClose(); navigate('/planning', { state: { activeTab: 'Notifications' } }); }}
+                className="text-[11px] font-bold text-pink-700 bg-pink-100 hover:bg-pink-200 px-3 py-1.5 rounded-lg transition-colors border border-pink-200 uppercase tracking-widest flex items-center gap-1 shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[14px]">settings</span> Manage
+              </button>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2 block">Step 1: Select Type</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setNotifType('Text')} className={`flex-1 py-2 text-sm font-bold border rounded-lg transition-all flex items-center justify-center gap-2 ${notifType === 'Text' ? 'bg-primary/10 border-primary text-primary' : 'border-outline-variant/40 text-on-surface-variant'}`}>
+                    <span className="material-symbols-outlined text-[18px]">campaign</span> Text
+                  </button>
+                  <button type="button" onClick={() => setNotifType('Program')} className={`flex-1 py-2 text-sm font-bold border rounded-lg transition-all flex items-center justify-center gap-2 ${notifType === 'Program' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-outline-variant/40 text-on-surface-variant'}`}>
+                    <span className="material-symbols-outlined text-[18px]">event</span> Program
+                  </button>
+                </div>
+              </div>
+
+              {notifType === 'Text' && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Message (Text Only) *</label>
+                    <textarea required className={inputCls + " resize-none"} rows={3} value={notifForm.message} onChange={e => setNotifForm(f => ({...f, message: e.target.value}))} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Show Until *</label>
+                    <input type="date" required className={inputCls} value={notifForm.event_date} onChange={e => setNotifForm(f => ({...f, event_date: e.target.value}))} />
+                  </div>
+                </>
+              )}
+
+              {notifType === 'Program' && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Subject *</label>
+                    <input required className={inputCls} value={notifForm.message} onChange={e => setNotifForm(f => ({...f, message: e.target.value}))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Date *</label>
+                      <input type="date" required className={inputCls} value={notifForm.event_date} onChange={e => setNotifForm(f => ({...f, event_date: e.target.value}))} />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Time (Optional)</label>
+                      <input type="time" className={inputCls} value={notifForm.event_time} onChange={e => setNotifForm(f => ({...f, event_time: e.target.value}))} />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Target Audience</label>
+                <select className={inputCls + " py-2"} value={notifForm.staff_group} onChange={e => setNotifForm(f => ({...f, staff_group: e.target.value}))}>
+                  <option value="Both">Both (All Staff)</option>
+                  <option value="Office Staff">Office Staff</option>
+                  <option value="Institution">Institution</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
+              <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
+              <button type="submit" disabled={loading || !notifForm.message || !notifForm.event_date} className="flex-1 py-2.5 text-sm font-bold bg-pink-600 text-white rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                <span className="material-symbols-outlined text-[16px]">campaign</span>{loading ? 'Sending...' : 'Broadcast'}
               </button>
             </div>
           </form>

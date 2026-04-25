@@ -338,14 +338,39 @@ export function SupabaseDataProvider({ children, session }) {
   // Announcements
   const getActiveAnnouncements = () => {
     const today = new Date().toISOString().split('T')[0];
+    const todayDate = new Date(today + 'T00:00:00');
     return announcements.filter(a => {
-      // Show from 1 day before event_date through event_date
       const eventDate = new Date(a.event_date + 'T00:00:00');
-      const dayBefore = new Date(eventDate);
-      dayBefore.setDate(dayBefore.getDate() - 1);
-      const todayDate = new Date(today + 'T00:00:00');
-      return todayDate >= dayBefore && todayDate <= eventDate;
+      return todayDate <= eventDate;
     });
+  };
+
+  const getDynamicNotificationText = (ann) => {
+    if (ann.type === 'Text') {
+      return '';
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const todayDate = new Date(today + 'T00:00:00');
+    const eventDate = new Date(ann.event_date + 'T00:00:00');
+    
+    const diffTime = eventDate - todayDate;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      let displayTime = 'All Day';
+      if (ann.event_time) {
+        const [h, m] = ann.event_time.split(':');
+        let hour = parseInt(h, 10);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        hour = hour % 12 || 12;
+        displayTime = `${hour}:${m} ${ampm}`;
+      }
+      return `Today @ ${displayTime}`;
+    }
+
+    const plural = diffDays === 1 ? 'day' : 'days';
+    return `${diffDays} ${plural} left`;
   };
 
   const addAnnouncement = async (announcementData) => {
@@ -378,6 +403,7 @@ export function SupabaseDataProvider({ children, session }) {
       getUnreadNotifications,
       markNotificationRead,
       getActiveAnnouncements,
+      getDynamicNotificationText,
       addAnnouncement,
       deleteAnnouncement,
       startWorkItem,

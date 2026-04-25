@@ -182,7 +182,8 @@ export default function ProjectsEventsPage() {
     if (c.type !== containerType)  return false;
     if (c.is_active === false)     return false;
     if (currentUser?.role === 'Assignee') {
-      return safeWorkItems.some(w => w.container_id === c.id && w.assignee_id === currentUser.id);
+      return c.created_by === currentUser.id ||
+        safeWorkItems.some(w => w.container_id === c.id && w.assignee_id === currentUser.id);
     }
     return true;
   });
@@ -866,8 +867,10 @@ export default function ProjectsEventsPage() {
                   className={`bg-white rounded-2xl border-2 p-4 cursor-pointer transition-all ${isSel ? 'border-primary shadow-sm' : 'border-outline-variant/30 hover:border-primary/40'}`}>
                   <p className="font-bold text-on-surface text-sm leading-tight mb-2">{cName(c)}</p>
                   <div className="flex gap-2">
-                    <button onClick={e => { e.stopPropagation(); deployTemplate(c); }} disabled={deploying}
-                      className="flex-1 py-1.5 text-xs font-bold bg-primary text-white rounded-xl hover:opacity-90 disabled:opacity-50">{deploying ? '…' : 'Deploy'}</button>
+                    {isAdmin && (
+                      <button onClick={e => { e.stopPropagation(); deployTemplate(c); }} disabled={deploying}
+                        className="flex-1 py-1.5 text-xs font-bold bg-primary text-white rounded-xl hover:opacity-90 disabled:opacity-50">{deploying ? '…' : 'Deploy'}</button>
+                    )}
                     <button onClick={e => { e.stopPropagation(); setSelectedTplId(c.id); }}
                       className="flex-1 py-1.5 text-xs font-bold border border-outline-variant/40 rounded-xl hover:bg-surface-container text-on-surface">View</button>
                   </div>
@@ -939,16 +942,18 @@ export default function ProjectsEventsPage() {
                 )}
               </div>
 
-              <div className="px-6 py-4 border-t border-surface-container-high flex items-center justify-between">
-                <span className="text-xs text-on-surface-variant">Deploy creates a live {isProject ? 'project' : 'event'} from this template</span>
-                <button onClick={() => deployTemplate(active)} disabled={deploying}
-                  className="bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
-                  {deploying
-                    ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying…</>
-                    : <><span className="material-symbols-outlined text-[16px]">rocket_launch</span> Deploy {isProject ? 'Project' : 'Event'}</>
-                  }
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="px-6 py-4 border-t border-surface-container-high flex items-center justify-between">
+                  <span className="text-xs text-on-surface-variant">Deploy creates a live {isProject ? 'project' : 'event'} from this template</span>
+                  <button onClick={() => deployTemplate(active)} disabled={deploying}
+                    className="bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
+                    {deploying
+                      ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying…</>
+                      : <><span className="material-symbols-outlined text-[16px]">rocket_launch</span> Deploy {isProject ? 'Project' : 'Event'}</>
+                    }
+                  </button>
+                </div>
+              )}
             </>
           ) : <div className="flex-1 flex items-center justify-center text-on-surface-variant text-sm">Select a template.</div>}
         </div>
@@ -974,7 +979,7 @@ export default function ProjectsEventsPage() {
           <div className="flex bg-surface-container p-1 rounded-xl gap-0.5">
             {[
               { key: 'Projects', icon: 'folder_open',  color: 'text-indigo-600' },
-              { key: 'Events',   icon: 'event',         color: 'text-emerald-600' },
+              ...( isAdmin ? [{ key: 'Events', icon: 'event', color: 'text-emerald-600' }] : []),
               { key: 'Tasks',    icon: 'assignment',    color: 'text-primary' },
             ].map(({ key, icon, color }) => (
               <button key={key}

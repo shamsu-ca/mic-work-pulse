@@ -558,6 +558,7 @@ export default function AllTasksPage() {
   const [filterPriority, setFilterPriority] = useState('');
   const [filterStaff, setFilterStaff]       = useState('');
   const [filterDept, setFilterDept]         = useState('');
+  const [staffGroup, setStaffGroup]         = useState('Office Staff');
 
   const safeWorkItems  = workItems  || [];
   const safeProfiles   = profiles   || [];
@@ -567,7 +568,9 @@ export default function AllTasksPage() {
   if (currentUser?.role === 'Assignee') {
     baseRaw = baseRaw.filter(w => w.assignee_id === currentUser.id);
   } else {
-    // Admin sees all
+    // Admin sees filtered group plus any unassigned works
+    const targetStaffIds = new Set(safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup).map(p => p.id));
+    baseRaw = baseRaw.filter(w => !w.assignee_id || targetStaffIds.has(w.assignee_id));
   }
 
   const allBase = baseRaw.filter(w => {
@@ -575,8 +578,8 @@ export default function AllTasksPage() {
     return type !== 'project' && type !== 'event' && type !== 'phase';
   });
 
-  const deptList = ['All Departments', ...new Set(safeProfiles.filter(p => p.role !== 'Admin').map(p => p.department).filter(Boolean))];
-  const staffListForFilter = safeProfiles.filter(p => p.role !== 'Admin' && (!filterDept || filterDept === 'All Departments' || p.department === filterDept));
+  const deptList = ['All Departments', ...new Set(safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup).map(p => p.department).filter(Boolean))];
+  const staffListForFilter = safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup && (!filterDept || filterDept === 'All Departments' || p.department === filterDept));
 
   const applyFilters = (items) => {
     let r = items;
@@ -644,6 +647,16 @@ export default function AllTasksPage() {
           <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">Works</h1>
           <p className="text-sm text-on-surface-variant mt-0.5">Daily work tracker — sorted by urgency & deadline</p>
         </div>
+        {currentUser?.role === 'Admin' && (
+          <div className="flex bg-surface-container rounded-xl p-1 gap-0.5 w-full md:w-auto">
+            <button onClick={() => { setStaffGroup('Office Staff'); setFilterStaff(''); setFilterDept(''); }} className={`flex-1 md:flex-none px-6 py-2 text-sm font-bold rounded-lg transition-all ${staffGroup === 'Office Staff' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>
+              Office Staff
+            </button>
+            <button onClick={() => { setStaffGroup('Institution'); setFilterStaff(''); setFilterDept(''); }} className={`flex-1 md:flex-none px-6 py-2 text-sm font-bold rounded-lg transition-all ${staffGroup === 'Institution' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>
+              Institution
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">

@@ -80,6 +80,8 @@ CREATE TABLE public.announcements (
   title TEXT NOT NULL,
   message TEXT,
   event_date DATE NOT NULL,
+  event_time TIME,
+  type TEXT DEFAULT 'Program',
   staff_group TEXT DEFAULT 'Both', -- keeping this column so old code doesn't crash right away, though we'll remove it from UI
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

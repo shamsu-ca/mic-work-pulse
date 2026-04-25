@@ -6,7 +6,7 @@ import FilterBar from '../common/FilterBar';
 const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function AdminDashboard() {
-  const { profiles, workItems, containers } = useDataContext();
+  const { profiles, workItems, containers, staffGroup } = useDataContext();
   const safeProfiles   = profiles   || [];
   const safeWorkItems  = workItems  || [];
   const safeContainers = containers || [];
@@ -27,11 +27,17 @@ export default function AdminDashboard() {
   const nonRecurring    = safeWorkItems.filter(w => !w.is_recurring);
   const actionableItems = getActionableUnits(nonRecurring);
 
+  // Filter by active staff group (toggle)
+  const staffGroupIds = new Set(
+    safeProfiles.filter(p => p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup).map(p => p.id)
+  );
+  const staffActionableItems = actionableItems.filter(w => staffGroupIds.has(w.assignee_id));
+
   // ── Task stats ──
-  const totalTasks    = actionableItems.length;
-  const assignedTasks = actionableItems.filter(w => w.status === 'Assigned').length;
-  const ongoingTasks  = actionableItems.filter(w => w.status === 'Ongoing').length;
-  const doneTasks     = actionableItems.filter(w => w.status === 'Completed').length;
+  const totalTasks    = staffActionableItems.length;
+  const assignedTasks = staffActionableItems.filter(w => w.status === 'Assigned').length;
+  const ongoingTasks  = staffActionableItems.filter(w => w.status === 'Ongoing').length;
+  const doneTasks     = staffActionableItems.filter(w => w.status === 'Completed').length;
 
   // ── Active Projects & Events ──
   const activeProjects = safeContainers.filter(c => c.type === 'Project' && c.is_active !== false && !c.is_template);
@@ -51,8 +57,8 @@ export default function AdminDashboard() {
   const evtChecklistsDone     = evtChecklists.filter(w => w.status === 'Completed').length;
 
   // ── Overdue & Not Started (live) ──
-  const overdueItems    = actionableItems.filter(w => isOverdue(w) && w.status !== 'Completed');
-  const notStartedItems = actionableItems.filter(w => getDisplayStatus(w) === 'Not Started');
+  const overdueItems    = staffActionableItems.filter(w => isOverdue(w) && w.status !== 'Completed');
+  const notStartedItems = staffActionableItems.filter(w => getDisplayStatus(w) === 'Not Started');
 
   const groupByAssignee = (items) => {
     const map = {};
@@ -67,9 +73,9 @@ export default function AdminDashboard() {
 
   // ── Today's Focus: all items due today + overdue + not started (ordered) ──
   const today = todayStr();
-  const todayOverdue     = actionableItems.filter(w => isOverdue(w) && w.status !== 'Completed');
-  const todayNotStarted  = actionableItems.filter(w => getDisplayStatus(w) === 'Not Started' && !isOverdue(w));
-  const todayDueToday    = actionableItems.filter(w =>
+  const todayOverdue     = staffActionableItems.filter(w => isOverdue(w) && w.status !== 'Completed');
+  const todayNotStarted  = staffActionableItems.filter(w => getDisplayStatus(w) === 'Not Started' && !isOverdue(w));
+  const todayDueToday    = staffActionableItems.filter(w =>
     w.status !== 'Completed' &&
     !isOverdue(w) &&
     getDisplayStatus(w) !== 'Not Started' &&
@@ -82,7 +88,7 @@ export default function AdminDashboard() {
   ];
 
   // ── Priority Queue: Critical & High only ──
-  const priorityQueue = [...actionableItems]
+  const priorityQueue = [...staffActionableItems]
     .filter(w => w.status !== 'Completed' && (w.priority === 'Critical' || w.priority === 'High'))
     .sort((a, b) => {
       const pOrder = { Critical: 0, High: 1 };
@@ -91,7 +97,7 @@ export default function AdminDashboard() {
     .slice(0, 8);
 
   // ── Recent Activity ──
-  const recentActivity = [...safeWorkItems]
+  const recentActivity = [...staffActionableItems]
     .filter(w => (w.status === 'Completed' || w.status === 'Ongoing') && !w.is_recurring)
     .sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''))
     .slice(0, 6)
@@ -213,7 +219,7 @@ export default function AdminDashboard() {
             <div className="mt-5 border-t border-surface-container-high pt-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">All Actionable Work Items</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-72 overflow-y-auto">
-                {actionableItems.filter(w => w.status !== 'Completed').map(w => {
+                {staffActionableItems.filter(w => w.status !== 'Completed').map(w => {
                   const ds = getDisplayStatus(w);
                   const c = w.container_id ? getContainer(w.container_id) : null;
                   return (
