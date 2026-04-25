@@ -328,16 +328,28 @@ export default function ProjectsEventsPage() {
                   {showStatus && <td className="px-3 py-2.5">{statusBadge(ds)}</td>}
                   {showStatus && <td className="px-3 py-2.5 text-xs text-on-surface-variant">{m.expected_date ?? '—'}</td>}
                   <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1.5 justify-end">
+                    <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                      {showStatus && isAdmin && m.status === 'Assigned' && (
+                        <button onClick={() => updateWorkItem(m.id, { status: 'Ongoing' })}
+                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                          <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
+                        </button>
+                      )}
+                      {showStatus && m.status === 'Ongoing' && (isAdmin || m.assignee_id === currentUser?.id) && (
+                        <button onClick={() => updateWorkItem(m.id, { status: 'Completed', completed_at: new Date().toISOString() })}
+                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                          <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
+                        </button>
+                      )}
                       {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
                         <button onClick={() => updateWorkItem(m.id, { expected_date: todayStr() })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                         </button>
                       )}
-                      <button onClick={() => setEditingItem(m)} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+                      {isAdmin && <button onClick={() => setEditingItem(m)} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
                         <span className="material-symbols-outlined text-[15px]">edit</span>
-                      </button>
+                      </button>}
                       {isAdmin && <DeleteBtn onDelete={() => deleteWorkItem(m.id)} size="xs" />}
                     </div>
                   </td>
@@ -395,14 +407,26 @@ export default function ProjectsEventsPage() {
                   </td>
                   {showStatus && <td className="px-3 py-2">{statusBadge(ds)}</td>}
                   <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5 justify-end">
+                    <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                      {showStatus && isAdmin && item.status === 'Assigned' && (
+                        <button onClick={() => updateWorkItem(item.id, { status: 'Ongoing' })}
+                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                          <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
+                        </button>
+                      )}
+                      {showStatus && item.status === 'Ongoing' && (isAdmin || item.assignee_id === currentUser?.id) && (
+                        <button onClick={() => updateWorkItem(item.id, { status: 'Completed', completed_at: new Date().toISOString() })}
+                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                          <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
+                        </button>
+                      )}
                       {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
                         <button onClick={() => updateWorkItem(item.id, { expected_date: todayStr() })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all opacity-0 group-hover:opacity-100">
                           <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                         </button>
                       )}
-                      {!showStatus && (
+                      {isAdmin && !showStatus && (
                         <button onClick={() => setEditingItem(item)} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
                           <span className="material-symbols-outlined text-[15px]">edit</span>
                         </button>
@@ -627,7 +651,19 @@ export default function ProjectsEventsPage() {
                   <td className="px-3 py-2.5">{statusBadge(ds)}</td>
                   <td className="px-3 py-2.5 text-xs text-on-surface-variant">{task.expected_date ?? '—'}</td>
                   <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1 justify-end">
+                    <div className="flex items-center gap-1 justify-end flex-wrap">
+                      {isAdmin && task.status === 'Assigned' && (
+                        <button onClick={() => updateWorkItem(task.id, { status: 'Ongoing' })}
+                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                          <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
+                        </button>
+                      )}
+                      {task.status === 'Ongoing' && (isAdmin || task.assignee_id === currentUser?.id) && (
+                        <button onClick={() => updateWorkItem(task.id, { status: 'Completed', completed_at: new Date().toISOString() })}
+                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                          <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
+                        </button>
+                      )}
                       {ds !== 'Completed' && ds !== 'Overdue' && (
                         <button onClick={() => updateWorkItem(task.id, { expected_date: todayStr() })}
                           className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">

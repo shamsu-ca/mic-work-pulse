@@ -23,14 +23,17 @@ const getAvatarInitials = (name) => {
 };
 
 const getResolutionStatus = (item) => {
-  if (!item.expected_date) return { label: 'On Time', cls: 'bg-green-100 text-green-700' };
+  if (!item.expected_date) return { label: 'Completed On Time', cls: 'bg-green-100 text-green-700' };
   const due = new Date(item.expected_date + 'T00:00:00');
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  const diff = Math.round((now - due) / 86400000);
-  return diff > 0
-    ? { label: `Delayed ${diff}d`, cls: 'bg-orange-100 text-orange-700' }
-    : { label: 'On Time', cls: 'bg-green-100 text-green-700' };
+  const completedOn = new Date(item.completed_at ?? new Date());
+  completedOn.setHours(0, 0, 0, 0);
+  const diff = Math.round((completedOn - due) / 86400000);
+  if (diff < 0)  return { label: `Completed Early (${-diff}d)`, cls: 'bg-blue-100 text-blue-700' };
+  if (diff === 0) return { label: 'Completed On Time', cls: 'bg-green-100 text-green-700' };
+  return { label: `Completed Late (${diff}d)`, cls: 'bg-orange-100 text-orange-700' };
 };
+
+const isWithin30Min = (createdAt) => createdAt ? (Date.now() - new Date(createdAt).getTime()) < 30 * 60 * 1000 : false;
 
 function DeleteBtn({ onConfirm }) {
   const [confirming, setConfirming] = useState(false);
@@ -113,7 +116,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
 
       {showActions && (
         <div className="flex gap-2 flex-wrap pt-1">
-          {item.status === 'Assigned' && (
+          {currentUser?.role === 'Admin' && item.status === 'Assigned' && (
             <button onClick={() => onStart(item.id)} className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90">
               <span className="material-symbols-outlined text-[14px]">play_arrow</span> Start
             </button>
@@ -123,9 +126,11 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
               <span className="material-symbols-outlined text-[14px]">check_circle</span> Complete
             </button>
           )}
-          <button onClick={onEdit} className="flex items-center gap-1.5 bg-white border border-outline-variant/40 text-on-surface-variant text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-surface-container">
-            <span className="material-symbols-outlined text-[14px]">edit</span> Edit
-          </button>
+          {currentUser?.role === 'Admin' && isWithin30Min(item.created_at) && (
+            <button onClick={onEdit} className="flex items-center gap-1.5 bg-white border border-outline-variant/40 text-on-surface-variant text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-surface-container">
+              <span className="material-symbols-outlined text-[14px]">edit</span> Edit
+            </button>
+          )}
           {currentUser?.role === 'Admin' && <DeleteBtn onConfirm={() => onDelete(item.id)} />}
         </div>
       )}

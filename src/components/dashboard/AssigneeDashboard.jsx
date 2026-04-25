@@ -133,9 +133,11 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
               <span className="text-sm font-semibold text-on-surface truncate block">{w.title}</span>
               {w.expected_date && <span className="text-[10px] text-on-surface-variant">{w.expected_date}</span>}
             </div>
-            <button className={`text-[10px] font-bold px-2 py-1 rounded flex-shrink-0 ${accent.btn}`} onClick={() => onAction(w.id)}>
-              {actionLabel}
-            </button>
+            {onAction && (
+              <button className={`text-[10px] font-bold px-2 py-1 rounded flex-shrink-0 ${accent.btn}`} onClick={() => onAction(w.id)}>
+                {actionLabel}
+              </button>
+            )}
           </div>
         ))}
         {items.length === 0 && <span className="text-sm font-medium text-slate-400 mt-2">{emptyMsg}</span>}
@@ -146,7 +148,7 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
 }
 
 export default function AssigneeDashboard() {
-  const { currentUser, workItems, containers, startWorkItem, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
+  const { currentUser, workItems, containers, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
 
   const safeWorkItems = workItems   || [];
   const safeContainers = containers || [];
@@ -212,8 +214,6 @@ export default function AssigneeDashboard() {
           }}
           items={overdueItems}
           count={overdueItems.length}
-          onAction={startWorkItem}
-          actionLabel="START"
           emptyMsg="Zero overdue items. Great work!"
         />
         <AlertCard
@@ -229,8 +229,6 @@ export default function AssigneeDashboard() {
           }}
           items={notStartedItems}
           count={notStartedItems.length}
-          onAction={startWorkItem}
-          actionLabel="START"
           emptyMsg="All assigned items are ongoing."
         />
       </div>
@@ -263,7 +261,7 @@ export default function AssigneeDashboard() {
               <span className="bg-white border border-outline-variant/50 text-on-surface-variant rounded-full text-[10px] px-2 py-0.5">{assignedItems.length}</span>
             </h3>
             {assignedItems.map(w => (
-              <WorkItemCard key={w.id} item={w} {...cardProps} showStart onStart={startWorkItem} />
+              <WorkItemCard key={w.id} item={w} {...cardProps} />
             ))}
             {assignedItems.length === 0 && (
               <div className="text-center p-6 border-2 border-dashed border-outline-variant/40 rounded-lg text-outline text-xs font-medium">No new assignments.</div>

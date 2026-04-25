@@ -205,7 +205,7 @@ export function SupabaseDataProvider({ children, session }) {
   };
 
   const completeWorkItem = async (itemId) => {
-    await supabase.from('work_items').update({ status: 'Completed' }).eq('id', itemId);
+    await supabase.from('work_items').update({ status: 'Completed', completed_at: new Date().toISOString() }).eq('id', itemId);
   };
 
   const addWorkItem = async (itemData) => {
