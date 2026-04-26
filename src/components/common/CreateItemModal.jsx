@@ -9,10 +9,12 @@ export default function CreateItemModal({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  const selfOnly = currentUser?.role === 'Assignee';
+
   // Task form
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDesc, setTaskDesc] = useState('');
-  const [taskAssignee, setTaskAssignee] = useState('');
+  const [taskAssignee, setTaskAssignee] = useState(selfOnly ? (currentUser?.id || '') : '');
   const [taskPriority, setTaskPriority] = useState('Medium');
   const [taskDate, setTaskDate] = useState('');
   const [taskEstMins, setTaskEstMins] = useState('');
@@ -25,7 +27,7 @@ export default function CreateItemModal({ onClose }) {
   // Plan form
   const [planTitle, setPlanTitle] = useState('');
   const [planDesc, setPlanDesc] = useState('');
-  const [planAssignee, setPlanAssignee] = useState('');
+  const [planAssignee, setPlanAssignee] = useState(selfOnly ? (currentUser?.id || '') : '');
   const [planPriority, setPlanPriority] = useState('Medium');
   const [planEstMins, setPlanEstMins] = useState('');
 
@@ -34,7 +36,15 @@ export default function CreateItemModal({ onClose }) {
   const [notifForm, setNotifForm] = useState({ message: '', event_date: '', event_time: '', staff_group: 'Both' });
 
   const safeProfiles = profiles || [];
-  const assigneeList = safeProfiles.filter(p => p.role !== 'Admin');
+  const assigneeList = (() => {
+    if (currentUser?.role === 'Assignee') {
+      return safeProfiles.filter(p => p.id === currentUser.id);
+    }
+    if (currentUser?.role === 'Manager') {
+      return safeProfiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
+    }
+    return safeProfiles.filter(p => p.role !== 'Admin');
+  })();
 
   const buildRecurrenceRule = () => {
     if (recurrenceType === 'daily') return { type: 'daily' };

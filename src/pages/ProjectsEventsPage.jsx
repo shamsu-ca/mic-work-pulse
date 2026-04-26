@@ -858,9 +858,12 @@ export default function ProjectsEventsPage() {
                         </td>
                         {canEdit && (
                           <td className="px-4 py-3 text-right">
-                            <button onClick={() => openEdit(item)} className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 ml-auto">
-                              <span className="material-symbols-outlined text-[13px]">edit</span>Edit
-                            </button>
+                            <div className="flex items-center gap-2 justify-end">
+                              <button onClick={() => openEdit(item)} className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[13px]">edit</span>Edit
+                              </button>
+                              <DeleteBtn onDelete={() => deleteWorkItem(item.id)} />
+                            </div>
                           </td>
                         )}
                       </tr>
