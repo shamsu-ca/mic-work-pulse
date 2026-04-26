@@ -136,12 +136,10 @@ export function SupabaseDataProvider({ children, session }) {
   const checkAndSpawnRecurringTasks = async (cachedItems) => {
     const today = new Date().toISOString().split('T')[0];
     const templates = cachedItems.filter(w => w.is_recurring && w.is_active);
-    const newInstancesToInsert = [];
-    const templatesToUpdate = [];
+    const candidateTemplates = [];
 
     for (const template of templates) {
       if (!template.recurrence_rule) continue;
-
       const lastGenerated = template.last_generated_at;
       if (lastGenerated === today) continue;
 
@@ -169,43 +167,59 @@ export function SupabaseDataProvider({ children, session }) {
         }
       }
 
-      if (shouldGenerate) {
-        newInstancesToInsert.push({
-          title: template.title,
-          description: template.description,
-          type: template.type,
-          assignee_id: template.assignee_id,
-          container_id: template.container_id,
-          estimated_hours: template.estimated_hours,
-          priority: template.priority,
-          status: 'Assigned',
-          expected_date: today,
-          is_recurring: false,
-        });
-        templatesToUpdate.push(template.id);
-      }
+      if (shouldGenerate) candidateTemplates.push(template);
     }
 
-    if (newInstancesToInsert.length > 0) {
-      const { data, error } = await supabase.from('work_items').insert(newInstancesToInsert).select();
-      if (error) {
-        console.error('Failed to spawn recurring tasks:', error);
-        return [];
-      }
-      for (const tid of templatesToUpdate) {
-        await supabase.from('work_items').update({ last_generated_at: today }).eq('id', tid);
-      }
-      return data;
+    if (candidateTemplates.length === 0) return [];
+
+    // Atomic lock: update last_generated_at ONLY for rows where it is not already today.
+    // The first concurrent call claims the rows; any second call finds 0 rows updated and exits.
+    const candidateIds = candidateTemplates.map(t => t.id);
+    const { data: claimed } = await supabase
+      .from('work_items')
+      .update({ last_generated_at: today })
+      .in('id', candidateIds)
+      .or(`last_generated_at.is.null,last_generated_at.neq.${today}`)
+      .select('id');
+
+    if (!claimed || claimed.length === 0) return [];
+
+    const claimedIds = new Set(claimed.map(t => t.id));
+
+    const toInsert = candidateTemplates
+      .filter(t => claimedIds.has(t.id))
+      .map(t => ({
+        title: t.title,
+        description: t.description,
+        type: t.type,
+        assignee_id: t.assignee_id,
+        container_id: t.container_id,
+        estimated_hours: t.estimated_hours,
+        priority: t.priority,
+        status: 'Assigned',
+        expected_date: today,
+        is_recurring: false,
+      }));
+
+    if (toInsert.length === 0) return [];
+
+    const { data, error } = await supabase.from('work_items').insert(toInsert).select();
+    if (error) {
+      console.error('Failed to spawn recurring tasks:', error);
+      return [];
     }
-    return [];
+    return data;
   };
 
   const startWorkItem = async (itemId) => {
+    setWorkItems(prev => prev.map(w => w.id === itemId ? { ...w, status: 'Ongoing', updated_at: new Date().toISOString() } : w));
     await supabase.from('work_items').update({ status: 'Ongoing' }).eq('id', itemId);
   };
 
   const completeWorkItem = async (itemId) => {
-    await supabase.from('work_items').update({ status: 'Completed', completed_at: new Date().toISOString() }).eq('id', itemId);
+    const now = new Date().toISOString();
+    setWorkItems(prev => prev.map(w => w.id === itemId ? { ...w, status: 'Completed', completed_at: now, updated_at: now } : w));
+    await supabase.from('work_items').update({ status: 'Completed', completed_at: now }).eq('id', itemId);
   };
 
   const addWorkItem = async (itemData) => {
@@ -215,14 +229,22 @@ export function SupabaseDataProvider({ children, session }) {
   };
 
   const updateWorkItem = async (id, updates) => {
+    setWorkItems(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w));
     const { data, error } = await supabase.from('work_items').update(updates).eq('id', id).select();
-    if (error) console.error('Error updating work item:', error);
+    if (error) {
+      console.error('Error updating work item:', error);
+      supabase.from('work_items').select('*').then(({ data: d }) => { if (d) setWorkItems(d); });
+    }
     return { data, error };
   };
 
   const deleteWorkItem = async (id) => {
+    setWorkItems(prev => prev.filter(w => w.id !== id));
     const { error } = await supabase.from('work_items').delete().eq('id', id);
-    if (error) console.error('Error deleting work item:', error);
+    if (error) {
+      console.error('Error deleting work item:', error);
+      supabase.from('work_items').select('*').then(({ data: d }) => { if (d) setWorkItems(d); });
+    }
     return { error };
   };
 
@@ -379,9 +401,23 @@ export function SupabaseDataProvider({ children, session }) {
     return { data, error };
   };
 
+  const updateAnnouncement = async (id, updates) => {
+    setAnnouncements(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+    const { data, error } = await supabase.from('announcements').update(updates).eq('id', id).select();
+    if (error) {
+      console.error('Error updating announcement:', error);
+      supabase.from('announcements').select('*').order('event_date', { ascending: true }).then(({ data: d }) => { if (d) setAnnouncements(d); });
+    }
+    return { data, error };
+  };
+
   const deleteAnnouncement = async (id) => {
+    setAnnouncements(prev => prev.filter(a => a.id !== id));
     const { error } = await supabase.from('announcements').delete().eq('id', id);
-    if (error) console.error('Error deleting announcement:', error);
+    if (error) {
+      console.error('Error deleting announcement:', error);
+      supabase.from('announcements').select('*').order('event_date', { ascending: true }).then(({ data: d }) => { if (d) setAnnouncements(d); });
+    }
     return { error };
   };
 
@@ -405,6 +441,7 @@ export function SupabaseDataProvider({ children, session }) {
       getActiveAnnouncements,
       getDynamicNotificationText,
       addAnnouncement,
+      updateAnnouncement,
       deleteAnnouncement,
       startWorkItem,
       completeWorkItem,

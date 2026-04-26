@@ -33,7 +33,6 @@ const getResolutionStatus = (item) => {
   return { label: `Completed Late (${diff}d)`, cls: 'bg-orange-100 text-orange-700' };
 };
 
-const isWithin30Min = (createdAt) => createdAt ? (Date.now() - new Date(createdAt).getTime()) < 30 * 60 * 1000 : false;
 
 function DeleteBtn({ onConfirm }) {
   const [confirming, setConfirming] = useState(false);
@@ -126,7 +125,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
               <span className="material-symbols-outlined text-[14px]">check_circle</span> Complete
             </button>
           )}
-          {currentUser?.role === 'Admin' && isWithin30Min(item.created_at) && (
+          {currentUser?.role === 'Admin' && (
             <button onClick={onEdit} className="flex items-center gap-1.5 bg-white border border-outline-variant/40 text-on-surface-variant text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-surface-container">
               <span className="material-symbols-outlined text-[14px]">edit</span> Edit
             </button>
@@ -356,7 +355,7 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
 function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, showAssignee }) {
   const [expandedId, setExpandedId] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
-  const colCount = showAssignee ? 5 : 4;
+  const colCount = showAssignee ? 4 : 3;
 
   const renderRow = (item, isChild = false) => {
     const isExpanded = expandedId === item.id;
@@ -392,9 +391,6 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
               </div>
             </td>
           )}
-          <td className="px-2 py-3">
-            {!isChild && <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded ${getStatusBadgeClass(ds)}`}>{ds}</span>}
-          </td>
           <td className="px-2 py-3 text-xs text-on-surface-variant font-medium text-right pr-4">
             {item.expected_date ?? '—'}
           </td>
@@ -424,7 +420,6 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
                 <th className="w-8 px-3 py-3" />
                 <th className="px-2 py-3 text-left">Subject</th>
                 {showAssignee && <th className="px-2 py-3 text-left">Assignee</th>}
-                <th className="px-2 py-3 text-left">Status</th>
                 <th className="px-2 py-3 text-right pr-4">Due</th>
               </tr>
             </thead>
@@ -604,7 +599,7 @@ export default function AllTasksPage() {
   const todayItems = applyFilters(allBase.filter(w => {
     if (w.status === 'Completed') return false;
     if (w.status === 'Ongoing')   return true;
-    if (!w.expected_date)         return false;
+    if (!w.expected_date)         return true;  // no date → Assigned group
     return w.expected_date <= today;
   }));
 
