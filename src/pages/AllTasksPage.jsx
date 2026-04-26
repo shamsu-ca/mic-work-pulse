@@ -116,7 +116,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
 
       {showActions && (
         <div className="flex gap-2 flex-wrap pt-1">
-          {currentUser?.role === 'Admin' && item.status === 'Assigned' && (
+          {item.status === 'Assigned' && (
             <button onClick={() => onStart(item.id)} className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90">
               <span className="material-symbols-outlined text-[14px]">play_arrow</span> Start
             </button>

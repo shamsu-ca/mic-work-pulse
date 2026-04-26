@@ -1,6 +1,17 @@
 /**
  * statusUtils.js — Status computation and phase-based counting.
  *
+ * STATUS FLOW: Assigned → Ongoing → Completed
+ *
+ * DISPLAY STATUS RULES:
+ * - Completed : status === 'Completed'
+ * - Overdue   : today > due_date AND status !== 'Completed'
+ * - Ongoing   : status === 'Ongoing'
+ * - Not Started: status === 'Assigned' AND today >= start_trigger AND today <= due_date
+ *     Task / Subtask     → start_trigger = due_date - 1 day
+ *     Milestone/Phase/Checklist → start_trigger = due_date
+ * - Assigned  : status === 'Assigned' AND (no due_date OR today < start_trigger)
+ *
  * COUNTING RULES (authoritative):
  * - Subtask, Checklist under ACTIVE phase, Milestone → count
  * - Task without children → count
@@ -10,11 +21,22 @@
  * PHASE ACTIVATION:
  * - Phase is ACTIVE when: phase.expected_date ≤ today AND phase.status !== 'Completed'
  * - Template phases (no date) are never auto-activated
- *
- * STATUS PRIORITY: Overdue > Not Started > Ongoing > Assigned > Completed
  */
 
 const todayDateStr = () => new Date().toISOString().split('T')[0];
+
+/**
+ * Returns the YYYY-MM-DD string on which an Assigned item enters "Not Started".
+ * Task/Subtask → one day before due. Everything else → same day as due.
+ * Returns null when there is no due date (item stays "Assigned" indefinitely).
+ */
+function getNotStartedTrigger(item) {
+  if (!item.expected_date) return null;
+  const type = item.type?.toLowerCase();
+  const due = new Date(item.expected_date + 'T00:00:00');
+  if (type === 'task' || type === 'subtask') due.setDate(due.getDate() - 1);
+  return due.toISOString().split('T')[0];
+}
 
 /** True if this phase item is currently active (date reached, not completed). */
 export function isPhaseActive(phase) {
@@ -37,7 +59,7 @@ export function isOverdue(item) {
 
 /**
  * Display status for an item.
- * Priority: Completed > Overdue > Ongoing > Assigned/Not-Started
+ * Priority: Completed > Overdue > Ongoing > Not Started > Assigned
  */
 export function getDisplayStatus(item) {
   if (!item) return '';
@@ -45,11 +67,11 @@ export function getDisplayStatus(item) {
   if (isOverdue(item)) return 'Overdue';
   if (item.status === 'Ongoing') return 'Ongoing';
   if (item.status === 'Assigned') {
-    const today = todayDateStr();
-    const createdDay = item.created_at ? item.created_at.split('T')[0] : null;
-    return createdDay === today ? 'Assigned' : 'Not Started';
+    const trigger = getNotStartedTrigger(item);
+    if (!trigger) return 'Assigned';
+    return todayDateStr() >= trigger ? 'Not Started' : 'Assigned';
   }
-  return item.status || 'Not Started';
+  return item.status || 'Assigned';
 }
 
 /** CSS badge classes per display status. */

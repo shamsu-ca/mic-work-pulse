@@ -148,7 +148,7 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
 }
 
 export default function AssigneeDashboard() {
-  const { currentUser, workItems, containers, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
+  const { currentUser, workItems, containers, startWorkItem, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
 
   const safeWorkItems = workItems   || [];
   const safeContainers = containers || [];
@@ -214,6 +214,8 @@ export default function AssigneeDashboard() {
           }}
           items={overdueItems}
           count={overdueItems.length}
+          onAction={startWorkItem}
+          actionLabel="START"
           emptyMsg="Zero overdue items. Great work!"
         />
         <AlertCard
@@ -229,6 +231,8 @@ export default function AssigneeDashboard() {
           }}
           items={notStartedItems}
           count={notStartedItems.length}
+          onAction={startWorkItem}
+          actionLabel="START"
           emptyMsg="All assigned items are ongoing."
         />
       </div>
@@ -261,7 +265,7 @@ export default function AssigneeDashboard() {
               <span className="bg-white border border-outline-variant/50 text-on-surface-variant rounded-full text-[10px] px-2 py-0.5">{assignedItems.length}</span>
             </h3>
             {assignedItems.map(w => (
-              <WorkItemCard key={w.id} item={w} {...cardProps} />
+              <WorkItemCard key={w.id} item={w} {...cardProps} showStart onStart={startWorkItem} />
             ))}
             {assignedItems.length === 0 && (
               <div className="text-center p-6 border-2 border-dashed border-outline-variant/40 rounded-lg text-outline text-xs font-medium">No new assignments.</div>

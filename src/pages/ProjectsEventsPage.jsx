@@ -199,13 +199,13 @@ export default function ProjectsEventsPage() {
   // Standalone tasks (no container) with their subtasks
   const standaloneTasks = safeWorkItems.filter(w =>
     !w.container_id && !w.in_planning_pool && !w.is_recurring && w.type === 'Task' &&
-    !w.parent_id && (currentUser?.role === 'Assignee' ? w.assignee_id === currentUser.id : true)
+    !w.parent_id && (currentUser?.role === 'Assignee' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
   );
   const getSubItems = (pid) => safeWorkItems.filter(w => w.parent_id === pid);
 
   // Recurring templates
   const recurringTemplates = safeWorkItems.filter(w => w.is_recurring &&
-    (currentUser?.role === 'Assignee' ? w.assignee_id === currentUser.id : true)
+    (currentUser?.role === 'Assignee' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
   );
 
   // ── Container actions ──────────────────────────────────────────────────────
@@ -329,7 +329,7 @@ export default function ProjectsEventsPage() {
                   {showStatus && <td className="px-3 py-2.5 text-xs text-on-surface-variant">{m.expected_date ?? '—'}</td>}
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {showStatus && isAdmin && m.status === 'Assigned' && (
+                      {showStatus && m.status === 'Assigned' && (isAdmin || m.assignee_id === currentUser?.id) && (
                         <button onClick={() => updateWorkItem(m.id, { status: 'Ongoing' })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
@@ -408,7 +408,7 @@ export default function ProjectsEventsPage() {
                   {showStatus && <td className="px-3 py-2">{statusBadge(ds)}</td>}
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {showStatus && isAdmin && item.status === 'Assigned' && (
+                      {showStatus && item.status === 'Assigned' && (isAdmin || item.assignee_id === currentUser?.id) && (
                         <button onClick={() => updateWorkItem(item.id, { status: 'Ongoing' })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
@@ -652,7 +652,7 @@ export default function ProjectsEventsPage() {
                   <td className="px-3 py-2.5 text-xs text-on-surface-variant">{task.expected_date ?? '—'}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1 justify-end flex-wrap">
-                      {isAdmin && task.status === 'Assigned' && (
+                      {task.status === 'Assigned' && (isAdmin || task.assignee_id === currentUser?.id) && (
                         <button onClick={() => updateWorkItem(task.id, { status: 'Ongoing' })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
@@ -1030,7 +1030,7 @@ export default function ProjectsEventsPage() {
           <StaffToggle />
         </div>
 
-        {typeTab !== 'Tasks' && (
+        {typeTab !== 'Tasks' && currentUser?.role !== 'Assignee' && (
           <div className="flex items-center gap-3">
             <div className="flex bg-surface-container p-1 rounded-xl gap-0.5">
               {['Active', 'Saved'].map(m => (
