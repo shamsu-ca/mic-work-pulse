@@ -216,10 +216,11 @@ export function SupabaseDataProvider({ children, session }) {
     await supabase.from('work_items').update({ status: 'Ongoing' }).eq('id', itemId);
   };
 
-  const completeWorkItem = async (itemId) => {
+  const completeWorkItem = async (itemId, note = '') => {
     const now = new Date().toISOString();
-    setWorkItems(prev => prev.map(w => w.id === itemId ? { ...w, status: 'Completed', completed_at: now, updated_at: now } : w));
-    await supabase.from('work_items').update({ status: 'Completed', completed_at: now }).eq('id', itemId);
+    const updates = { status: 'Completed', completed_at: now, completion_note: note || null };
+    setWorkItems(prev => prev.map(w => w.id === itemId ? { ...w, ...updates, updated_at: now } : w));
+    await supabase.from('work_items').update(updates).eq('id', itemId);
   };
 
   const addWorkItem = async (itemData) => {

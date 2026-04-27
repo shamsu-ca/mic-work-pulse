@@ -16,7 +16,7 @@ export default function CreateItemModal({ onClose }) {
   const [taskDesc, setTaskDesc] = useState('');
   const [taskAssignee, setTaskAssignee] = useState(selfOnly ? (currentUser?.id || '') : '');
   const [taskPriority, setTaskPriority] = useState('Medium');
-  const [taskDate, setTaskDate] = useState('');
+  const [taskDate, setTaskDate] = useState(new Date().toISOString().split('T')[0]);
   const [taskEstMins, setTaskEstMins] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState('daily');

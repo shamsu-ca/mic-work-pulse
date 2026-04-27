@@ -1,13 +1,36 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
-import { getDisplayStatus, getStatusBadgeClass, isOverdue, getActionableUnits } from '../../lib/statusUtils';
+import { isOverdue, getActionableUnits } from '../../lib/statusUtils';
 
 // ─── Expandable work item card for pipeline ───────────────────────────────────
 function WorkItemCard({ item, containers, workItems, showStart = false, showComplete = false, onStart, onComplete }) {
+  const { addWorkItem, updateWorkItem } = useDataContext();
   const [expanded, setExpanded] = useState(false);
-  const displayStatus = getDisplayStatus(item);
+  const [addingSubtask, setAddingSubtask] = useState(false);
+  const [stTitle, setStTitle] = useState('');
+  const [stDate, setStDate]   = useState('');
+  const [stSaving, setStSaving] = useState(false);
+
   const container = item.container_id ? (containers || []).find(c => c.id === item.container_id) : null;
   const parentItem = item.parent_id   ? (workItems  || []).find(w => w.id === item.parent_id)   : null;
+
+  const handleAddSubtask = async (e) => {
+    e.preventDefault();
+    if (!stTitle.trim()) return;
+    setStSaving(true);
+    await addWorkItem({
+      title: stTitle.trim(),
+      expected_date: stDate || null,
+      assignee_id: item.assignee_id || null,
+      status: 'Assigned',
+      type: 'Subtask',
+      parent_id: item.id,
+    });
+    if (stDate && !item.expected_date) {
+      await updateWorkItem(item.id, { expected_date: stDate });
+    }
+    setStTitle(''); setStDate(''); setStSaving(false); setAddingSubtask(false);
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-outline-variant/40 overflow-hidden">
@@ -79,6 +102,40 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
               </button>
             )}
           </div>
+          {item.type === 'Task' && item.status !== 'Completed' && (
+            <div className="border-t border-surface-container-high pt-2 mt-1" onClick={e => e.stopPropagation()}>
+              {!addingSubtask ? (
+                <button
+                  className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline"
+                  onClick={() => setAddingSubtask(true)}
+                >
+                  <span className="material-symbols-outlined text-[13px]">add_circle</span> Add Subtask
+                </button>
+              ) : (
+                <form onSubmit={handleAddSubtask} className="flex flex-col gap-1.5">
+                  <input
+                    autoFocus required
+                    className="border border-outline-variant/50 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full"
+                    placeholder="Subtask title…"
+                    value={stTitle} onChange={e => setStTitle(e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    className="border border-outline-variant/50 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full"
+                    value={stDate} onChange={e => setStDate(e.target.value)}
+                  />
+                  <div className="flex gap-1.5">
+                    <button type="submit" disabled={stSaving || !stTitle.trim()} className="flex-1 py-1 text-[11px] font-bold bg-primary text-white rounded-lg hover:opacity-90 disabled:opacity-50">
+                      {stSaving ? '…' : 'Add'}
+                    </button>
+                    <button type="button" onClick={() => { setAddingSubtask(false); setStTitle(''); setStDate(''); }} className="flex-1 py-1 text-[11px] font-bold border border-outline-variant/40 text-on-surface-variant rounded-lg hover:bg-surface-container">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -154,7 +211,7 @@ export default function AssigneeDashboard() {
   const safeContainers = containers || [];
   const unreadNotifs  = getUnreadNotifications() || [];
 
-  const myItemsAll   = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
+  const myItemsAll   = safeWorkItems.filter(w => w.assignee_id === currentUser.id && !w.is_recurring);
   const myItems      = getActionableUnits(myItemsAll);
 
   const overdueItems    = myItems.filter(w => isOverdue(w) && w.status !== 'Completed');

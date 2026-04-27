@@ -170,6 +170,11 @@ export default function ProjectsEventsPage() {
   const safeWorkItems  = workItems  ?? [];
   const safeProfiles   = profiles   ?? [];
   const isAdmin        = currentUser?.role === 'Admin';
+  const canManageContainer = (containerId) => {
+    if (isAdmin) return true;
+    const c = safeContainers.find(con => con.id === containerId);
+    return c?.created_by === currentUser?.id;
+  };
   const filteredProfiles = safeProfiles.filter(p =>
     p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup
   );
@@ -253,6 +258,12 @@ export default function ProjectsEventsPage() {
     if (!milestoneForm.title.trim() || !milestoneTarget) return;
     setSubmitting(true);
     await addWorkItem({ title: milestoneForm.title.trim(), type: 'Milestone', container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null });
+    if (milestoneForm.date) {
+      const container = safeContainers.find(c => c.id === milestoneTarget);
+      if (container && !container.expected_date) {
+        await updateContainer(milestoneTarget, { expected_date: milestoneForm.date });
+      }
+    }
     setSubmitting(false); setMilestoneTarget(null); setMilestoneForm({ title: '', date: '' });
   };
 
@@ -290,6 +301,7 @@ export default function ProjectsEventsPage() {
 
   // ── Milestone table (shared between active & saved) ────────────────────────
   function MilestoneTable({ milestones, showStatus, containerId }) {
+    const canManage = canManageContainer(containerId);
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -347,10 +359,10 @@ export default function ProjectsEventsPage() {
                           <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                         </button>
                       )}
-                      {isAdmin && <button onClick={() => setEditingItem(m)} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+                      {canManage && <button onClick={() => setEditingItem(m)} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
                         <span className="material-symbols-outlined text-[15px]">edit</span>
                       </button>}
-                      {isAdmin && <DeleteBtn onDelete={() => deleteWorkItem(m.id)} size="xs" />}
+                      {canManage && <DeleteBtn onDelete={() => deleteWorkItem(m.id)} size="xs" />}
                     </div>
                   </td>
                 </tr>
@@ -358,7 +370,7 @@ export default function ProjectsEventsPage() {
             })}
           </tbody>
         </table>
-        {isAdmin && (
+        {canManage && (
           <div className="px-3 py-2 border-t border-surface-container-low">
             <button onClick={() => setMilestoneTarget(containerId)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
               <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Milestone
@@ -503,7 +515,7 @@ export default function ProjectsEventsPage() {
 
         {isExpanded && (
           <div className="border-t border-surface-container-high">
-            {isAdmin && (
+            {canManageContainer(c.id) && (
               <div className="px-5 py-3 border-b border-surface-container-low flex items-center gap-2" onClick={e => e.stopPropagation()}>
                 {isEditingName ? (
                   <>
@@ -514,9 +526,11 @@ export default function ProjectsEventsPage() {
                     <button onClick={() => setEditNameId(null)} className="text-xs font-bold text-on-surface-variant hover:underline">Cancel</button>
                   </>
                 ) : isFromTemplate ? (
-                  <button onClick={() => setModeTab('Saved')} className="text-xs text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[14px]">edit</span> Edit in Saved Templates
-                  </button>
+                  isAdmin && (
+                    <button onClick={() => setModeTab('Saved')} className="text-xs text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">edit</span> Edit in Saved Templates
+                    </button>
+                  )
                 ) : (
                   <button onClick={() => { setEditNameId(c.id); setEditNameVal(cName(c)); }} className="text-xs text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">edit</span> Edit Name
@@ -606,6 +620,31 @@ export default function ProjectsEventsPage() {
 
   // ── Tasks tab — standalone tasks with subtasks flat ───────────────────────
   function TasksActive() {
+    const [addingSubFor, setAddingSubFor] = useState(null);
+    const [stTitle, setStTitle] = useState('');
+    const [stDate,  setStDate]  = useState('');
+    const [stAssignee, setStAssignee] = useState('');
+    const [stSaving, setStSaving] = useState(false);
+
+    const openSubForm = (taskId) => { setAddingSubFor(taskId); setStTitle(''); setStDate(''); setStAssignee(''); };
+
+    const handleAddSubtask = async (task) => {
+      if (!stTitle.trim()) return;
+      setStSaving(true);
+      await addWorkItem({
+        title: stTitle.trim(),
+        expected_date: stDate || null,
+        assignee_id: stAssignee || task.assignee_id || null,
+        status: 'Assigned',
+        type: 'Subtask',
+        parent_id: task.id,
+      });
+      if (stDate && !task.expected_date) {
+        await updateWorkItem(task.id, { expected_date: stDate });
+      }
+      setStSaving(false); setAddingSubFor(null);
+    };
+
     const sorted = sortByStatus(standaloneTasks);
     if (sorted.length === 0) return (
       <div className="bg-white rounded-2xl border border-outline-variant/30 px-6 py-16 text-center">
@@ -670,6 +709,12 @@ export default function ProjectsEventsPage() {
                           <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                         </button>
                       )}
+                      {task.status !== 'Completed' && (
+                        <button onClick={() => addingSubFor === task.id ? setAddingSubFor(null) : openSubForm(task.id)}
+                          className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                          <span className="material-symbols-outlined text-[11px]">add</span>Sub
+                        </button>
+                      )}
                       {isAdmin && <DeleteBtn onDelete={() => deleteWorkItem(task.id)} size="xs" />}
                     </div>
                   </td>
@@ -711,6 +756,39 @@ export default function ProjectsEventsPage() {
                     </tr>
                   );
                 }),
+                // Inline subtask form row
+                addingSubFor === task.id && (
+                  <tr key={`sub-form-${task.id}`} className="bg-primary/5 border-l-2 border-primary/40">
+                    <td className="px-4 py-2 pl-10" colSpan={5}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input
+                          autoFocus
+                          className="border border-outline-variant/50 rounded-lg px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 flex-1 min-w-[160px]"
+                          placeholder="Subtask title…"
+                          value={stTitle} onChange={e => setStTitle(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleAddSubtask(task)}
+                        />
+                        {!isAdmin ? null : (
+                          <select className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            value={stAssignee} onChange={e => setStAssignee(e.target.value)}>
+                            <option value="">Same assignee</option>
+                            {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        )}
+                        <input type="date" className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          value={stDate} onChange={e => setStDate(e.target.value)} />
+                        <button onClick={() => handleAddSubtask(task)} disabled={stSaving || !stTitle.trim()}
+                          className="text-[10px] font-bold bg-primary text-white px-2.5 py-1 rounded-lg hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
+                          {stSaving ? '…' : 'Add Subtask'}
+                        </button>
+                        <button onClick={() => setAddingSubFor(null)}
+                          className="text-[10px] font-bold border border-outline-variant/40 text-on-surface-variant px-2 py-1 rounded-lg hover:bg-surface-container whitespace-nowrap">
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ),
               ];
             })}
           </tbody>
@@ -1171,9 +1249,8 @@ export default function ProjectsEventsPage() {
         <EditItemModal item={editingItem} profiles={safeProfiles} onClose={() => setEditingItem(null)} onSave={updateWorkItem} />
       )}
 
-      {/* FAB: Projects (create) + Events Saved (create template) */}
-      {(typeTab === 'Projects' || (typeTab === 'Events' && modeTab === 'Saved')) &&
-       !(currentUser?.role === 'Assignee') && (
+      {/* FAB: Projects (all roles) + Events Saved templates (admin only) */}
+      {(typeTab === 'Projects' || (typeTab === 'Events' && modeTab === 'Saved' && isAdmin)) && (
         <div className="fixed bottom-6 right-6 z-40">
           <button onClick={() => setIsCreateOpen(true)}
             className="w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center hover:opacity-90 transition-all">
