@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
-import { isOverdue, getActionableUnits } from '../../lib/statusUtils';
+import { getDisplayStatus, isOverdue, getActionableUnits } from '../../lib/statusUtils';
 
 // ─── Expandable work item card for pipeline ───────────────────────────────────
 function WorkItemCard({ item, containers, workItems, showStart = false, showComplete = false, onStart, onComplete }) {
