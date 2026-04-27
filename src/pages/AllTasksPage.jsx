@@ -647,6 +647,7 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser, cre
         <FollowUpModal
           completedItem={followUpTarget}
           profiles={profiles || []}
+          currentUser={currentUser}
           onCancel={() => setFollowUpTarget(null)}
           onConfirm={async (data) => {
             await createFollowUpTask(followUpTarget.id, data);
@@ -977,6 +978,7 @@ export default function AllTasksPage() {
         <CompletionPanel
           item={safeWorkItems.find(w => w.id === pendingCompleteId)}
           profiles={safeProfiles}
+          currentUser={currentUser}
           onConfirm={handleCompleteConfirm}
           onCancel={() => setPendingCompleteId(null)}
         />

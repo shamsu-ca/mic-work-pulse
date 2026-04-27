@@ -12,7 +12,7 @@ function getResolutionInfo(item) {
   return { label: `Late by ${diff}d`, color: 'bg-red-100 text-red-800' };
 }
 
-export default function CompletionPanel({ item, profiles = [], onConfirm, onCancel }) {
+export default function CompletionPanel({ item, profiles = [], currentUser, onConfirm, onCancel }) {
   const [note, setNote] = useState('');
   const [selectedTag, setSelectedTag] = useState(null);
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
@@ -24,6 +24,12 @@ export default function CompletionPanel({ item, profiles = [], onConfirm, onCanc
   const [saving, setSaving] = useState(false);
 
   const resolution = getResolutionInfo(item);
+
+  const followUpAssigneeOptions = (() => {
+    if (currentUser?.role === 'Assignee') return profiles.filter(p => p.id === currentUser.id);
+    if (currentUser?.role === 'Manager') return profiles.filter(p => p.manager === currentUser.name);
+    return profiles;
+  })();
 
   const handleConfirm = async () => {
     setSaving(true);
@@ -109,14 +115,14 @@ export default function CompletionPanel({ item, profiles = [], onConfirm, onCanc
                   onChange={e => setFollowUpForm(p => ({ ...p, dueDate: e.target.value }))}
                   className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-                {profiles.length > 0 && (
+                {followUpAssigneeOptions.length > 0 && (
                   <select
                     value={followUpForm.assigneeId}
                     onChange={e => setFollowUpForm(p => ({ ...p, assigneeId: e.target.value }))}
                     className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   >
                     <option value="">Unassigned</option>
-                    {profiles.map(p => (
+                    {followUpAssigneeOptions.map(p => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>

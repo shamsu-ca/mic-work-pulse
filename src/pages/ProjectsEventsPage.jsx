@@ -819,9 +819,17 @@ export default function ProjectsEventsPage() {
     const [subForm, setSubForm]           = useState({ title: '', assignee_id: '', date: '' });
     const [subSaving, setSubSaving]       = useState(false);
     const [editingSubItem, setEditingSubItem] = useState(null);
+    const [recStaffFilter, setRecStaffFilter] = useState('');
+    const [recTypeFilter, setRecTypeFilter]   = useState('');
 
     const canEdit = isAdmin || currentUser?.role === 'Manager';
     const getTplSubtasks = (tplId) => safeWorkItems.filter(w => w.parent_id === tplId && w.type === 'Subtask');
+
+    const displayedTemplates = recurringTemplates.filter(item => {
+      if (recStaffFilter && item.assignee_id !== recStaffFilter) return false;
+      if (recTypeFilter && item.recurrence_rule?.type !== recTypeFilter) return false;
+      return true;
+    });
 
     const handleAddSub = async (tplId) => {
       if (!subForm.title.trim()) return;
@@ -928,6 +936,30 @@ export default function ProjectsEventsPage() {
           <EditItemModal item={editingSubItem} profiles={safeProfiles}
             onClose={() => setEditingSubItem(null)} onSave={updateWorkItem} />
         )}
+        {(isAdmin || currentUser?.role === 'Manager') && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <select value={recStaffFilter} onChange={e => setRecStaffFilter(e.target.value)}
+              className="border border-outline-variant/40 rounded-xl px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-primary/30">
+              <option value="">All Staff</option>
+              {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <select value={recTypeFilter} onChange={e => setRecTypeFilter(e.target.value)}
+              className="border border-outline-variant/40 rounded-xl px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-primary/30">
+              <option value="">All Recurrences</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="every_x_days">Every X Days</option>
+              <option value="every_x_months">Every X Months</option>
+            </select>
+            {(recStaffFilter || recTypeFilter) && (
+              <button onClick={() => { setRecStaffFilter(''); setRecTypeFilter(''); }}
+                className="flex items-center gap-1 text-xs font-bold text-on-surface-variant hover:text-error transition-colors">
+                <span className="material-symbols-outlined text-[13px]">close</span>Clear
+              </button>
+            )}
+          </div>
+        )}
         <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -945,14 +977,16 @@ export default function ProjectsEventsPage() {
               <tbody className="divide-y divide-surface-container-low">
                 {recurringTemplates.length === 0
                   ? <tr><td colSpan={canEdit ? 7 : 6} className="px-6 py-16 text-center text-on-surface-variant font-bold text-sm">No recurring tasks configured.</td></tr>
-                  : recurringTemplates.map(item => {
+                  : displayedTemplates.length === 0
+                  ? <tr><td colSpan={canEdit ? 7 : 6} className="px-6 py-10 text-center text-on-surface-variant text-sm">No tasks match the selected filters.</td></tr>
+                  : displayedTemplates.map(item => {
                     const aName    = safeProfiles.find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
                     const initials = getInitials(aName);
                     const isExpanded = expandedTplId === item.id;
                     const subs = getTplSubtasks(item.id);
                     const colSpan = canEdit ? 7 : 6;
                     const canManageSubs = canEdit || item.assignee_id === currentUser?.id;
-                    return (
+                    return [
                       <tr key={item.id} className={`transition-colors cursor-pointer ${isExpanded ? 'bg-surface-container-low/60' : 'hover:bg-surface-container-low/40'}`}
                         onClick={() => setExpandedTplId(isExpanded ? null : item.id)}>
                         <td className="w-8 px-3 py-3">
@@ -983,6 +1017,12 @@ export default function ProjectsEventsPage() {
                         {canEdit && (
                           <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center gap-2 justify-end">
+                              {canManageSubs && (
+                                <button onClick={() => { setExpandedTplId(item.id); setAddingSubFor(item.id); }}
+                                  className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[13px]">add</span>Sub
+                                </button>
+                              )}
                               <button onClick={() => openEdit(item)} className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all flex items-center gap-1">
                                 <span className="material-symbols-outlined text-[13px]">edit</span>Edit
                               </button>
@@ -990,92 +1030,87 @@ export default function ProjectsEventsPage() {
                             </div>
                           </td>
                         )}
-                      </tr>
-                    );
+                      </tr>,
+                      isExpanded && (
+                        <tr key={`exp-${item.id}`}>
+                          <td colSpan={colSpan} className="px-0 py-0 border-t border-primary/10">
+                            <div className="bg-surface-container-low/30 px-6 py-3 flex flex-col gap-2">
+                              {subs.length > 0 && (
+                                <table className="w-full text-left text-xs">
+                                  <thead className="text-[9px] uppercase font-bold text-on-surface-variant border-b border-outline-variant/20">
+                                    <tr>
+                                      <th className="py-1 pr-3">Title</th>
+                                      <th className="py-1 pr-3">Assignee</th>
+                                      <th className="py-1 pr-3">Due</th>
+                                      {canManageSubs && <th className="py-1 text-right">Actions</th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-outline-variant/10">
+                                    {subs.map(sub => {
+                                      const subName = safeProfiles.find(p => p.id === sub.assignee_id)?.name ?? 'Unassigned';
+                                      return (
+                                        <tr key={sub.id} className="group">
+                                          <td className="py-1.5 pr-3 font-medium text-on-surface">{sub.title}</td>
+                                          <td className="py-1.5 pr-3 text-on-surface-variant">{subName.split(' ')[0]}</td>
+                                          <td className="py-1.5 pr-3 text-on-surface-variant">{sub.expected_date ?? '—'}</td>
+                                          {canManageSubs && (
+                                            <td className="py-1.5 text-right">
+                                              <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100">
+                                                <button onClick={() => setEditingSubItem(sub)} className="text-on-surface-variant hover:text-primary transition-colors">
+                                                  <span className="material-symbols-outlined text-[14px]">edit</span>
+                                                </button>
+                                                <DeleteBtn onDelete={() => deleteWorkItem(sub.id)} size="xs" />
+                                              </div>
+                                            </td>
+                                          )}
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              )}
+                              {canManageSubs && (
+                                addingSubFor === item.id ? (
+                                  <div className="flex items-center gap-2 flex-wrap pt-1">
+                                    <input autoFocus
+                                      className="border border-outline-variant/50 rounded-lg px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 flex-1 min-w-[160px]"
+                                      placeholder="Subtask title…"
+                                      value={subForm.title} onChange={e => setSubForm(f => ({ ...f, title: e.target.value }))}
+                                      onKeyDown={e => e.key === 'Enter' && handleAddSub(item.id)}
+                                    />
+                                    <select className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                      value={subForm.assignee_id} onChange={e => setSubForm(f => ({ ...f, assignee_id: e.target.value }))}>
+                                      <option value="">Same assignee</option>
+                                      {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                    <input type="date" className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                      value={subForm.date} onChange={e => setSubForm(f => ({ ...f, date: e.target.value }))} />
+                                    <button onClick={() => handleAddSub(item.id)} disabled={subSaving || !subForm.title.trim()}
+                                      className="text-[10px] font-bold bg-primary text-white px-2.5 py-1 rounded-lg hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
+                                      {subSaving ? '…' : 'Add'}
+                                    </button>
+                                    <button onClick={() => { setAddingSubFor(null); setSubForm({ title: '', assignee_id: '', date: '' }); }}
+                                      className="text-[10px] font-bold border border-outline-variant/40 text-on-surface-variant px-2 py-1 rounded-lg hover:bg-surface-container whitespace-nowrap">
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => setAddingSubFor(item.id)} className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline self-start">
+                                    <span className="material-symbols-outlined text-[13px]">add_circle</span> Add Subtask
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ),
+                    ];
                   })
                 }
               </tbody>
             </table>
           </div>
         </div>
-        {/* Subtask expand panels rendered outside the table (below it, keyed by template) */}
-        {recurringTemplates.map(item => {
-          if (expandedTplId !== item.id) return null;
-          const subs = getTplSubtasks(item.id);
-          const canManageSubs = canEdit || item.assignee_id === currentUser?.id;
-          return (
-            <div key={`sub-${item.id}`} className="bg-surface-container-low/40 border border-outline-variant/20 rounded-xl px-4 py-3 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Subtasks for "{item.title}"</span>
-              </div>
-              {subs.length > 0 && (
-                <table className="w-full text-left text-xs">
-                  <thead className="text-[9px] uppercase font-bold text-on-surface-variant border-b border-outline-variant/20">
-                    <tr>
-                      <th className="py-1 pr-3">Title</th>
-                      <th className="py-1 pr-3">Assignee</th>
-                      <th className="py-1 pr-3">Due</th>
-                      {canManageSubs && <th className="py-1 text-right">Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant/10">
-                    {subs.map(sub => {
-                      const subName = safeProfiles.find(p => p.id === sub.assignee_id)?.name ?? 'Unassigned';
-                      return (
-                        <tr key={sub.id} className="group">
-                          <td className="py-1.5 pr-3 font-medium text-on-surface">{sub.title}</td>
-                          <td className="py-1.5 pr-3 text-on-surface-variant">{subName.split(' ')[0]}</td>
-                          <td className="py-1.5 pr-3 text-on-surface-variant">{sub.expected_date ?? '—'}</td>
-                          {canManageSubs && (
-                            <td className="py-1.5 text-right">
-                              <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100">
-                                <button onClick={() => setEditingSubItem(sub)} className="text-on-surface-variant hover:text-primary transition-colors">
-                                  <span className="material-symbols-outlined text-[14px]">edit</span>
-                                </button>
-                                <DeleteBtn onDelete={() => deleteWorkItem(sub.id)} size="xs" />
-                              </div>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-              {canManageSubs && (
-                addingSubFor === item.id ? (
-                  <div className="flex items-center gap-2 flex-wrap pt-1">
-                    <input autoFocus
-                      className="border border-outline-variant/50 rounded-lg px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 flex-1 min-w-[160px]"
-                      placeholder="Subtask title…"
-                      value={subForm.title} onChange={e => setSubForm(f => ({ ...f, title: e.target.value }))}
-                      onKeyDown={e => e.key === 'Enter' && handleAddSub(item.id)}
-                    />
-                    <select className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      value={subForm.assignee_id} onChange={e => setSubForm(f => ({ ...f, assignee_id: e.target.value }))}>
-                      <option value="">Same assignee</option>
-                      {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                    <input type="date" className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      value={subForm.date} onChange={e => setSubForm(f => ({ ...f, date: e.target.value }))} />
-                    <button onClick={() => handleAddSub(item.id)} disabled={subSaving || !subForm.title.trim()}
-                      className="text-[10px] font-bold bg-primary text-white px-2.5 py-1 rounded-lg hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
-                      {subSaving ? '…' : 'Add'}
-                    </button>
-                    <button onClick={() => { setAddingSubFor(null); setSubForm({ title: '', assignee_id: '', date: '' }); }}
-                      className="text-[10px] font-bold border border-outline-variant/40 text-on-surface-variant px-2 py-1 rounded-lg hover:bg-surface-container whitespace-nowrap">
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={() => setAddingSubFor(item.id)} className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline self-start">
-                    <span className="material-symbols-outlined text-[13px]">add_circle</span> Add Subtask
-                  </button>
-                )
-              )}
-            </div>
-          );
-        })}
       </>
     );
   }
@@ -1376,6 +1411,7 @@ export default function ProjectsEventsPage() {
         <CompletionPanel
           item={pendingCompleteItem}
           profiles={safeProfiles}
+          currentUser={currentUser}
           onConfirm={handleProjectComplete}
           onCancel={() => setPendingCompleteItem(null)}
         />

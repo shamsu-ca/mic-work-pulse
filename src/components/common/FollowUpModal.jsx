@@ -3,8 +3,14 @@ import { useState } from 'react';
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
 const LINK_TYPES = ['Continuation', 'Correction', 'Review', 'New Work'];
 
-export default function FollowUpModal({ completedItem, profiles = [], onConfirm, onCancel }) {
+export default function FollowUpModal({ completedItem, profiles = [], currentUser, onConfirm, onCancel }) {
   const assigneeName = profiles.find(p => p.id === completedItem?.assignee_id)?.name || 'Unassigned';
+
+  const assigneeOptions = (() => {
+    if (currentUser?.role === 'Assignee') return profiles.filter(p => p.id === currentUser.id);
+    if (currentUser?.role === 'Manager') return profiles.filter(p => p.manager === currentUser.name);
+    return profiles;
+  })();
   const completedDate = completedItem?.completed_at
     ? new Date(completedItem.completed_at).toLocaleDateString()
     : '—';
@@ -79,7 +85,7 @@ export default function FollowUpModal({ completedItem, profiles = [], onConfirm,
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
                 <option value="">Unassigned</option>
-                {profiles.map(p => (
+                {assigneeOptions.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
