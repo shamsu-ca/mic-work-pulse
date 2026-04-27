@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, getStatusBadgeClass } from '../lib/statusUtils';
 import FilterBar from '../components/common/FilterBar';
+import CompletionPanel from '../components/common/CompletionPanel';
+import FollowUpModal from '../components/common/FollowUpModal';
 
 const PRIORITY_COLOR = {
   Critical: 'bg-red-100 text-red-700',
@@ -51,7 +53,7 @@ function DeleteBtn({ onConfirm }) {
   );
 }
 
-function ExpandedContent({ item, profiles, containers, workItems, currentUser, onEdit, onStart, onComplete, onDelete, onAddSubtask, showActions = true }) {
+function ExpandedContent({ item, profiles, containers, workItems, currentUser, onEdit, onStart, onComplete, onDelete, onAddSubtask, onFollowUp, showActions = true }) {
   const [addingSubtask, setAddingSubtask] = useState(false);
   const [stTitle, setStTitle]   = useState('');
   const [stDate, setStDate]     = useState('');
@@ -112,14 +114,44 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
 
       {item.description && <p className="text-sm text-on-surface-variant leading-relaxed">{item.description}</p>}
 
-      {item.completion_note && (
-        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex flex-col gap-1">
+      {(item.completion_note || item.completion_tag) && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex flex-col gap-1.5">
           <span className="text-[10px] font-black uppercase tracking-wider text-green-700 flex items-center gap-1">
             <span className="material-symbols-outlined text-[13px]">summarize</span>Completion Report
           </span>
-          <p className="text-sm text-green-900 leading-relaxed">{item.completion_note}</p>
+          {item.completion_tag && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-200 text-green-800 self-start">{item.completion_tag}</span>
+          )}
+          {item.completion_note && (
+            <p className="text-sm text-green-900 leading-relaxed">{item.completion_note}</p>
+          )}
         </div>
       )}
+
+      {(() => {
+        const followUps = (workItems || []).filter(w => w.linked_to === item.id);
+        if (!followUps.length && !onFollowUp) return null;
+        return (
+          <div className="flex flex-col gap-1.5">
+            {followUps.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Follow-ups</span>
+                {followUps.map(fu => (
+                  <div key={fu.id} className="flex items-center gap-2 text-xs pl-2 border-l-2 border-indigo-200">
+                    <span className="font-medium text-on-surface flex-1">{fu.title}</span>
+                    <span className="text-on-surface-variant/70">{fu.expected_date ?? '—'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {onFollowUp && currentUser?.role === 'Admin' && item.status === 'Completed' && (
+              <button onClick={() => onFollowUp(item)} className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:underline self-start">
+                <span className="material-symbols-outlined text-[13px]">add_circle</span> Follow-up
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {subItems.length > 0 && (
         <div className="flex flex-col gap-1.5 pl-2 border-l-2 border-outline-variant/20">
@@ -537,46 +569,13 @@ function StatusGroupedView({ items, profiles, containers, workItems, currentUser
   );
 }
 
-// ─── Completion note modal ─────────────────────────────────────────────────────
-function CompletionNoteModal({ onConfirm, onCancel }) {
-  const [note, setNote] = useState('');
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-surface-container-high">
-          <span className="material-symbols-outlined text-green-600" style={{fontVariationSettings:"'FILL' 1"}}>task_alt</span>
-          <div>
-            <h2 className="font-bold text-base text-on-surface">Work Completion Report</h2>
-            <p className="text-xs text-on-surface-variant mt-0.5">Briefly describe what was done before submitting</p>
-          </div>
-        </div>
-        <div className="px-6 py-5">
-          <textarea
-            autoFocus
-            rows={4}
-            className="w-full bg-slate-50 border border-outline-variant rounded-xl px-4 py-3 text-sm font-medium resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            placeholder="e.g. Completed data entry for March records, filed documents, updated spreadsheet…"
-            value={note}
-            onChange={e => setNote(e.target.value)}
-          />
-        </div>
-        <div className="px-6 py-4 border-t border-surface-container-high flex gap-3 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 text-sm font-bold text-on-surface-variant border border-outline-variant rounded-xl hover:bg-surface-container">Cancel</button>
-          <button onClick={() => onConfirm(note)} className="px-5 py-2 text-sm font-bold bg-green-600 text-white rounded-xl hover:opacity-90 flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[16px]">check_circle</span>
-            {note.trim() ? 'Submit Report' : 'Complete Without Report'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── History table ─────────────────────────────────────────────────────────────
-function HistoryTable({ items, profiles, containers, workItems, currentUser }) {
+function HistoryTable({ items, profiles, containers, workItems, currentUser, createFollowUpTask }) {
   const [expandedId, setExpandedId] = useState(null);
+  const [followUpTarget, setFollowUpTarget] = useState(null);
   const showAssignee = currentUser?.role !== 'Assignee';
   const colCount = showAssignee ? 4 : 3;
+  const canFollowUp = currentUser?.role === 'Admin' && !!createFollowUpTask;
 
   const renderRow = (item) => {
     const isExpanded = expandedId === item.id;
@@ -613,6 +612,7 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser }) {
               <ExpandedContent
                 item={item} profiles={profiles || []} containers={containers || []} workItems={workItems || []}
                 currentUser={currentUser} onEdit={() => {}} onStart={() => {}} onComplete={() => {}} onDelete={() => {}}
+                onFollowUp={canFollowUp ? (i) => setFollowUpTarget(i) : undefined}
                 showActions={false} />
             </td>
           </tr>
@@ -622,26 +622,39 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser }) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
-            <tr>
-              <th className="w-8 px-3 py-3" />
-              <th className="px-2 py-3 text-left">Subject</th>
-              {showAssignee && <th className="px-2 py-3 text-left">Assignee</th>}
-              <th className="px-2 py-3 text-right pr-4">Result</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-surface-container-low">
-            {items.length === 0
-              ? <tr><td colSpan={colCount} className="px-6 py-10 text-center text-on-surface-variant font-bold text-sm">No completed items yet.</td></tr>
-              : items.map(renderRow)
-            }
-          </tbody>
-        </table>
+    <>
+      <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
+              <tr>
+                <th className="w-8 px-3 py-3" />
+                <th className="px-2 py-3 text-left">Subject</th>
+                {showAssignee && <th className="px-2 py-3 text-left">Assignee</th>}
+                <th className="px-2 py-3 text-right pr-4">Result</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-container-low">
+              {items.length === 0
+                ? <tr><td colSpan={colCount} className="px-6 py-10 text-center text-on-surface-variant font-bold text-sm">No completed items yet.</td></tr>
+                : items.map(renderRow)
+              }
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+      {followUpTarget && (
+        <FollowUpModal
+          completedItem={followUpTarget}
+          profiles={profiles || []}
+          onCancel={() => setFollowUpTarget(null)}
+          onConfirm={async (data) => {
+            await createFollowUpTask(followUpTarget.id, data);
+            setFollowUpTarget(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -649,7 +662,7 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser }) {
 export default function AllTasksPage() {
   const {
     workItems, profiles, currentUser, containers,
-    startWorkItem, completeWorkItem, addWorkItem, updateWorkItem, deleteWorkItem,
+    startWorkItem, completeWorkItem, createFollowUpTask, addWorkItem, updateWorkItem, deleteWorkItem,
   } = useDataContext();
 
   const [activeTab, setActiveTab]           = useState('Active');
@@ -664,9 +677,15 @@ export default function AllTasksPage() {
   const [historyDateTo, setHistoryDateTo]   = useState('');
 
   const handleCompleteClick = (itemId) => setPendingCompleteId(itemId);
-  const handleCompleteConfirm = async (note) => {
+  const handleCompleteConfirm = async ({ note, tag, followUp }) => {
     if (!pendingCompleteId) return;
-    await completeWorkItem(pendingCompleteId, note);
+    await completeWorkItem(pendingCompleteId, { note, tag });
+    if (followUp?.title && followUp?.dueDate) {
+      await createFollowUpTask(pendingCompleteId, {
+        title: followUp.title, dueDate: followUp.dueDate,
+        assigneeId: followUp.assigneeId, linkType: 'Continuation',
+      });
+    }
     setPendingCompleteId(null);
   };
 
@@ -919,28 +938,28 @@ export default function AllTasksPage() {
 
           {/* When filter active: flat list */}
           {historyFilter ? (
-            <HistoryTable items={historyFiltered} {...sharedProps} />
+            <HistoryTable items={historyFiltered} {...sharedProps} createFollowUpTask={createFollowUpTask} />
           ) : (
             /* Sectioned: Today / Yesterday / This Week / Old */
             <div className="flex flex-col gap-5">
               {historyToday.length > 0 && (
                 <Section icon="today" title="Today" count={historyToday.length} badge="bg-green-100 text-green-700" defaultOpen>
-                  <HistoryTable items={historyToday} {...sharedProps} />
+                  <HistoryTable items={historyToday} {...sharedProps} createFollowUpTask={createFollowUpTask} />
                 </Section>
               )}
               {historyYesterday.length > 0 && (
                 <Section icon="history" title="Yesterday" count={historyYesterday.length} badge="bg-blue-100 text-blue-700" defaultOpen>
-                  <HistoryTable items={historyYesterday} {...sharedProps} />
+                  <HistoryTable items={historyYesterday} {...sharedProps} createFollowUpTask={createFollowUpTask} />
                 </Section>
               )}
               {historyThisWeek.length > 0 && (
                 <Section icon="view_week" title="This Week" count={historyThisWeek.length} badge="bg-primary-container text-on-primary-container" defaultOpen>
-                  <HistoryTable items={historyThisWeek} {...sharedProps} />
+                  <HistoryTable items={historyThisWeek} {...sharedProps} createFollowUpTask={createFollowUpTask} />
                 </Section>
               )}
               {historyOld.length > 0 && (
                 <Section icon="schedule" title="Older" count={historyOld.length} badge="bg-surface-container text-on-surface-variant" defaultOpen={false}>
-                  <HistoryTable items={historyOld} {...sharedProps} />
+                  <HistoryTable items={historyOld} {...sharedProps} createFollowUpTask={createFollowUpTask} />
                 </Section>
               )}
               {historyAll.length === 0 && (
@@ -955,7 +974,9 @@ export default function AllTasksPage() {
       )}
 
       {pendingCompleteId && (
-        <CompletionNoteModal
+        <CompletionPanel
+          item={safeWorkItems.find(w => w.id === pendingCompleteId)}
+          profiles={safeProfiles}
           onConfirm={handleCompleteConfirm}
           onCancel={() => setPendingCompleteId(null)}
         />

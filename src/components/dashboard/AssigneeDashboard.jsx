@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits } from '../../lib/statusUtils';
+import CompletionPanel from '../common/CompletionPanel';
 
 // ─── Expandable work item card for pipeline ───────────────────────────────────
 function WorkItemCard({ item, containers, workItems, showStart = false, showComplete = false, onStart, onComplete }) {
@@ -96,7 +97,7 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
             {showComplete && (
               <button
                 className="flex-1 py-1.5 bg-green-600 text-white text-xs font-bold rounded shadow-sm hover:opacity-90 active:scale-95 transition-all"
-                onClick={(e) => { e.stopPropagation(); onComplete(item.id); }}
+                onClick={(e) => { e.stopPropagation(); onComplete(item); }}
               >
                 COMPLETE
               </button>
@@ -154,7 +155,7 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
             {showComplete && (
               <button
                 className="flex-1 py-1.5 bg-green-600 text-white text-xs font-bold rounded shadow-sm hover:opacity-90 active:scale-95 transition-all"
-                onClick={(e) => { e.stopPropagation(); onComplete(item.id); }}
+                onClick={(e) => { e.stopPropagation(); onComplete(item); }}
               >
                 COMPLETE
               </button>
@@ -205,7 +206,14 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
 }
 
 export default function AssigneeDashboard() {
-  const { currentUser, workItems, containers, startWorkItem, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
+  const { currentUser, workItems, containers, profiles, startWorkItem, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
+  const [pendingCompleteItem, setPendingCompleteItem] = useState(null);
+
+  const handleDashComplete = async ({ note, tag }) => {
+    if (!pendingCompleteItem) return;
+    await completeWorkItem(pendingCompleteItem.id, { note, tag });
+    setPendingCompleteItem(null);
+  };
 
   const safeWorkItems = workItems   || [];
   const safeContainers = containers || [];
@@ -309,7 +317,7 @@ export default function AssigneeDashboard() {
               <span className="bg-white border border-outline-variant/50 text-on-surface-variant rounded-full text-[10px] px-2 py-0.5">{ongoingItems.length}</span>
             </h3>
             {ongoingItems.map(w => (
-              <WorkItemCard key={w.id} item={w} {...cardProps} showComplete onComplete={completeWorkItem} />
+              <WorkItemCard key={w.id} item={w} {...cardProps} showComplete onComplete={(item) => setPendingCompleteItem(item)} />
             ))}
             {ongoingItems.length === 0 && (
               <div className="text-center p-6 border-2 border-dashed border-outline-variant/40 rounded-lg text-outline text-xs font-medium">No ongoing tasks.</div>
@@ -353,6 +361,14 @@ export default function AssigneeDashboard() {
         </div>
       )}
 
+      {pendingCompleteItem && (
+        <CompletionPanel
+          item={pendingCompleteItem}
+          profiles={profiles || []}
+          onConfirm={handleDashComplete}
+          onCancel={() => setPendingCompleteItem(null)}
+        />
+      )}
     </div>
   );
 }

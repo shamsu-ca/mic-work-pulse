@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isPhaseActive } from '../lib/statusUtils';
 import { StaffToggle } from '../components/common/FilterBar';
+import CompletionPanel from '../components/common/CompletionPanel';
 
 // ─── Tiny helpers ─────────────────────────────────────────────────────────────
 const cName    = (c) => c?.title ?? 'Untitled';
@@ -141,6 +142,7 @@ export default function ProjectsEventsPage() {
   const {
     containers, workItems, profiles, currentUser,
     addContainer, updateContainer, addWorkItem, updateWorkItem, deleteWorkItem,
+    completeWorkItem, createFollowUpTask,
     staffGroup,
   } = useDataContext();
 
@@ -165,6 +167,16 @@ export default function ProjectsEventsPage() {
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [deploying, setDeploying]             = useState(false);
   const [editingItem, setEditingItem]         = useState(null);
+  const [pendingCompleteItem, setPendingCompleteItem] = useState(null);
+
+  const handleProjectComplete = async ({ note, tag, followUp }) => {
+    if (!pendingCompleteItem) return;
+    await completeWorkItem(pendingCompleteItem.id, { note, tag });
+    if (followUp?.title && followUp?.dueDate) {
+      await createFollowUpTask(pendingCompleteItem.id, { ...followUp, linkType: 'Continuation' });
+    }
+    setPendingCompleteItem(null);
+  };
 
   const safeContainers = containers ?? [];
   const safeWorkItems  = workItems  ?? [];
@@ -348,7 +360,7 @@ export default function ProjectsEventsPage() {
                         </button>
                       )}
                       {showStatus && m.status === 'Ongoing' && (isAdmin || m.assignee_id === currentUser?.id) && (
-                        <button onClick={() => updateWorkItem(m.id, { status: 'Completed', completed_at: new Date().toISOString() })}
+                        <button onClick={() => setPendingCompleteItem(m)}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
                         </button>
@@ -427,7 +439,7 @@ export default function ProjectsEventsPage() {
                         </button>
                       )}
                       {showStatus && item.status === 'Ongoing' && (isAdmin || item.assignee_id === currentUser?.id) && (
-                        <button onClick={() => updateWorkItem(item.id, { status: 'Completed', completed_at: new Date().toISOString() })}
+                        <button onClick={() => setPendingCompleteItem(item)}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
                         </button>
@@ -799,11 +811,29 @@ export default function ProjectsEventsPage() {
 
   // ── Recurring section ──────────────────────────────────────────────────────
   function RecurringSection() {
-    const [editingRec, setEditingRec] = useState(null);
-    const [modalData, setModalData]   = useState({});
-    const [saving, setSaving]         = useState(false);
+    const [editingRec, setEditingRec]     = useState(null);
+    const [modalData, setModalData]       = useState({});
+    const [saving, setSaving]             = useState(false);
+    const [expandedTplId, setExpandedTplId] = useState(null);
+    const [addingSubFor, setAddingSubFor] = useState(null);
+    const [subForm, setSubForm]           = useState({ title: '', assignee_id: '', date: '' });
+    const [subSaving, setSubSaving]       = useState(false);
+    const [editingSubItem, setEditingSubItem] = useState(null);
 
     const canEdit = isAdmin || currentUser?.role === 'Manager';
+    const getTplSubtasks = (tplId) => safeWorkItems.filter(w => w.parent_id === tplId && w.type === 'Subtask');
+
+    const handleAddSub = async (tplId) => {
+      if (!subForm.title.trim()) return;
+      setSubSaving(true);
+      await addWorkItem({
+        title: subForm.title.trim(), type: 'Subtask',
+        parent_id: tplId, assignee_id: subForm.assignee_id || null,
+        expected_date: subForm.date || null, status: 'Assigned', is_recurring: false,
+      });
+      setSubForm({ title: '', assignee_id: '', date: '' });
+      setSubSaving(false); setAddingSubFor(null);
+    };
 
     const openEdit = (item) => {
       setEditingRec(item);
@@ -894,12 +924,17 @@ export default function ProjectsEventsPage() {
             </div>
           </div>
         )}
+        {editingSubItem && (
+          <EditItemModal item={editingSubItem} profiles={safeProfiles}
+            onClose={() => setEditingSubItem(null)} onSave={updateWorkItem} />
+        )}
         <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
                 <tr>
-                  <th className="px-5 py-3">Task</th>
+                  <th className="w-8 px-3 py-3" />
+                  <th className="px-4 py-3">Task</th>
                   <th className="px-4 py-3">Recurrence</th>
                   <th className="px-4 py-3">Last Generated</th>
                   <th className="px-4 py-3">Assignee</th>
@@ -909,14 +944,25 @@ export default function ProjectsEventsPage() {
               </thead>
               <tbody className="divide-y divide-surface-container-low">
                 {recurringTemplates.length === 0
-                  ? <tr><td colSpan={canEdit ? 6 : 5} className="px-6 py-16 text-center text-on-surface-variant font-bold text-sm">No recurring tasks configured.</td></tr>
+                  ? <tr><td colSpan={canEdit ? 7 : 6} className="px-6 py-16 text-center text-on-surface-variant font-bold text-sm">No recurring tasks configured.</td></tr>
                   : recurringTemplates.map(item => {
                     const aName    = safeProfiles.find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
                     const initials = getInitials(aName);
+                    const isExpanded = expandedTplId === item.id;
+                    const subs = getTplSubtasks(item.id);
+                    const colSpan = canEdit ? 7 : 6;
+                    const canManageSubs = canEdit || item.assignee_id === currentUser?.id;
                     return (
-                      <tr key={item.id} className="hover:bg-surface-container-low/40 transition-colors">
-                        <td className="px-5 py-3">
-                          <span className="text-sm font-semibold text-on-surface">{item.title}</span>
+                      <tr key={item.id} className={`transition-colors cursor-pointer ${isExpanded ? 'bg-surface-container-low/60' : 'hover:bg-surface-container-low/40'}`}
+                        onClick={() => setExpandedTplId(isExpanded ? null : item.id)}>
+                        <td className="w-8 px-3 py-3">
+                          <span className={`material-symbols-outlined text-[18px] text-on-surface-variant block transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-semibold text-on-surface">{item.title}</span>
+                            {subs.length > 0 && <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{subs.length} sub</span>}
+                          </div>
                           {item.description && <p className="text-[11px] text-on-surface-variant line-clamp-1">{item.description}</p>}
                         </td>
                         <td className="px-4 py-3">
@@ -935,7 +981,7 @@ export default function ProjectsEventsPage() {
                           </span>
                         </td>
                         {canEdit && (
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center gap-2 justify-end">
                               <button onClick={() => openEdit(item)} className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all flex items-center gap-1">
                                 <span className="material-symbols-outlined text-[13px]">edit</span>Edit
@@ -952,6 +998,84 @@ export default function ProjectsEventsPage() {
             </table>
           </div>
         </div>
+        {/* Subtask expand panels rendered outside the table (below it, keyed by template) */}
+        {recurringTemplates.map(item => {
+          if (expandedTplId !== item.id) return null;
+          const subs = getTplSubtasks(item.id);
+          const canManageSubs = canEdit || item.assignee_id === currentUser?.id;
+          return (
+            <div key={`sub-${item.id}`} className="bg-surface-container-low/40 border border-outline-variant/20 rounded-xl px-4 py-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Subtasks for "{item.title}"</span>
+              </div>
+              {subs.length > 0 && (
+                <table className="w-full text-left text-xs">
+                  <thead className="text-[9px] uppercase font-bold text-on-surface-variant border-b border-outline-variant/20">
+                    <tr>
+                      <th className="py-1 pr-3">Title</th>
+                      <th className="py-1 pr-3">Assignee</th>
+                      <th className="py-1 pr-3">Due</th>
+                      {canManageSubs && <th className="py-1 text-right">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/10">
+                    {subs.map(sub => {
+                      const subName = safeProfiles.find(p => p.id === sub.assignee_id)?.name ?? 'Unassigned';
+                      return (
+                        <tr key={sub.id} className="group">
+                          <td className="py-1.5 pr-3 font-medium text-on-surface">{sub.title}</td>
+                          <td className="py-1.5 pr-3 text-on-surface-variant">{subName.split(' ')[0]}</td>
+                          <td className="py-1.5 pr-3 text-on-surface-variant">{sub.expected_date ?? '—'}</td>
+                          {canManageSubs && (
+                            <td className="py-1.5 text-right">
+                              <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100">
+                                <button onClick={() => setEditingSubItem(sub)} className="text-on-surface-variant hover:text-primary transition-colors">
+                                  <span className="material-symbols-outlined text-[14px]">edit</span>
+                                </button>
+                                <DeleteBtn onDelete={() => deleteWorkItem(sub.id)} size="xs" />
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+              {canManageSubs && (
+                addingSubFor === item.id ? (
+                  <div className="flex items-center gap-2 flex-wrap pt-1">
+                    <input autoFocus
+                      className="border border-outline-variant/50 rounded-lg px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 flex-1 min-w-[160px]"
+                      placeholder="Subtask title…"
+                      value={subForm.title} onChange={e => setSubForm(f => ({ ...f, title: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && handleAddSub(item.id)}
+                    />
+                    <select className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      value={subForm.assignee_id} onChange={e => setSubForm(f => ({ ...f, assignee_id: e.target.value }))}>
+                      <option value="">Same assignee</option>
+                      {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <input type="date" className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      value={subForm.date} onChange={e => setSubForm(f => ({ ...f, date: e.target.value }))} />
+                    <button onClick={() => handleAddSub(item.id)} disabled={subSaving || !subForm.title.trim()}
+                      className="text-[10px] font-bold bg-primary text-white px-2.5 py-1 rounded-lg hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
+                      {subSaving ? '…' : 'Add'}
+                    </button>
+                    <button onClick={() => { setAddingSubFor(null); setSubForm({ title: '', assignee_id: '', date: '' }); }}
+                      className="text-[10px] font-bold border border-outline-variant/40 text-on-surface-variant px-2 py-1 rounded-lg hover:bg-surface-container whitespace-nowrap">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => setAddingSubFor(item.id)} className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline self-start">
+                    <span className="material-symbols-outlined text-[13px]">add_circle</span> Add Subtask
+                  </button>
+                )
+              )}
+            </div>
+          );
+        })}
       </>
     );
   }
@@ -1247,6 +1371,14 @@ export default function ProjectsEventsPage() {
       )}
       {editingItem && (
         <EditItemModal item={editingItem} profiles={safeProfiles} onClose={() => setEditingItem(null)} onSave={updateWorkItem} />
+      )}
+      {pendingCompleteItem && (
+        <CompletionPanel
+          item={pendingCompleteItem}
+          profiles={safeProfiles}
+          onConfirm={handleProjectComplete}
+          onCancel={() => setPendingCompleteItem(null)}
+        />
       )}
 
       {/* FAB: Projects (all roles) + Events Saved templates (admin only) */}

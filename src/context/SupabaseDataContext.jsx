@@ -208,6 +208,28 @@ export function SupabaseDataProvider({ children, session }) {
       console.error('Failed to spawn recurring tasks:', error);
       return [];
     }
+
+    // Spawn subtasks for each claimed template
+    const claimedList = candidateTemplates.filter(t => claimedIds.has(t.id));
+    const templateToSpawn = {};
+    claimedList.forEach((t, i) => { templateToSpawn[t.id] = data[i].id; });
+
+    const { data: templateSubs } = await supabase
+      .from('work_items')
+      .select('*')
+      .in('parent_id', claimedList.map(t => t.id))
+      .eq('type', 'Subtask');
+
+    if (templateSubs?.length) {
+      await supabase.from('work_items').insert(templateSubs.map(sub => ({
+        title: sub.title, description: sub.description, type: 'Subtask',
+        assignee_id: sub.assignee_id, priority: sub.priority,
+        estimated_hours: sub.estimated_hours,
+        status: 'Assigned', expected_date: today, is_recurring: false,
+        parent_id: templateToSpawn[sub.parent_id],
+      })));
+    }
+
     return data;
   };
 
@@ -216,11 +238,23 @@ export function SupabaseDataProvider({ children, session }) {
     await supabase.from('work_items').update({ status: 'Ongoing' }).eq('id', itemId);
   };
 
-  const completeWorkItem = async (itemId, note = '') => {
+  const completeWorkItem = async (itemId, { note, tag } = {}) => {
     const now = new Date().toISOString();
-    const updates = { status: 'Completed', completed_at: now, completion_note: note || null };
+    const updates = { status: 'Completed', completed_at: now, completion_note: note || null, completion_tag: tag || null };
     setWorkItems(prev => prev.map(w => w.id === itemId ? { ...w, ...updates, updated_at: now } : w));
     await supabase.from('work_items').update(updates).eq('id', itemId);
+  };
+
+  const createFollowUpTask = async (completedItemId, { title, description, assigneeId, dueDate, priority, linkType }) => {
+    const { data, error } = await supabase.from('work_items').insert([{
+      title, description: description || null,
+      assignee_id: assigneeId || null, expected_date: dueDate || null,
+      priority: priority || 'Medium', status: 'Assigned', type: 'Task',
+      linked_to: completedItemId, link_type: linkType || null,
+      created_by: currentUser?.id || null, is_recurring: false,
+    }]).select();
+    if (data) setWorkItems(prev => [...prev, ...data]);
+    return { data, error };
   };
 
   const addWorkItem = async (itemData) => {
@@ -446,6 +480,7 @@ export function SupabaseDataProvider({ children, session }) {
       deleteAnnouncement,
       startWorkItem,
       completeWorkItem,
+      createFollowUpTask,
       addWorkItem,
       updateWorkItem,
       deleteWorkItem,
