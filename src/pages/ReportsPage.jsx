@@ -124,8 +124,7 @@ export default function ReportsPage() {
 
   // ─── Admin view ───────────────────────────────────────────────────────────
   const filteredItems = safeWorkItems
-    .filter(w => isItemInDateRange(w, dateFilter, customDateRange))
-    .filter(w => !w.is_recurring);
+    .filter(w => isItemInDateRange(w, dateFilter, customDateRange));
 
   let actionable = getActionableUnits(filteredItems);
   if (filterAssignee) actionable = actionable.filter(w => w.assignee_id === filterAssignee);

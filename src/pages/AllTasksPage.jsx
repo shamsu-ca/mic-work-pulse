@@ -246,7 +246,7 @@ function EditItemModal({ item, profiles, workItems, onClose, onSave }) {
   const cls = "bg-slate-50 border border-outline-variant rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary w-full";
 
   const potentialParents = (workItems || []).filter(w =>
-    w.id !== item.id && w.type === 'Task' && !w.parent_id && !w.is_recurring
+    w.id !== item.id && w.type === 'Task' && !w.parent_id
   );
 
   const handleSave = async (e) => {
@@ -363,7 +363,7 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
     const ds           = getDisplayStatus(item);
     const container    = item.container_id ? getContainer(item.container_id) : null;
     const assigneeName = getAssigneeName(item.assignee_id);
-    const children     = safeWorkItems.filter(w => w.parent_id === item.id && !w.is_recurring);
+    const children     = safeWorkItems.filter(w => w.parent_id === item.id);
 
     return (
       <React.Fragment key={item.id}>
@@ -742,7 +742,7 @@ export default function AllTasksPage() {
   const safeProfiles   = profiles   || [];
   const safeContainers = containers || [];
 
-  let baseRaw = safeWorkItems.filter(w => !w.in_planning_pool && !w.is_recurring);
+  let baseRaw = safeWorkItems.filter(w => !w.in_planning_pool);
   if (currentUser?.role === 'Assignee') {
     baseRaw = baseRaw.filter(w => w.assignee_id === currentUser.id);
   } else {

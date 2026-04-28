@@ -3,7 +3,7 @@ import { useDataContext } from '../../context/SupabaseDataContext';
 import { X } from 'lucide-react';
 
 export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
-  const { profiles, containers, currentUser, addWorkItem, addContainer } = useDataContext();
+  const { profiles, containers, currentUser, addWorkItem, addSavedTask, addContainer } = useDataContext();
   
   const [entityType, setEntityType] = useState(defaultType);
   const [title, setTitle] = useState('');
@@ -49,22 +49,22 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
          else if (recurringType === 'every_x_months') recurrenceRule = { type: 'every_x_months', interval: recurringInterval, date: recurringDate };
       }
 
-      await addWorkItem({
+      const itemData = {
         title,
         description,
         type: entityType,
         assignee_id: assigneeId || null,
-        container_id: containerId || null,
         expected_date: isRecurring ? null : (expectedDate || null),
         estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
         priority: parseInt(priority, 10),
         status: 'Assigned',
-        in_planning_pool: isRecurring ? false : false, // Recurring tasks live as templates, separate logic
-        is_recurring: isRecurring,
-        recurrence_rule: recurrenceRule,
         created_by: currentUser.id,
-        is_active: true
-      });
+      };
+      if (isRecurring) {
+        await addSavedTask({ ...itemData, is_recurring: true, recurrence_rule: recurrenceRule, is_active: true });
+      } else {
+        await addWorkItem({ ...itemData, container_id: containerId || null, is_recurring: false });
+      }
     }
 
     setLoading(false);

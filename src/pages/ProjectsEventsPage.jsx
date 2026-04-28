@@ -141,7 +141,10 @@ const btnSecondary = "bg-white border border-outline-variant/40 text-on-surface 
 export default function ProjectsEventsPage() {
   const {
     containers, workItems, profiles, currentUser,
+    savedContainers, savedTasks,
     addContainer, updateContainer, addWorkItem, updateWorkItem, deleteWorkItem,
+    addSavedContainer, updateSavedContainer, deleteSavedContainer,
+    addSavedTask, updateSavedTask, deleteSavedTask,
     completeWorkItem, createFollowUpTask,
     staffGroup,
   } = useDataContext();
@@ -178,15 +181,26 @@ export default function ProjectsEventsPage() {
     setPendingCompleteItem(null);
   };
 
-  const safeContainers = containers ?? [];
-  const safeWorkItems  = workItems  ?? [];
-  const safeProfiles   = profiles   ?? [];
-  const isAdmin        = currentUser?.role === 'Admin';
+  const safeContainers      = containers      ?? [];
+  const safeWorkItems       = workItems       ?? [];
+  const safeProfiles        = profiles        ?? [];
+  const safeSavedContainers = savedContainers ?? [];
+  const safeSavedTasks      = savedTasks      ?? [];
+  const isAdmin             = currentUser?.role === 'Admin';
+
   const canManageContainer = (containerId) => {
     if (isAdmin) return true;
-    const c = safeContainers.find(con => con.id === containerId);
+    const c = safeContainers.find(con => con.id === containerId)
+           ?? safeSavedContainers.find(con => con.id === containerId);
     return c?.created_by === currentUser?.id;
   };
+
+  // Route update/delete to the right table based on which list the item lives in
+  const savedTaskIdSet = new Set(safeSavedTasks.map(t => t.id));
+  const updateAnyItem = (id, updates) =>
+    savedTaskIdSet.has(id) ? updateSavedTask(id, updates) : updateWorkItem(id, updates);
+  const deleteAnyItem = (id) =>
+    savedTaskIdSet.has(id) ? deleteSavedTask(id) : deleteWorkItem(id);
   const filteredProfiles = safeProfiles.filter(p =>
     p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup
   );
@@ -195,7 +209,7 @@ export default function ProjectsEventsPage() {
   const containerType = typeTab === 'Projects' ? 'Project' : typeTab === 'Events' ? 'Event' : null;
 
   // ── Container filters ──────────────────────────────────────────────────────
-  const visibleContainers = safeContainers.filter(c => {
+  const activeContainers = safeContainers.filter(c => {
     if (c.type !== containerType)  return false;
     if (c.is_active === false)     return false;
     if (currentUser?.role === 'Assignee') {
@@ -204,64 +218,84 @@ export default function ProjectsEventsPage() {
     }
     return true;
   });
-  const activeContainers   = visibleContainers.filter(c => !c.is_template);
-  const templateContainers = visibleContainers.filter(c =>  c.is_template);
+  const templateContainers = safeSavedContainers.filter(c => {
+    if (c.type !== containerType) return false;
+    if (currentUser?.role === 'Assignee') {
+      return c.created_by === currentUser.id;
+    }
+    return true;
+  });
 
-  // ── Work-item helpers ──────────────────────────────────────────────────────
+  // ── Work-item helpers (active containers → work_items) ────────────────────
   const getActionable  = (cid) => safeWorkItems.filter(w => w.container_id === cid && !w.in_planning_pool && w.type !== 'Phase');
   const getPhases      = (cid) => safeWorkItems.filter(w => w.container_id === cid && w.type === 'Phase').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''));
   const getPhaseItems  = (pid) => safeWorkItems.filter(w => w.parent_id === pid);
   const getMilestones  = (cid) => safeWorkItems.filter(w => w.container_id === cid && w.type === 'Milestone');
 
-  // Standalone tasks (no container) with their subtasks
+  // ── Saved-item helpers (saved containers → saved_tasks) ───────────────────
+  const getSavedPhases     = (cid) => safeSavedTasks.filter(w => w.saved_container_id === cid && w.type === 'Phase').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''));
+  const getSavedPhaseItems = (pid) => safeSavedTasks.filter(w => w.parent_id === pid);
+  const getSavedMilestones = (cid) => safeSavedTasks.filter(w => w.saved_container_id === cid && w.type === 'Milestone');
+
+  // Standalone tasks (no container)
   const standaloneTasks = safeWorkItems.filter(w =>
-    !w.container_id && !w.in_planning_pool && !w.is_recurring && w.type === 'Task' &&
+    !w.container_id && !w.in_planning_pool && w.type === 'Task' &&
     !w.parent_id && (currentUser?.role === 'Assignee' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
   );
   const getSubItems = (pid) => safeWorkItems.filter(w => w.parent_id === pid);
 
-  // Recurring templates
-  const recurringTemplates = safeWorkItems.filter(w => w.is_recurring &&
+  // Recurring templates (live in saved_tasks)
+  const recurringTemplates = safeSavedTasks.filter(w => w.is_recurring &&
     (currentUser?.role === 'Assignee' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
   );
 
   // ── Container actions ──────────────────────────────────────────────────────
   const mkContainer = (fields) => {
     const p = { title: fields.title, type: fields.type, created_by: currentUser.id };
-    if (fields.source_template_id)        p.source_template_id = fields.source_template_id;
+    if (fields.source_template_id) p.source_template_id = fields.source_template_id;
     return p;
   };
 
   const submitCreate = async (asTemplate) => {
     if (!newTitle.trim()) return;
     setSubmitting(true);
-    await addContainer(mkContainer({ title: newTitle.trim(), type: containerType, is_template: asTemplate }));
+    if (asTemplate) {
+      await addSavedContainer({ title: newTitle.trim(), type: containerType, created_by: currentUser.id });
+    } else {
+      await addContainer(mkContainer({ title: newTitle.trim(), type: containerType }));
+    }
     setSubmitting(false);
     setIsCreateOpen(false); setNewTitle('');
     setModeTab(asTemplate ? 'Saved' : 'Active');
   };
 
   const saveAsTemplate = async (c) => {
-    const { data: tpl } = await addContainer(mkContainer({ title: cName(c), type: c.type, is_template: true }));
+    const { data: tpl } = await addSavedContainer({ title: cName(c), type: c.type, created_by: currentUser.id });
     if (!tpl?.length) return;
     const tplId = tpl[0].id;
-    for (const m of getMilestones(c.id)) await addWorkItem({ title: m.title, type: 'Milestone', container_id: tplId, status: 'Assigned', created_by: currentUser.id, expected_date: m.expected_date ?? null });
+    for (const m of getMilestones(c.id)) {
+      await addSavedTask({ title: m.title, type: 'Milestone', saved_container_id: tplId, status: 'Assigned', created_by: currentUser.id, expected_date: m.expected_date ?? null });
+    }
     await updateContainer(c.id, { source_template_id: tplId });
     setModeTab('Saved');
   };
 
   const deployTemplate = async (tpl) => {
     setDeploying(true);
-    const { data: newCont } = await addContainer(mkContainer({ title: cName(tpl), type: tpl.type, is_template: false, source_template_id: tpl.id }));
+    const { data: newCont } = await addContainer(mkContainer({ title: cName(tpl), type: tpl.type, source_template_id: tpl.id }));
     if (!newCont?.length) { setDeploying(false); return; }
     const newId = newCont[0].id;
     if (tpl.type === 'Event') {
-      for (const ph of getPhases(tpl.id)) {
+      for (const ph of getSavedPhases(tpl.id)) {
         const { data: newPh } = await addWorkItem({ title: ph.title, type: 'Phase', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: ph.expected_date ?? null });
-        for (const item of getPhaseItems(ph.id)) await addWorkItem({ title: item.title, type: 'Checklist', container_id: newId, parent_id: newPh?.[0]?.id ?? null, status: 'Assigned', assignee_id: item.assignee_id ?? null, created_by: currentUser.id, expected_date: ph.expected_date ?? null });
+        for (const item of getSavedPhaseItems(ph.id)) {
+          await addWorkItem({ title: item.title, type: 'Checklist', container_id: newId, parent_id: newPh?.[0]?.id ?? null, status: 'Assigned', assignee_id: item.assignee_id ?? null, created_by: currentUser.id, expected_date: ph.expected_date ?? null });
+        }
       }
     } else {
-      for (const m of getMilestones(tpl.id)) await addWorkItem({ title: m.title, type: 'Milestone', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: m.expected_date ?? null });
+      for (const m of getSavedMilestones(tpl.id)) {
+        await addWorkItem({ title: m.title, type: 'Milestone', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: m.expected_date ?? null });
+      }
     }
     setDeploying(false); setModeTab('Active');
   };
@@ -269,11 +303,16 @@ export default function ProjectsEventsPage() {
   const submitMilestone = async () => {
     if (!milestoneForm.title.trim() || !milestoneTarget) return;
     setSubmitting(true);
-    await addWorkItem({ title: milestoneForm.title.trim(), type: 'Milestone', container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null });
-    if (milestoneForm.date) {
-      const container = safeContainers.find(c => c.id === milestoneTarget);
-      if (container && !container.expected_date) {
-        await updateContainer(milestoneTarget, { expected_date: milestoneForm.date });
+    const isSaved = safeSavedContainers.some(c => c.id === milestoneTarget);
+    if (isSaved) {
+      await addSavedTask({ title: milestoneForm.title.trim(), type: 'Milestone', saved_container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null });
+    } else {
+      await addWorkItem({ title: milestoneForm.title.trim(), type: 'Milestone', container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null });
+      if (milestoneForm.date) {
+        const container = safeContainers.find(c => c.id === milestoneTarget);
+        if (container && !container.expected_date) {
+          await updateContainer(milestoneTarget, { expected_date: milestoneForm.date });
+        }
       }
     }
     setSubmitting(false); setMilestoneTarget(null); setMilestoneForm({ title: '', date: '' });
@@ -282,21 +321,37 @@ export default function ProjectsEventsPage() {
   const submitPhase = async () => {
     if (!phaseForm.title.trim() || !phaseTarget) return;
     setSubmitting(true);
-    await addWorkItem({ title: phaseForm.title.trim(), type: 'Phase', container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: phaseForm.date || null });
+    const isSaved = safeSavedContainers.some(c => c.id === phaseTarget);
+    if (isSaved) {
+      await addSavedTask({ title: phaseForm.title.trim(), type: 'Phase', saved_container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: phaseForm.date || null });
+    } else {
+      await addWorkItem({ title: phaseForm.title.trim(), type: 'Phase', container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: phaseForm.date || null });
+    }
     setSubmitting(false); setPhaseTarget(null); setPhaseForm({ title: '', date: '' });
   };
 
   const submitChecklist = async () => {
     if (!checklistForm.title.trim() || !checklistTarget) return;
     setSubmitting(true);
-    const containerId = safeWorkItems.find(w => w.id === checklistTarget.phaseId)?.container_id;
-    await addWorkItem({ title: checklistForm.title.trim(), type: 'Checklist', container_id: containerId, parent_id: checklistTarget.phaseId, status: 'Assigned', assignee_id: checklistForm.assignee_id || null, created_by: currentUser.id, expected_date: checklistForm.date || checklistTarget.phaseDate || null });
+    const isSavedPhase = savedTaskIdSet.has(checklistTarget.phaseId);
+    if (isSavedPhase) {
+      const savedContainerId = safeSavedTasks.find(w => w.id === checklistTarget.phaseId)?.saved_container_id;
+      await addSavedTask({ title: checklistForm.title.trim(), type: 'Checklist', saved_container_id: savedContainerId, parent_id: checklistTarget.phaseId, status: 'Assigned', assignee_id: checklistForm.assignee_id || null, created_by: currentUser.id, expected_date: checklistForm.date || checklistTarget.phaseDate || null });
+    } else {
+      const containerId = safeWorkItems.find(w => w.id === checklistTarget.phaseId)?.container_id;
+      await addWorkItem({ title: checklistForm.title.trim(), type: 'Checklist', container_id: containerId, parent_id: checklistTarget.phaseId, status: 'Assigned', assignee_id: checklistForm.assignee_id || null, created_by: currentUser.id, expected_date: checklistForm.date || checklistTarget.phaseDate || null });
+    }
     setSubmitting(false); setChecklistTarget(null); setChecklistForm({ title: '', assignee_id: '', date: '' });
   };
 
   const commitEditName = async () => {
     if (!editNameVal.trim() || !editNameId) return;
-    await updateContainer(editNameId, { title: editNameVal.trim() }); setEditNameId(null);
+    if (safeSavedContainers.some(c => c.id === editNameId)) {
+      await updateSavedContainer(editNameId, { title: editNameVal.trim() });
+    } else {
+      await updateContainer(editNameId, { title: editNameVal.trim() });
+    }
+    setEditNameId(null);
   };
 
   const doDeactivate = async (c, saveFirst) => {
@@ -354,7 +409,7 @@ export default function ProjectsEventsPage() {
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
                       {showStatus && m.status === 'Assigned' && (isAdmin || m.assignee_id === currentUser?.id) && (
-                        <button onClick={() => updateWorkItem(m.id, { status: 'Ongoing' })}
+                        <button onClick={() => updateAnyItem(m.id, { status: 'Ongoing' })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
                         </button>
@@ -366,7 +421,7 @@ export default function ProjectsEventsPage() {
                         </button>
                       )}
                       {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
-                        <button onClick={() => updateWorkItem(m.id, { expected_date: todayStr() })}
+                        <button onClick={() => updateAnyItem(m.id, { expected_date: todayStr() })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                         </button>
@@ -374,7 +429,7 @@ export default function ProjectsEventsPage() {
                       {canManage && <button onClick={() => setEditingItem(m)} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
                         <span className="material-symbols-outlined text-[15px]">edit</span>
                       </button>}
-                      {canManage && <DeleteBtn onDelete={() => deleteWorkItem(m.id)} size="xs" />}
+                      {canManage && <DeleteBtn onDelete={() => deleteAnyItem(m.id)} size="xs" />}
                     </div>
                   </td>
                 </tr>
@@ -433,7 +488,7 @@ export default function ProjectsEventsPage() {
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
                       {showStatus && item.status === 'Assigned' && (isAdmin || item.assignee_id === currentUser?.id) && (
-                        <button onClick={() => updateWorkItem(item.id, { status: 'Ongoing' })}
+                        <button onClick={() => updateAnyItem(item.id, { status: 'Ongoing' })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
                         </button>
@@ -445,7 +500,7 @@ export default function ProjectsEventsPage() {
                         </button>
                       )}
                       {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
-                        <button onClick={() => updateWorkItem(item.id, { expected_date: todayStr() })}
+                        <button onClick={() => updateAnyItem(item.id, { expected_date: todayStr() })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all opacity-0 group-hover:opacity-100">
                           <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                         </button>
@@ -455,7 +510,7 @@ export default function ProjectsEventsPage() {
                           <span className="material-symbols-outlined text-[15px]">edit</span>
                         </button>
                       )}
-                      {isAdmin && <DeleteBtn onDelete={() => deleteWorkItem(item.id)} size="xs" />}
+                      {isAdmin && <DeleteBtn onDelete={() => deleteAnyItem(item.id)} size="xs" />}
                     </div>
                   </td>
                 </tr>
@@ -823,7 +878,7 @@ export default function ProjectsEventsPage() {
     const [recTypeFilter, setRecTypeFilter]   = useState('');
 
     const canEdit = isAdmin || currentUser?.role === 'Manager';
-    const getTplSubtasks = (tplId) => safeWorkItems.filter(w => w.parent_id === tplId && w.type === 'Subtask');
+    const getTplSubtasks = (tplId) => safeSavedTasks.filter(w => w.parent_id === tplId && w.type === 'Subtask');
 
     const displayedTemplates = recurringTemplates.filter(item => {
       if (recStaffFilter && item.assignee_id !== recStaffFilter) return false;
@@ -834,7 +889,7 @@ export default function ProjectsEventsPage() {
     const handleAddSub = async (tplId) => {
       if (!subForm.title.trim()) return;
       setSubSaving(true);
-      await addWorkItem({
+      await addSavedTask({
         title: subForm.title.trim(), type: 'Subtask',
         parent_id: tplId, assignee_id: subForm.assignee_id || null,
         status: 'Assigned', is_recurring: false,
@@ -864,7 +919,7 @@ export default function ProjectsEventsPage() {
       const rule = { type: modalData.recurrence_type };
       if (modalData.recurrence_type === 'weekly')  rule.day  = Number(modalData.recurrence_day);
       if (modalData.recurrence_type === 'monthly') rule.date = Number(modalData.recurrence_date);
-      await updateWorkItem(editingRec.id, {
+      await updateSavedTask(editingRec.id, {
         title:           modalData.title.trim() || editingRec.title,
         description:     modalData.description || null,
         assignee_id:     modalData.assignee_id || null,
@@ -934,7 +989,7 @@ export default function ProjectsEventsPage() {
         )}
         {editingSubItem && (
           <EditItemModal item={editingSubItem} profiles={safeProfiles}
-            onClose={() => setEditingSubItem(null)} onSave={updateWorkItem} />
+            onClose={() => setEditingSubItem(null)} onSave={updateSavedTask} />
         )}
         {(isAdmin || currentUser?.role === 'Manager') && (
           <div className="flex items-center gap-3 flex-wrap">
@@ -1026,7 +1081,7 @@ export default function ProjectsEventsPage() {
                               <button onClick={() => openEdit(item)} className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all flex items-center gap-1">
                                 <span className="material-symbols-outlined text-[13px]">edit</span>Edit
                               </button>
-                              <DeleteBtn onDelete={() => deleteWorkItem(item.id)} />
+                              <DeleteBtn onDelete={() => deleteSavedTask(item.id)} />
                             </div>
                           </td>
                         )}
@@ -1059,7 +1114,7 @@ export default function ProjectsEventsPage() {
                                                 <button onClick={() => setEditingSubItem(sub)} className="text-on-surface-variant hover:text-primary transition-colors">
                                                   <span className="material-symbols-outlined text-[14px]">edit</span>
                                                 </button>
-                                                <DeleteBtn onDelete={() => deleteWorkItem(sub.id)} size="xs" />
+                                                <DeleteBtn onDelete={() => deleteSavedTask(sub.id)} size="xs" />
                                               </div>
                                             </td>
                                           )}
@@ -1124,8 +1179,8 @@ export default function ProjectsEventsPage() {
 
     const active     = selectedTpl ?? templateContainers[0];
     const isProject  = active?.type === 'Project';
-    const phases     = isProject ? [] : getPhases(active?.id);
-    const milestones = getMilestones(active?.id);
+    const phases     = isProject ? [] : getSavedPhases(active?.id);
+    const milestones = getSavedMilestones(active?.id);
     const isTplEditingName = editNameId === active?.id;
 
     return (
@@ -1182,7 +1237,7 @@ export default function ProjectsEventsPage() {
                 ) : (
                   <>
                     {phases.map((ph, i) => {
-                      const items = getPhaseItems(ph.id);
+                      const items = getSavedPhaseItems(ph.id);
                       return (
                         <div key={ph.id} className="rounded-xl border border-outline-variant/20 overflow-hidden">
                           <div className="px-4 py-2.5 bg-surface-container-low/40 flex items-center justify-between flex-wrap gap-2">
@@ -1197,7 +1252,7 @@ export default function ProjectsEventsPage() {
                                     className="flex items-center gap-1 text-[11px] font-bold bg-primary text-white px-2 py-0.5 rounded-lg hover:opacity-90">
                                     <span className="material-symbols-outlined text-[12px]">add</span> Add
                                   </button>
-                                  <DeleteBtn onDelete={() => deleteWorkItem(ph.id)} />
+                                  <DeleteBtn onDelete={() => deleteSavedTask(ph.id)} />
                                 </div>
                               )}
                             </div>
@@ -1403,7 +1458,7 @@ export default function ProjectsEventsPage() {
         </Modal>
       )}
       {editingItem && (
-        <EditItemModal item={editingItem} profiles={safeProfiles} onClose={() => setEditingItem(null)} onSave={updateWorkItem} />
+        <EditItemModal item={editingItem} profiles={safeProfiles} onClose={() => setEditingItem(null)} onSave={updateAnyItem} />
       )}
       {pendingCompleteItem && (
         <CompletionPanel

@@ -219,7 +219,7 @@ export default function AssigneeDashboard() {
   const safeContainers = containers || [];
   const unreadNotifs  = getUnreadNotifications() || [];
 
-  const myItemsAll   = safeWorkItems.filter(w => w.assignee_id === currentUser.id && !w.is_recurring);
+  const myItemsAll   = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
   const myItems      = getActionableUnits(myItemsAll);
 
   const overdueItems    = myItems.filter(w => isOverdue(w) && w.status !== 'Completed');

@@ -24,8 +24,7 @@ export default function AdminDashboard() {
   const getContainer    = (id) => safeContainers.find(c => c.id === id);
 
   // Actionable units (no date filter — live view)
-  const nonRecurring    = safeWorkItems.filter(w => !w.is_recurring);
-  const actionableItems = getActionableUnits(nonRecurring);
+  const actionableItems = getActionableUnits(safeWorkItems);
 
   // Filter by active staff group (toggle)
   const staffGroupIds = new Set(
@@ -98,7 +97,7 @@ export default function AdminDashboard() {
 
   // ── Recent Activity ──
   const recentActivity = [...staffActionableItems]
-    .filter(w => (w.status === 'Completed' || w.status === 'Ongoing') && !w.is_recurring)
+    .filter(w => (w.status === 'Completed' || w.status === 'Ongoing'))
     .sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''))
     .slice(0, 6)
     .map(w => ({

@@ -8,6 +8,8 @@ export function SupabaseDataProvider({ children, session }) {
   const [profiles, setProfiles] = useState([]);
   const [containers, setContainers] = useState([]);
   const [workItems, setWorkItems] = useState([]);
+  const [savedContainers, setSavedContainers] = useState([]);
+  const [savedTasks, setSavedTasks] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
@@ -35,7 +37,6 @@ export function SupabaseDataProvider({ children, session }) {
         if (profileData && profileData.length > 0) {
           setCurrentUser(profileData[0]);
         } else {
-          // Fallback: if DB trigger failed, manually insert a profile
           const { data: newProfile } = await supabase.from('users').insert([{
             id: session.user.id,
             name: session.user.user_metadata?.full_name || 'Unknown User',
@@ -54,14 +55,22 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: allProfiles } = await supabase.from('users').select('*');
         if (allProfiles) setProfiles(allProfiles);
 
-        // 3. Fetch all containers
+        // 3. Fetch all containers (active only — no templates)
         const { data: allContainers } = await supabase.from('containers').select('*');
         if (allContainers) setContainers(allContainers);
 
-        // 4. Fetch all work items
+        // 4. Fetch saved containers (project/event templates)
+        const { data: allSavedContainers } = await supabase.from('saved_containers').select('*');
+        if (allSavedContainers) setSavedContainers(allSavedContainers);
+
+        // 5. Fetch saved tasks (recurring templates + items inside saved containers)
+        const { data: allSavedTasks } = await supabase.from('saved_tasks').select('*');
+        if (allSavedTasks) setSavedTasks(allSavedTasks);
+
+        // 6. Fetch work items, then spawn any due recurring tasks
         let { data: allWorkItems } = await supabase.from('work_items').select('*');
         if (allWorkItems) {
-          const newItems = await checkAndSpawnRecurringTasks(allWorkItems);
+          const newItems = await checkAndSpawnRecurringTasks(allSavedTasks ?? []);
           if (newItems && newItems.length > 0) {
             const { data: latestWorkItems } = await supabase.from('work_items').select('*');
             if (latestWorkItems) allWorkItems = latestWorkItems;
@@ -69,7 +78,7 @@ export function SupabaseDataProvider({ children, session }) {
           setWorkItems(allWorkItems);
         }
 
-        // 5. Fetch notifications for current user
+        // 7. Fetch notifications for current user
         const { data: userNotifications } = await supabase
           .from('notifications')
           .select('*')
@@ -77,7 +86,7 @@ export function SupabaseDataProvider({ children, session }) {
           .order('created_at', { ascending: false });
         if (userNotifications) setNotifications(userNotifications);
 
-        // 6. Fetch announcements
+        // 8. Fetch announcements
         const { data: allAnnouncements } = await supabase
           .from('announcements')
           .select('*')
@@ -104,6 +113,16 @@ export function SupabaseDataProvider({ children, session }) {
         supabase.from('containers').select('*').then(({ data }) => { if (data) setContainers(data); });
       }).subscribe();
 
+    const savedContainersSub = supabase.channel('public:saved_containers')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'saved_containers' }, () => {
+        supabase.from('saved_containers').select('*').then(({ data }) => { if (data) setSavedContainers(data); });
+      }).subscribe();
+
+    const savedTasksSub = supabase.channel('public:saved_tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'saved_tasks' }, () => {
+        supabase.from('saved_tasks').select('*').then(({ data }) => { if (data) setSavedTasks(data); });
+      }).subscribe();
+
     const workItemsSub = supabase.channel('public:work_items')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_items' }, () => {
         supabase.from('work_items').select('*').then(({ data }) => { if (data) setWorkItems(data); });
@@ -127,15 +146,18 @@ export function SupabaseDataProvider({ children, session }) {
     return () => {
       supabase.removeChannel(profilesSub);
       supabase.removeChannel(containersSub);
+      supabase.removeChannel(savedContainersSub);
+      supabase.removeChannel(savedTasksSub);
       supabase.removeChannel(workItemsSub);
       supabase.removeChannel(notifSub);
       supabase.removeChannel(annSub);
     };
   }, [session]);
 
-  const checkAndSpawnRecurringTasks = async (cachedItems) => {
+  // Reads from saved_tasks, spawns actual task entries into work_items
+  const checkAndSpawnRecurringTasks = async (savedTasksList) => {
     const today = new Date().toISOString().split('T')[0];
-    const templates = cachedItems.filter(w => w.is_recurring && w.is_active);
+    const templates = savedTasksList.filter(w => w.is_recurring && w.is_active);
     const candidateTemplates = [];
 
     for (const template of templates) {
@@ -172,11 +194,9 @@ export function SupabaseDataProvider({ children, session }) {
 
     if (candidateTemplates.length === 0) return [];
 
-    // Atomic lock: update last_generated_at ONLY for rows where it is not already today.
-    // The first concurrent call claims the rows; any second call finds 0 rows updated and exits.
     const candidateIds = candidateTemplates.map(t => t.id);
     const { data: claimed } = await supabase
-      .from('work_items')
+      .from('saved_tasks')
       .update({ last_generated_at: today })
       .in('id', candidateIds)
       .or(`last_generated_at.is.null,last_generated_at.neq.${today}`)
@@ -193,7 +213,7 @@ export function SupabaseDataProvider({ children, session }) {
         description: t.description,
         type: t.type,
         assignee_id: t.assignee_id,
-        container_id: t.container_id,
+        container_id: null,
         estimated_hours: t.estimated_hours,
         priority: t.priority,
         status: 'Assigned',
@@ -209,13 +229,13 @@ export function SupabaseDataProvider({ children, session }) {
       return [];
     }
 
-    // Spawn subtasks for each claimed template
     const claimedList = candidateTemplates.filter(t => claimedIds.has(t.id));
     const templateToSpawn = {};
     claimedList.forEach((t, i) => { templateToSpawn[t.id] = data[i].id; });
 
+    // Subtask templates live in saved_tasks (parent_id → recurring template in saved_tasks)
     const { data: templateSubs } = await supabase
-      .from('work_items')
+      .from('saved_tasks')
       .select('*')
       .in('parent_id', claimedList.map(t => t.id))
       .eq('type', 'Subtask');
@@ -282,6 +302,64 @@ export function SupabaseDataProvider({ children, session }) {
     }
     return { error };
   };
+
+  // ── Saved containers (project/event templates) ────────────────────────────
+
+  const addSavedContainer = async (containerData) => {
+    const { data, error } = await supabase.from('saved_containers').insert([containerData]).select();
+    if (error) console.error('Error adding saved container:', error);
+    return { data, error };
+  };
+
+  const updateSavedContainer = async (id, updates) => {
+    setSavedContainers(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    const { data, error } = await supabase.from('saved_containers').update(updates).eq('id', id).select();
+    if (error) {
+      console.error('Error updating saved container:', error);
+      supabase.from('saved_containers').select('*').then(({ data: d }) => { if (d) setSavedContainers(d); });
+    }
+    return { data, error };
+  };
+
+  const deleteSavedContainer = async (id) => {
+    setSavedContainers(prev => prev.filter(c => c.id !== id));
+    const { error } = await supabase.from('saved_containers').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting saved container:', error);
+      supabase.from('saved_containers').select('*').then(({ data: d }) => { if (d) setSavedContainers(d); });
+    }
+    return { error };
+  };
+
+  // ── Saved tasks (recurring templates + items inside saved containers) ──────
+
+  const addSavedTask = async (taskData) => {
+    const { data, error } = await supabase.from('saved_tasks').insert([taskData]).select();
+    if (error) console.error('Error adding saved task:', error);
+    return { data, error };
+  };
+
+  const updateSavedTask = async (id, updates) => {
+    setSavedTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    const { data, error } = await supabase.from('saved_tasks').update(updates).eq('id', id).select();
+    if (error) {
+      console.error('Error updating saved task:', error);
+      supabase.from('saved_tasks').select('*').then(({ data: d }) => { if (d) setSavedTasks(d); });
+    }
+    return { data, error };
+  };
+
+  const deleteSavedTask = async (id) => {
+    setSavedTasks(prev => prev.filter(t => t.id !== id));
+    const { error } = await supabase.from('saved_tasks').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting saved task:', error);
+      supabase.from('saved_tasks').select('*').then(({ data: d }) => { if (d) setSavedTasks(d); });
+    }
+    return { error };
+  };
+
+  // ── Containers (active projects/events) ───────────────────────────────────
 
   const addContainer = async (containerData) => {
     const { data, error } = await supabase.from('containers').insert([containerData]).select();
@@ -353,7 +431,6 @@ export function SupabaseDataProvider({ children, session }) {
       }
     });
 
-    // If username changes, we must sync the hidden Supabase authentication email as well
     if (updates.username && supabaseAdmin) {
       const cleanId = updates.username.trim().toLowerCase();
       const email = cleanId.includes('@') ? cleanId : `${cleanId}@erp.mic`;
@@ -392,7 +469,6 @@ export function SupabaseDataProvider({ children, session }) {
 
   const getUnreadNotifications = () => notifications.filter(n => !n.is_read);
 
-  // Announcements
   const getActiveAnnouncements = () => {
     const today = new Date().toISOString().split('T')[0];
     const todayDate = new Date(today + 'T00:00:00');
@@ -410,7 +486,7 @@ export function SupabaseDataProvider({ children, session }) {
     const today = new Date().toISOString().split('T')[0];
     const todayDate = new Date(today + 'T00:00:00');
     const eventDate = new Date(ann.event_date + 'T00:00:00');
-    
+
     const diffTime = eventDate - todayDate;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -462,6 +538,8 @@ export function SupabaseDataProvider({ children, session }) {
       profiles,
       containers,
       workItems,
+      savedContainers,
+      savedTasks,
       notifications,
       announcements,
       dateFilter,
@@ -484,6 +562,12 @@ export function SupabaseDataProvider({ children, session }) {
       addWorkItem,
       updateWorkItem,
       deleteWorkItem,
+      addSavedContainer,
+      updateSavedContainer,
+      deleteSavedContainer,
+      addSavedTask,
+      updateSavedTask,
+      deleteSavedTask,
       addContainer,
       updateContainer,
       createUser,

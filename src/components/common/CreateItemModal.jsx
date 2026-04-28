@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
 
 export default function CreateItemModal({ onClose }) {
-  const { addWorkItem, profiles, currentUser, addAnnouncement } = useDataContext();
+  const { addWorkItem, addSavedTask, profiles, currentUser, addAnnouncement } = useDataContext();
   const navigate = useNavigate();
   const [step, setStep] = useState('choose'); // 'choose' | 'task' | 'plan' | 'notification'
   const [loading, setLoading] = useState(false);
@@ -58,17 +58,20 @@ export default function CreateItemModal({ onClose }) {
   const handleCreateTask = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await addWorkItem({
+    const taskBase = {
       title: taskTitle,
       description: taskDesc,
       assignee_id: taskAssignee || null,
       priority: taskPriority,
-      expected_date: isRecurring ? null : (taskDate || null),
       status: 'Assigned',
       type: 'Task',
       ...(taskEstMins ? { estimated_hours: Number(taskEstMins) } : {}),
-      ...(isRecurring ? { is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true } : {}),
-    });
+    };
+    if (isRecurring) {
+      await addSavedTask({ ...taskBase, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
+    } else {
+      await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
+    }
     setLoading(false);
     setSuccess(true);
     setTimeout(() => onClose(), 1200);
