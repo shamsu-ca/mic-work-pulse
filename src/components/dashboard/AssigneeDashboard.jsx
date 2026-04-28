@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits } from '../../lib/statusUtils';
 import CompletionPanel from '../common/CompletionPanel';
@@ -224,9 +224,13 @@ export default function AssigneeDashboard() {
 
   const overdueItems    = myItems.filter(w => isOverdue(w) && w.status !== 'Completed');
   const notStartedItems = myItems.filter(w => getDisplayStatus(w) === 'Not Started');
-  const assignedItems   = myItems.filter(w => w.status === 'Assigned');
-  const ongoingItems    = myItems.filter(w => w.status === 'Ongoing');
   const completedItems  = myItems.filter(w => w.status === 'Completed').slice(0, 5);
+
+  // Pipeline: root tasks (no parent) — subtasks shown beneath their parent
+  const myRoots      = myItemsAll.filter(w => !w.parent_id);
+  const mySubsOf     = (parentId) => myItemsAll.filter(w => w.parent_id === parentId);
+  const assignedItems = myRoots.filter(w => w.status === 'Assigned');
+  const ongoingItems  = myRoots.filter(w => w.status === 'Ongoing');
 
   const cardProps = { containers: safeContainers, workItems: safeWorkItems };
 
@@ -316,9 +320,24 @@ export default function AssigneeDashboard() {
               Ongoing Activity
               <span className="bg-white border border-outline-variant/50 text-on-surface-variant rounded-full text-[10px] px-2 py-0.5">{ongoingItems.length}</span>
             </h3>
-            {ongoingItems.map(w => (
-              <WorkItemCard key={w.id} item={w} {...cardProps} showComplete onComplete={(item) => setPendingCompleteItem(item)} />
-            ))}
+            {ongoingItems.map(w => {
+              const subs = mySubsOf(w.id);
+              return (
+                <div key={w.id} className="flex flex-col gap-1">
+                  <WorkItemCard item={w} {...cardProps} showComplete onComplete={(item) => setPendingCompleteItem(item)} />
+                  {subs.map(s => {
+                    const sds = getDisplayStatus(s);
+                    return (
+                      <div key={s.id} className="ml-4 flex items-center gap-2 bg-white/60 border border-outline-variant/20 rounded-lg px-3 py-1.5">
+                        <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>
+                        <span className={`text-xs font-medium flex-1 leading-tight ${sds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{s.title}</span>
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${sds === 'Completed' ? 'bg-green-100 text-green-700' : sds === 'Ongoing' ? 'bg-blue-100 text-blue-700' : 'bg-surface-container text-on-surface-variant'}`}>{sds}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
             {ongoingItems.length === 0 && (
               <div className="text-center p-6 border-2 border-dashed border-outline-variant/40 rounded-lg text-outline text-xs font-medium">No ongoing tasks.</div>
             )}
@@ -329,9 +348,24 @@ export default function AssigneeDashboard() {
               New / Assigned
               <span className="bg-white border border-outline-variant/50 text-on-surface-variant rounded-full text-[10px] px-2 py-0.5">{assignedItems.length}</span>
             </h3>
-            {assignedItems.map(w => (
-              <WorkItemCard key={w.id} item={w} {...cardProps} showStart onStart={startWorkItem} />
-            ))}
+            {assignedItems.map(w => {
+              const subs = mySubsOf(w.id);
+              return (
+                <div key={w.id} className="flex flex-col gap-1">
+                  <WorkItemCard item={w} {...cardProps} showStart onStart={startWorkItem} />
+                  {subs.map(s => {
+                    const sds = getDisplayStatus(s);
+                    return (
+                      <div key={s.id} className="ml-4 flex items-center gap-2 bg-white/60 border border-outline-variant/20 rounded-lg px-3 py-1.5">
+                        <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>
+                        <span className={`text-xs font-medium flex-1 leading-tight ${sds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{s.title}</span>
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${sds === 'Completed' ? 'bg-green-100 text-green-700' : sds === 'Ongoing' ? 'bg-blue-100 text-blue-700' : 'bg-surface-container text-on-surface-variant'}`}>{sds}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
             {assignedItems.length === 0 && (
               <div className="text-center p-6 border-2 border-dashed border-outline-variant/40 rounded-lg text-outline text-xs font-medium">No new assignments.</div>
             )}

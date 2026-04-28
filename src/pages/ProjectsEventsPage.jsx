@@ -816,7 +816,7 @@ export default function ProjectsEventsPage() {
     const [saving, setSaving]             = useState(false);
     const [expandedTplId, setExpandedTplId] = useState(null);
     const [addingSubFor, setAddingSubFor] = useState(null);
-    const [subForm, setSubForm]           = useState({ title: '', assignee_id: '', date: '' });
+    const [subForm, setSubForm]           = useState({ title: '', assignee_id: '' });
     const [subSaving, setSubSaving]       = useState(false);
     const [editingSubItem, setEditingSubItem] = useState(null);
     const [recStaffFilter, setRecStaffFilter] = useState('');
@@ -837,9 +837,9 @@ export default function ProjectsEventsPage() {
       await addWorkItem({
         title: subForm.title.trim(), type: 'Subtask',
         parent_id: tplId, assignee_id: subForm.assignee_id || null,
-        expected_date: subForm.date || null, status: 'Assigned', is_recurring: false,
+        status: 'Assigned', is_recurring: false,
       });
-      setSubForm({ title: '', assignee_id: '', date: '' });
+      setSubForm({ title: '', assignee_id: '' });
       setSubSaving(false); setAddingSubFor(null);
     };
 
@@ -1083,13 +1083,11 @@ export default function ProjectsEventsPage() {
                                       <option value="">Same assignee</option>
                                       {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
-                                    <input type="date" className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                      value={subForm.date} onChange={e => setSubForm(f => ({ ...f, date: e.target.value }))} />
                                     <button onClick={() => handleAddSub(item.id)} disabled={subSaving || !subForm.title.trim()}
                                       className="text-[10px] font-bold bg-primary text-white px-2.5 py-1 rounded-lg hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
                                       {subSaving ? '…' : 'Add'}
                                     </button>
-                                    <button onClick={() => { setAddingSubFor(null); setSubForm({ title: '', assignee_id: '', date: '' }); }}
+                                    <button onClick={() => { setAddingSubFor(null); setSubForm({ title: '', assignee_id: '' }); }}
                                       className="text-[10px] font-bold border border-outline-variant/40 text-on-surface-variant px-2 py-1 rounded-lg hover:bg-surface-container whitespace-nowrap">
                                       Cancel
                                     </button>

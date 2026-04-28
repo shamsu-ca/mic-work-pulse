@@ -233,21 +233,26 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
   );
 }
 
-function EditItemModal({ item, profiles, onClose, onSave }) {
+function EditItemModal({ item, profiles, workItems, onClose, onSave }) {
   const [title, setTitle]           = useState(item.title || '');
   const [desc, setDesc]             = useState(item.description || '');
   const [assigneeId, setAssigneeId] = useState(item.assignee_id || '');
   const [priority, setPriority]     = useState(item.priority || 'Medium');
   const [dueDate, setDueDate]       = useState(item.expected_date || '');
   const [status, setStatus]         = useState(item.status || 'Assigned');
+  const [parentId, setParentId]     = useState(item.parent_id || '');
   const [loading, setLoading]       = useState(false);
 
   const cls = "bg-slate-50 border border-outline-variant rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary w-full";
 
+  const potentialParents = (workItems || []).filter(w =>
+    w.id !== item.id && w.type === 'Task' && !w.parent_id && !w.is_recurring
+  );
+
   const handleSave = async (e) => {
     e?.preventDefault();
     setLoading(true);
-    await onSave(item.id, { title, description: desc || null, assignee_id: assigneeId || null, priority, expected_date: dueDate || null, status });
+    await onSave(item.id, { title, description: desc || null, assignee_id: assigneeId || null, priority, expected_date: dueDate || null, status, parent_id: parentId || null });
     setLoading(false);
     onClose();
   };
@@ -297,6 +302,15 @@ function EditItemModal({ item, profiles, onClose, onSave }) {
               <input type="date" className={cls} value={dueDate} onChange={e => setDueDate(e.target.value)} />
             </div>
           </div>
+          {potentialParents.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Parent Task (make subtask of)</label>
+              <select className={cls} value={parentId} onChange={e => setParentId(e.target.value)}>
+                <option value="">— None (standalone task) —</option>
+                {potentialParents.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+              </select>
+            </div>
+          )}
         </form>
         <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
           <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
@@ -348,8 +362,8 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
     const isExpanded   = expandedId === item.id;
     const ds           = getDisplayStatus(item);
     const container    = item.container_id ? getContainer(item.container_id) : null;
-    const parentTask   = item.parent_id    ? getItem(item.parent_id)         : null;
     const assigneeName = getAssigneeName(item.assignee_id);
+    const children     = safeWorkItems.filter(w => w.parent_id === item.id && !w.is_recurring);
 
     return (
       <React.Fragment key={item.id}>
@@ -366,23 +380,14 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
             <span className={`material-symbols-outlined text-[18px] text-on-surface-variant block transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
           </td>
           <td className="px-2 py-3 max-w-[260px]">
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-sm font-semibold text-on-surface leading-tight line-clamp-1">{item.title}</span>
-                {container && (
-                  <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border flex-shrink-0 ${
-                    container.type === 'Project' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                  }`}>{container.type}</span>
-                )}
-              </div>
-              {parentTask && parentTask.type !== 'Phase' && (
-                <span className="text-[10px] text-on-surface-variant/70">↳ {parentTask.title}</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-sm font-semibold text-on-surface leading-tight line-clamp-1">{item.title}</span>
+              {container && (
+                <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                  container.type === 'Project' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                }`}>{container.type}</span>
               )}
-              {parentTask?.type === 'Phase' && (
-                <span className="text-[10px] text-on-surface-variant/70 flex items-center gap-0.5">
-                  <span className="material-symbols-outlined text-[10px]">layers</span> {parentTask.title}
-                </span>
-              )}
+              {children.length > 0 && <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full flex-shrink-0">{children.length} sub</span>}
             </div>
           </td>
           {showAssignee && (
@@ -412,6 +417,29 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
             </td>
           </tr>
         )}
+        {children.map(child => {
+          const cds = getDisplayStatus(child);
+          const cName = getAssigneeName(child.assignee_id);
+          return (
+            <tr key={child.id} className="bg-surface-container-lowest/40 hover:bg-surface-container-low/30 transition-colors">
+              <td className="w-8 px-3 py-2" />
+              <td className="px-2 py-2 max-w-[260px]">
+                <div className="flex items-center gap-1.5 pl-5">
+                  <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>
+                  <span className={`text-xs font-medium leading-tight line-clamp-1 ${cds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{child.title}</span>
+                  <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(cds)}`}>{cds}</span>
+                </div>
+              </td>
+              {showAssignee && (
+                <td className="px-2 py-2">
+                  <span className="text-[10px] text-on-surface-variant">{cName.split(' ')[0]}</span>
+                </td>
+              )}
+              <td className="px-2 py-2" />
+              <td className="px-2 py-2 text-[10px] text-on-surface-variant text-right pr-4">{child.expected_date ?? '—'}</td>
+            </tr>
+          );
+        })}
       </React.Fragment>
     );
   };
@@ -440,7 +468,7 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
         </div>
       </div>
       {editingItem && (
-        <EditItemModal item={editingItem} profiles={profiles} onClose={() => setEditingItem(null)}
+        <EditItemModal item={editingItem} profiles={profiles} workItems={safeWorkItems} onClose={() => setEditingItem(null)}
           onSave={async (id, updates) => { await updateWorkItem(id, updates); setEditingItem(null); }} />
       )}
     </>
@@ -471,7 +499,7 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
           <td className="px-2 py-3 max-w-[260px]">
             <div className={`flex items-center gap-1.5 ${isChild ? 'pl-5' : ''}`}>
               {isChild && <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>}
-              <span className="text-sm font-semibold text-on-surface leading-tight line-clamp-1">{item.title}</span>
+              <span className={`text-sm font-semibold leading-tight line-clamp-1 ${isChild && ds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{item.title}</span>
               {isChild && (
                 <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(ds)}`}>{ds}</span>
               )}
@@ -526,7 +554,7 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
         </div>
       </div>
       {editingItem && (
-        <EditItemModal item={editingItem} profiles={profiles} onClose={() => setEditingItem(null)}
+        <EditItemModal item={editingItem} profiles={profiles} workItems={safeWorkItems} onClose={() => setEditingItem(null)}
           onSave={async (id, updates) => { await updateWorkItem(id, updates); setEditingItem(null); }} />
       )}
     </>
@@ -535,9 +563,8 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
 
 function StatusGroupedView({ items, profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, onAddSubtask }) {
   const showAssignee = currentUser?.role !== 'Assignee';
-  const itemIds = new Set(items.map(w => w.id));
-  const rootItems = items.filter(w => !w.parent_id || !itemIds.has(w.parent_id));
-  const childrenOf = (parentId) => items.filter(w => w.parent_id === parentId);
+  const rootItems = items; // allBase already excludes subtasks
+  const childrenOf = (parentId) => (workItems || []).filter(w => w.parent_id === parentId && !w.is_recurring);
 
   const STATUS_GROUPS = [
     { key: 'Overdue',     label: 'Overdue',     icon: 'warning',  badge: 'bg-red-100 text-red-700',      defaultOpen: true },
@@ -581,6 +608,7 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser, cre
     const isExpanded = expandedId === item.id;
     const assigneeName = (profiles || []).find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
     const resolution = getResolutionStatus(item);
+    const children = (workItems || []).filter(w => w.parent_id === item.id && !w.is_recurring);
 
     return (
       <React.Fragment key={item.id}>
@@ -590,7 +618,10 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser, cre
             <span className={`material-symbols-outlined text-[18px] text-on-surface-variant block transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
           </td>
           <td className="px-2 py-3 max-w-[260px]">
-            <span className="text-sm font-semibold text-on-surface leading-tight line-clamp-1">{item.title}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold text-on-surface leading-tight line-clamp-1">{item.title}</span>
+              {children.length > 0 && <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full flex-shrink-0">{children.length} sub</span>}
+            </div>
           </td>
           {showAssignee && (
             <td className="px-2 py-3">
@@ -617,6 +648,23 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser, cre
             </td>
           </tr>
         )}
+        {children.map(child => {
+          const cds = getDisplayStatus(child);
+          return (
+            <tr key={child.id} className="bg-surface-container-lowest/40">
+              <td className="w-8 px-3 py-2" />
+              <td className="px-2 py-2 max-w-[260px]" colSpan={showAssignee ? 1 : 2}>
+                <div className="flex items-center gap-1.5 pl-5">
+                  <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>
+                  <span className={`text-xs font-medium leading-tight line-clamp-1 ${cds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{child.title}</span>
+                  <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(child.status === 'Completed' ? 'Completed' : cds)}`}>{cds}</span>
+                </div>
+              </td>
+              {showAssignee && <td className="px-2 py-2 text-[10px] text-on-surface-variant">{((profiles || []).find(p => p.id === child.assignee_id)?.name ?? '').split(' ')[0]}</td>}
+              <td className="px-2 py-2" />
+            </tr>
+          );
+        })}
       </React.Fragment>
     );
   };
@@ -705,7 +753,7 @@ export default function AllTasksPage() {
 
   const allBase = baseRaw.filter(w => {
     const type = w.type?.toLowerCase();
-    return type !== 'project' && type !== 'event' && type !== 'phase';
+    return type !== 'project' && type !== 'event' && type !== 'phase' && !w.parent_id;
   });
 
   const deptList = ['All Departments', ...new Set(safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup).map(p => p.department).filter(Boolean))];
@@ -784,7 +832,7 @@ export default function AllTasksPage() {
   const historyItems   = historyAll;
   const upcomingCount  = tomorrowItems.length + next3Days.length + thisWeek.length + laterItems.length;
 
-  const handleAddSubtask = async (parentItem, { title, date, assigneeId }) => {
+  const handleAddSubtask = async (parentItem, { title, date, assigneeId, estimatedHours }) => {
     await addWorkItem({
       title,
       expected_date: date || null,
@@ -792,9 +840,14 @@ export default function AllTasksPage() {
       status: 'Assigned',
       type: 'Subtask',
       parent_id: parentItem.id,
+      ...(estimatedHours ? { estimated_hours: parseFloat(estimatedHours) } : {}),
     });
     if (date && !parentItem.expected_date) {
       await updateWorkItem(parentItem.id, { expected_date: date });
+    }
+    // Clear parent's own estimated_hours when a subtask with hours is added — parent time = sum of subs
+    if (estimatedHours && parentItem.estimated_hours) {
+      await updateWorkItem(parentItem.id, { estimated_hours: null });
     }
   };
 
