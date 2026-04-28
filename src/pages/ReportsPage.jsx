@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits } from '../lib/statusUtils';
-import { isItemInDateRange } from '../lib/dateUtils';
+import { isItemInDateRange, fmtDate } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 
 export default function ReportsPage() {
@@ -108,7 +108,7 @@ export default function ReportsPage() {
                     <td className="px-6 py-4 text-center">
                       <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded ${w.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-surface-container text-on-surface-variant'}`}>{getDisplayStatus(w)}</span>
                     </td>
-                    <td className="px-6 py-4 text-right text-on-surface-variant">{w.expected_date ?? '—'}</td>
+                    <td className="px-6 py-4 text-right text-on-surface-variant">{w.expected_date ? fmtDate(w.expected_date) : '—'}</td>
                   </tr>
                 ))}
                 {myItems.length === 0 && (

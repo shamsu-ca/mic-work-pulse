@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isPhaseActive } from '../lib/statusUtils';
+import { fmtDate } from '../lib/dateUtils';
 import { StaffToggle } from '../components/common/FilterBar';
 import CompletionPanel from '../components/common/CompletionPanel';
 
@@ -405,7 +406,7 @@ export default function ProjectsEventsPage() {
                     ) : <span className="text-xs text-on-surface-variant/50 italic">Unassigned</span>}
                   </td>
                   {showStatus && <td className="px-3 py-2.5">{statusBadge(ds)}</td>}
-                  {showStatus && <td className="px-3 py-2.5 text-xs text-on-surface-variant">{m.expected_date ?? '—'}</td>}
+                  {showStatus && <td className="px-3 py-2.5 text-xs text-on-surface-variant">{m.expected_date ? fmtDate(m.expected_date) : '—'}</td>}
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
                       {showStatus && m.status === 'Assigned' && (isAdmin || m.assignee_id === currentUser?.id) && (
@@ -554,7 +555,7 @@ export default function ProjectsEventsPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-on-surface leading-tight">{cName(c)}</p>
                 <div className="flex items-center gap-2 mt-0.5 text-xs text-on-surface-variant flex-wrap">
-                  {c.expected_date && <span>{c.expected_date}</span>}
+                  {c.expected_date && <span>{fmtDate(c.expected_date)}</span>}
                   <span>{allItems.length} items</span>
                   {isFromTemplate && <span className="text-[9px] font-bold bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded uppercase">From Template</span>}
                 </div>
@@ -639,7 +640,7 @@ export default function ProjectsEventsPage() {
                             </div>
                           ) : (
                             <>
-                              {ph.expected_date && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${phToday ? 'bg-primary text-white' : 'bg-surface-container text-on-surface-variant'}`}>{phToday ? 'Today' : ph.expected_date}</span>}
+                              {ph.expected_date && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${phToday ? 'bg-primary text-white' : 'bg-surface-container text-on-surface-variant'}`}>{phToday ? 'Today' : fmtDate(ph.expected_date)}</span>}
                               {!ph.expected_date && <span className="text-[9px] text-on-surface-variant italic">no date set</span>}
                             </>
                           )}
@@ -652,7 +653,7 @@ export default function ProjectsEventsPage() {
                         <ChecklistTable items={phItems} phaseId={ph.id} phaseDate={ph.expected_date} showStatus />
                       ) : (
                         <div className="px-4 py-3 text-xs text-on-surface-variant italic">
-                          {phItems.length} item{phItems.length !== 1 ? 's' : ''} — unlocks when phase date ({ph.expected_date ?? 'unset'}) is reached.
+                          {phItems.length} item{phItems.length !== 1 ? 's' : ''} — unlocks when phase date ({ph.expected_date ? fmtDate(ph.expected_date) : 'unset'}) is reached.
                         </div>
                       )}
                     </div>
@@ -755,7 +756,7 @@ export default function ProjectsEventsPage() {
                     ) : <span className="text-xs text-on-surface-variant/50">—</span>}
                   </td>
                   <td className="px-3 py-2.5">{statusBadge(ds)}</td>
-                  <td className="px-3 py-2.5 text-xs text-on-surface-variant">{task.expected_date ?? '—'}</td>
+                  <td className="px-3 py-2.5 text-xs text-on-surface-variant">{task.expected_date ? fmtDate(task.expected_date) : '—'}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1 justify-end flex-wrap">
                       {task.status === 'Assigned' && (isAdmin || task.assignee_id === currentUser?.id) && (
@@ -808,7 +809,7 @@ export default function ProjectsEventsPage() {
                         ) : <span className="text-xs text-on-surface-variant/50">—</span>}
                       </td>
                       <td className="px-3 py-2">{statusBadge(sds)}</td>
-                      <td className="px-3 py-2 text-[11px] text-on-surface-variant">{sub.expected_date ?? '—'}</td>
+                      <td className="px-3 py-2 text-[11px] text-on-surface-variant">{sub.expected_date ? fmtDate(sub.expected_date) : '—'}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1 justify-end">
                           {sds !== 'Completed' && sds !== 'Overdue' && (
@@ -1107,7 +1108,7 @@ export default function ProjectsEventsPage() {
                                         <tr key={sub.id} className="group">
                                           <td className="py-1.5 pr-3 font-medium text-on-surface">{sub.title}</td>
                                           <td className="py-1.5 pr-3 text-on-surface-variant">{subName.split(' ')[0]}</td>
-                                          <td className="py-1.5 pr-3 text-on-surface-variant">{sub.expected_date ?? '—'}</td>
+                                          <td className="py-1.5 pr-3 text-on-surface-variant">{sub.expected_date ? fmtDate(sub.expected_date) : '—'}</td>
                                           {canManageSubs && (
                                             <td className="py-1.5 text-right">
                                               <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100">

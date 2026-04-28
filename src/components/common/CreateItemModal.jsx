@@ -23,6 +23,7 @@ export default function CreateItemModal({ onClose }) {
   const [recurrenceDay, setRecurrenceDay] = useState('1');
   const [recurrenceDate, setRecurrenceDate] = useState('1');
   const [recurrenceInterval, setRecurrenceInterval] = useState('7');
+  const [subtasks, setSubtasks] = useState([]);
 
   // Plan form
   const [planTitle, setPlanTitle] = useState('');
@@ -67,10 +68,21 @@ export default function CreateItemModal({ onClose }) {
       type: 'Task',
       ...(taskEstMins ? { estimated_hours: Number(taskEstMins) } : {}),
     };
+    const validSubs = subtasks.filter(s => s.trim());
     if (isRecurring) {
-      await addSavedTask({ ...taskBase, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
+      const { data: savedData } = await addSavedTask({ ...taskBase, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
+      if (savedData?.[0] && validSubs.length > 0) {
+        for (const subTitle of validSubs) {
+          await addSavedTask({ title: subTitle.trim(), type: 'Subtask', parent_id: savedData[0].id, priority: taskPriority, status: 'Assigned', assignee_id: taskAssignee || null, is_recurring: false, is_active: true });
+        }
+      }
     } else {
-      await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
+      const { data: taskData } = await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
+      if (taskData?.[0] && validSubs.length > 0) {
+        for (const subTitle of validSubs) {
+          await addWorkItem({ title: subTitle.trim(), type: 'Subtask', parent_id: taskData[0].id, assignee_id: taskAssignee || null, status: 'Assigned', expected_date: taskDate || null, is_recurring: false });
+        }
+      }
     }
     setLoading(false);
     setSuccess(true);
@@ -270,6 +282,31 @@ export default function CreateItemModal({ onClose }) {
                   <input type="number" min="0" placeholder="e.g. 90" className={inputCls} value={taskEstMins} onChange={e => setTaskEstMins(e.target.value)} />
                 </div>
               )}
+              {/* Subtasks */}
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Subtasks</label>
+                  <button type="button" onClick={() => setSubtasks(v => [...v, ''])} className="text-xs font-bold text-primary flex items-center gap-1 hover:underline">
+                    <span className="material-symbols-outlined text-[14px]">add_circle</span> Add
+                  </button>
+                </div>
+                {subtasks.length === 0 && (
+                  <p className="text-[10px] text-on-surface-variant italic">Optional — click Add to include subtasks.</p>
+                )}
+                {subtasks.map((sub, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      className={inputCls}
+                      placeholder={`Subtask ${idx + 1}`}
+                      value={sub}
+                      onChange={e => setSubtasks(v => v.map((s, i) => i === idx ? e.target.value : s))}
+                    />
+                    <button type="button" onClick={() => setSubtasks(v => v.filter((_, i) => i !== idx))} className="text-on-surface-variant hover:text-error flex-shrink-0">
+                      <span className="material-symbols-outlined text-[18px]">close</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
               <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>

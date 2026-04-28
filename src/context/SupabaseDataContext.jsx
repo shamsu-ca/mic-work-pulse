@@ -231,7 +231,11 @@ export function SupabaseDataProvider({ children, session }) {
 
     const claimedList = candidateTemplates.filter(t => claimedIds.has(t.id));
     const templateToSpawn = {};
-    claimedList.forEach((t, i) => { templateToSpawn[t.id] = data[i].id; });
+    const templateAssignee = {};
+    claimedList.forEach((t, i) => {
+      templateToSpawn[t.id] = data[i].id;
+      templateAssignee[t.id] = t.assignee_id;
+    });
 
     // Subtask templates live in saved_tasks (parent_id → recurring template in saved_tasks)
     const { data: templateSubs } = await supabase
@@ -243,7 +247,8 @@ export function SupabaseDataProvider({ children, session }) {
     if (templateSubs?.length) {
       await supabase.from('work_items').insert(templateSubs.map(sub => ({
         title: sub.title, description: sub.description, type: 'Subtask',
-        assignee_id: sub.assignee_id, priority: sub.priority,
+        assignee_id: templateAssignee[sub.parent_id] ?? null,
+        priority: sub.priority,
         estimated_hours: sub.estimated_hours,
         status: 'Assigned', expected_date: today, is_recurring: false,
         parent_id: templateToSpawn[sub.parent_id],

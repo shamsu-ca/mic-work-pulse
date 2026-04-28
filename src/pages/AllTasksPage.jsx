@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, getStatusBadgeClass } from '../lib/statusUtils';
+import { fmtDate } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 import CompletionPanel from '../components/common/CompletionPanel';
 import FollowUpModal from '../components/common/FollowUpModal';
@@ -107,7 +108,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
         {item.priority && <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${getPriorityColor(item.priority)}`}>{item.priority}</span>}
         {item.expected_date && (
           <span className="flex items-center gap-1.5 text-on-surface-variant">
-            <span className="material-symbols-outlined text-[13px]">calendar_today</span>{item.expected_date}
+            <span className="material-symbols-outlined text-[13px]">calendar_today</span>{fmtDate(item.expected_date)}
           </span>
         )}
       </div>
@@ -139,7 +140,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
                 {followUps.map(fu => (
                   <div key={fu.id} className="flex items-center gap-2 text-xs pl-2 border-l-2 border-indigo-200">
                     <span className="font-medium text-on-surface flex-1">{fu.title}</span>
-                    <span className="text-on-surface-variant/70">{fu.expected_date ?? '—'}</span>
+                    <span className="text-on-surface-variant/70">{fu.expected_date ? fmtDate(fu.expected_date) : '—'}</span>
                   </div>
                 ))}
               </div>
@@ -404,7 +405,7 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
             <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded ${getStatusBadgeClass(ds)}`}>{ds}</span>
           </td>
           <td className="px-2 py-3 text-xs text-on-surface-variant font-medium text-right pr-4">
-            {item.expected_date ?? '—'}
+            {item.expected_date ? fmtDate(item.expected_date) : '—'}
           </td>
         </tr>
         {isExpanded && (
@@ -436,7 +437,7 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
                 </td>
               )}
               <td className="px-2 py-2" />
-              <td className="px-2 py-2 text-[10px] text-on-surface-variant text-right pr-4">{child.expected_date ?? '—'}</td>
+              <td className="px-2 py-2 text-[10px] text-on-surface-variant text-right pr-4">{child.expected_date ? fmtDate(child.expected_date) : '—'}</td>
             </tr>
           );
         })}
@@ -516,7 +517,7 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
             </td>
           )}
           <td className="px-2 py-3 text-xs text-on-surface-variant font-medium text-right pr-4">
-            {item.expected_date ?? '—'}
+            {item.expected_date ? fmtDate(item.expected_date) : '—'}
           </td>
         </tr>
         {isExpanded && (

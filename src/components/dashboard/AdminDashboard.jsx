@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits, getStatusBadgeClass } from '../../lib/statusUtils';
+import { fmtDate } from '../../lib/dateUtils';
 import FilterBar from '../common/FilterBar';
-
-const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function AdminDashboard() {
   const { profiles, workItems, containers, staffGroup } = useDataContext();
@@ -30,7 +29,7 @@ export default function AdminDashboard() {
   const staffGroupIds = new Set(
     safeProfiles.filter(p => p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup).map(p => p.id)
   );
-  const staffActionableItems = actionableItems.filter(w => staffGroupIds.has(w.assignee_id));
+  const staffActionableItems = actionableItems.filter(w => !w.assignee_id || staffGroupIds.has(w.assignee_id));
 
   // ── Task stats ──
   const totalTasks    = staffActionableItems.length;
@@ -70,21 +69,18 @@ export default function AdminDashboard() {
   const overdueByAssignee    = groupByAssignee(overdueItems);
   const notStartedByAssignee = groupByAssignee(notStartedItems);
 
-  // ── Today's Focus: all items due today + overdue + not started (ordered) ──
-  const today = todayStr();
-  const todayOverdue     = staffActionableItems.filter(w => isOverdue(w) && w.status !== 'Completed');
-  const todayNotStarted  = staffActionableItems.filter(w => getDisplayStatus(w) === 'Not Started' && !isOverdue(w));
-  const todayDueToday    = staffActionableItems.filter(w =>
-    w.status !== 'Completed' &&
-    !isOverdue(w) &&
-    getDisplayStatus(w) !== 'Not Started' &&
-    w.expected_date === today
-  );
-  const todaysFocus = [
-    ...todayOverdue.sort((a,b) => { const p={Critical:0,High:1,Medium:2,Low:3}; return (p[a.priority]??2)-(p[b.priority]??2); }),
-    ...todayNotStarted.sort((a,b) => { const p={Critical:0,High:1,Medium:2,Low:3}; return (p[a.priority]??2)-(p[b.priority]??2); }),
-    ...todayDueToday.sort((a,b) => { const p={Critical:0,High:1,Medium:2,Low:3}; return (p[a.priority]??2)-(p[b.priority]??2); }),
-  ];
+  // ── Today's Focus: all incomplete items sorted by priority then urgency ──
+  const todaysFocus = [...staffActionableItems]
+    .filter(w => w.status !== 'Completed')
+    .sort((a, b) => {
+      const p = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+      const pDiff = (p[a.priority] ?? 2) - (p[b.priority] ?? 2);
+      if (pDiff !== 0) return pDiff;
+      const aOd = isOverdue(a) ? 0 : 1;
+      const bOd = isOverdue(b) ? 0 : 1;
+      if (aOd !== bOd) return aOd - bOd;
+      return (a.expected_date || 'z').localeCompare(b.expected_date || 'z');
+    });
 
   // ── Priority Queue: Critical & High only ──
   const priorityQueue = [...staffActionableItems]
@@ -226,7 +222,7 @@ export default function AdminDashboard() {
                       <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${ds === 'Overdue' ? 'bg-error' : ds === 'Ongoing' ? 'bg-blue-500' : ds === 'Not Started' ? 'bg-amber-400' : 'bg-outline'}`} />
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-on-surface truncate">{w.title}</p>
-                        <p className="text-on-surface-variant text-[10px]">{getAssigneeName(w.assignee_id).split(' ')[0]} · {w.expected_date || 'no date'}</p>
+                        <p className="text-on-surface-variant text-[10px]">{getAssigneeName(w.assignee_id).split(' ')[0]} · {w.expected_date ? fmtDate(w.expected_date) : 'no date'}</p>
                         {c && <p className="text-[10px] text-indigo-600 truncate">{c.title}</p>}
                       </div>
                       <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(ds)}`}>{ds}</span>
@@ -346,7 +342,7 @@ export default function AdminDashboard() {
                           <div key={ph.id} className="mb-2">
                             <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700 mb-1 flex items-center gap-1">
                               <span className="material-symbols-outlined text-[12px]">layers</span>{ph.title}
-                              {ph.expected_date && <span className="ml-auto text-on-surface-variant font-medium">{ph.expected_date}</span>}
+                              {ph.expected_date && <span className="ml-auto text-on-surface-variant font-medium">{fmtDate(ph.expected_date)}</span>}
                             </p>
                             <div className="flex flex-col gap-1">
                               {phItems.map(ci => {
@@ -403,7 +399,7 @@ export default function AdminDashboard() {
                 {new Date().toLocaleDateString('en-GB', {day:'2-digit',month:'short'})}
               </span>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
               {todaysFocus.length === 0 && <p className="text-sm text-on-surface-variant text-center py-6 italic">Nothing urgent today 🎉</p>}
               {todaysFocus.map(t => {
                 const s = getDisplayStatus(t);
@@ -423,7 +419,7 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                         {contTag && <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${contTag.cls}`}>{contTag.label}</span>}
                         {t.priority && <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${priorityCls(t.priority)}`}>{t.priority}</span>}
-                        {t.expected_date && <span className="text-[10px] text-on-surface-variant">Due {t.expected_date}</span>}
+                        {t.expected_date && <span className="text-[10px] text-on-surface-variant">Due {fmtDate(t.expected_date)}</span>}
                       </div>
                     </div>
                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${getStatusBadgeClass(s)}`}>{s}</span>
@@ -473,7 +469,7 @@ export default function AdminDashboard() {
                         <td className="py-2.5">
                           <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${getStatusBadgeClass(s)}`}>{s}</span>
                         </td>
-                        <td className="py-2.5 text-on-surface-variant">{t.expected_date || '—'}</td>
+                        <td className="py-2.5 text-on-surface-variant">{t.expected_date ? fmtDate(t.expected_date) : '—'}</td>
                       </tr>
                     );
                   })}

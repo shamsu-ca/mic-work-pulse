@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits } from '../lib/statusUtils';
+import { fmtDate } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 
 function EditUserModal({ profile, profiles, onClose, onSave }) {
@@ -389,7 +390,7 @@ export default function StaffOverviewPage() {
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s === 'Overdue' ? 'bg-error' : s === 'Ongoing' ? 'bg-blue-500' : s === 'Completed' ? 'bg-green-500' : 'bg-amber-400'}`}></span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-on-surface truncate">{t.title}</p>
-                    <p className="text-[10px] text-on-surface-variant">{t.expected_date ? `Due ${t.expected_date}` : 'No date'}</p>
+                    <p className="text-[10px] text-on-surface-variant">{t.expected_date ? `Due ${fmtDate(t.expected_date)}` : 'No date'}</p>
                   </div>
                   <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${typeChip(t.type)}`}>{t.type || 'Task'}</span>
                   <div className="flex flex-col items-end gap-0.5 flex-shrink-0">

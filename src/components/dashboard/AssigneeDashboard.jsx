@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits } from '../../lib/statusUtils';
+import { fmtDate } from '../../lib/dateUtils';
 import CompletionPanel from '../common/CompletionPanel';
 
 // ─── Expandable work item card for pipeline ───────────────────────────────────
@@ -56,7 +57,7 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-on-surface-variant flex items-center gap-1">
             <span className="material-symbols-outlined text-[12px]">event</span>
-            {item.expected_date ? `Due: ${item.expected_date}` : 'No deadline'}
+            {item.expected_date ? `Due: ${fmtDate(item.expected_date)}` : 'No deadline'}
           </span>
           {item.priority && (
             <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
@@ -189,7 +190,7 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
           <div key={w.id} className="flex justify-between items-center border-b border-surface-container pb-2 last:border-0 last:pb-0">
             <div className="flex-1 min-w-0 pr-2">
               <span className="text-sm font-semibold text-on-surface truncate block">{w.title}</span>
-              {w.expected_date && <span className="text-[10px] text-on-surface-variant">{w.expected_date}</span>}
+              {w.expected_date && <span className="text-[10px] text-on-surface-variant">{fmtDate(w.expected_date)}</span>}
             </div>
             {onAction && (
               <button className={`text-[10px] font-bold px-2 py-1 rounded flex-shrink-0 ${accent.btn}`} onClick={() => onAction(w.id)}>
@@ -228,7 +229,7 @@ export default function AssigneeDashboard() {
 
   // Pipeline: root tasks (no parent) — subtasks shown beneath their parent
   const myRoots      = myItemsAll.filter(w => !w.parent_id);
-  const mySubsOf     = (parentId) => myItemsAll.filter(w => w.parent_id === parentId);
+  const mySubsOf     = (parentId) => safeWorkItems.filter(w => w.parent_id === parentId);
   const assignedItems = myRoots.filter(w => w.status === 'Assigned');
   const ongoingItems  = myRoots.filter(w => w.status === 'Ongoing');
 

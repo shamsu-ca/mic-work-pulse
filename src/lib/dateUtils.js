@@ -58,6 +58,16 @@ export function isItemInDateRange(item, dateFilter, customDateRange) {
   return itemDate >= range.from && itemDate <= range.to;
 }
 
+/**
+ * Format a YYYY-MM-DD date string as "Tue 28 Mar 2026".
+ * Returns '—' for falsy input.
+ */
+export function fmtDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 /** Human-readable label for the current filter */
 export function getFilterLabel(dateFilter, customDateRange) {
   if (dateFilter === 'today') return 'Today';
