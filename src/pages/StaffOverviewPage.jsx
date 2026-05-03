@@ -201,9 +201,129 @@ function CredentialsModal({ name, loginId, password, onClose }) {
   );
 }
 
+function LeaveManagementTab({ absences, profiles, deleteAbsence }) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayLeaves = absences.filter(a => a.from_date <= todayStr && a.to_date >= todayStr);
+  const upcomingLeaves = absences.filter(a => a.from_date > todayStr);
+
+  const getProfile = (id) => profiles.find(p => p.id === id);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
+        <div className="px-6 py-4 bg-amber-50 border-b border-amber-100 flex items-center gap-3">
+           <span className="material-symbols-outlined text-amber-600">today</span>
+           <h2 className="font-bold text-lg text-amber-900">Today's Leaves</h2>
+        </div>
+        <div className="p-0">
+          {todayLeaves.length === 0 ? (
+            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No one is on leave today.</p>
+          ) : (
+             <ul className="divide-y divide-surface-container-low">
+                {todayLeaves.map(leave => (
+                   <li key={leave.id} className="p-4 flex items-center justify-between hover:bg-surface-container-low/30">
+                      <div>
+                         <p className="font-bold text-sm">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
+                         <p className="text-xs text-on-surface-variant mt-0.5">{leave.reason || 'No reason provided'}</p>
+                         <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mt-1">UNTIL {leave.to_date}</p>
+                      </div>
+                      <button onClick={() => deleteAbsence(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
+                         <span className="material-symbols-outlined text-[18px]">delete</span>
+                      </button>
+                   </li>
+                ))}
+             </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
+        <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex items-center gap-3">
+           <span className="material-symbols-outlined text-blue-600">event_upcoming</span>
+           <h2 className="font-bold text-lg text-blue-900">Upcoming Leaves</h2>
+        </div>
+        <div className="p-0">
+          {upcomingLeaves.length === 0 ? (
+            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No upcoming leaves scheduled.</p>
+          ) : (
+             <ul className="divide-y divide-surface-container-low">
+                {upcomingLeaves.map(leave => (
+                   <li key={leave.id} className="p-4 flex items-center justify-between hover:bg-surface-container-low/30">
+                      <div>
+                         <p className="font-bold text-sm">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
+                         <p className="text-xs text-on-surface-variant mt-0.5">{leave.reason || 'No reason provided'}</p>
+                         <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1">{leave.from_date} — {leave.to_date}</p>
+                      </div>
+                      <button onClick={() => deleteAbsence(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
+                         <span className="material-symbols-outlined text-[18px]">delete</span>
+                      </button>
+                   </li>
+                ))}
+             </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarkAbsentModal({ profile, onClose, onSave }) {
+  const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
+  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    await onSave({ user_id: profile.id, from_date: fromDate, to_date: toDate, reason });
+    setLoading(false);
+    onClose();
+  };
+
+  const cls = "bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full";
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-container">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-amber-500">event_busy</span>
+            <h2 className="font-bold text-lg font-headline">Mark Absent</h2>
+          </div>
+          <button onClick={onClose}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
+        </div>
+        <form onSubmit={handleSave} className="p-6 flex flex-col gap-4">
+          <p className="text-sm text-on-surface-variant">Marking <span className="font-bold text-on-surface">{profile.name}</span> as absent.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">From Date *</label>
+              <input type="date" required className={cls} value={fromDate} onChange={e => setFromDate(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">To Date *</label>
+              <input type="date" required className={cls} value={toDate} min={fromDate} onChange={e => setToDate(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Reason</label>
+            <input className={cls} placeholder="Optional" value={reason} onChange={e => setReason(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
+            <button type="submit" className="px-5 py-2 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl flex items-center gap-2" disabled={loading}>
+              {loading ? 'Saving...' : 'Confirm'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function StaffOverviewPage() {
   const {
-    profiles, workItems, staffGroup,
+    profiles, workItems, staffGroup, currentUser, absences, addAbsence, deleteAbsence,
     createUser, adminUpdateProfile, adminResetUserPassword,
   } = useDataContext();
   const safeProfiles = profiles || [];
@@ -234,11 +354,16 @@ export default function StaffOverviewPage() {
     return s.length > 1 ? (s[0][0] + s[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
   };
 
-  const staffList = safeProfiles.filter(p => p.role !== 'Admin');
+  const staffList = safeProfiles.filter(s => {
+    if (staffGroup === 'Self') return s.id === currentUser?.id;
+    if (staffGroup === 'Admin') return s.role === 'Admin';
+    return s.role !== 'Admin' && (s.category || 'Office Staff') === staffGroup;
+  });
+
   const departments = ['All', ...new Set(staffList.map(p => p.department).filter(Boolean))];
-  const filteredStaff = staffList
-    .filter(s => (s.category || 'Office Staff') === staffGroup)
-    .filter(s => deptFilter === 'All' || s.department === deptFilter);
+  const filteredStaff = staffList.filter(s => deptFilter === 'All' || s.department === deptFilter);
+
+  const [absentProfile, setAbsentProfile] = useState(null);
 
   const getMetrics = (staffId) => {
     const allTasks = safeWorkItems.filter(t => t.assignee_id === staffId);
@@ -326,9 +451,20 @@ export default function StaffOverviewPage() {
               <span className="material-symbols-outlined text-[16px]">manage_accounts</span>
               Manage Staff
             </button>
+            <button
+              onClick={() => setPageTab('Leave')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-xl border transition-all ${pageTab === 'Leave' ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary hover:text-primary'}`}
+            >
+              <span className="material-symbols-outlined text-[16px]">event_busy</span>
+              Leave Management
+            </button>
 
             {pageTab === 'Manage' && (
-              <button onClick={() => setIsCreateOpen(true)} className="bg-green-600 text-white rounded-xl px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-1.5 hover:opacity-90">
+              <button onClick={() => {
+                setNewRole(staffGroup === 'Admin' ? 'Admin' : 'Assignee');
+                setNewCategory(staffGroup === 'Admin' ? '' : (staffGroup === 'Self' ? 'Office Staff' : staffGroup));
+                setIsCreateOpen(true);
+              }} className="bg-green-600 text-white rounded-xl px-4 py-2 text-sm font-bold shadow-sm flex items-center gap-1.5 hover:opacity-90">
                 <span className="material-symbols-outlined text-[16px]">person_add</span>Add User
               </button>
             )}
@@ -430,6 +566,11 @@ export default function StaffOverviewPage() {
                   <span className={`text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full border ${isOverloaded ? 'bg-red-50 border-red-200 text-red-600' : 'bg-green-50 border-green-200 text-green-700'}`}>
                     ● {isOverloaded ? 'AT RISK' : 'ACTIVE'}
                   </span>
+                </div>
+                <div className="px-5 pb-3">
+                   <button onClick={(e) => { e.stopPropagation(); setAbsentProfile(staff); }} className="text-[10px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded transition-colors flex items-center gap-1 w-fit">
+                     <span className="material-symbols-outlined text-[13px]">event_busy</span> Mark Absent
+                   </button>
                 </div>
 
                 {/* ── Overdue + Not Started ── */}
@@ -663,7 +804,7 @@ export default function StaffOverviewPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low">
-                  {safeProfiles.map(p => (
+                  {staffList.map(p => (
                     <tr key={p.id} className="hover:bg-surface-container-low/40 transition-colors">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
@@ -693,10 +834,10 @@ export default function StaffOverviewPage() {
                   ))}
                 </tbody>
               </table>
-              {safeProfiles.length === 0 && (
+              {staffList.length === 0 && (
                 <div className="text-center py-16 text-on-surface-variant">
                   <span className="material-symbols-outlined text-5xl mb-3 block">group</span>
-                  <p className="font-semibold">No staff yet. Click "Add User" to get started.</p>
+                  <p className="font-semibold">No staff found for "{staffGroup}".</p>
                 </div>
               )}
             </div>
@@ -704,8 +845,14 @@ export default function StaffOverviewPage() {
         </div>
       )}
 
+      {pageTab === 'Leave' && (
+        <LeaveManagementTab absences={absences} profiles={safeProfiles} deleteAbsence={deleteAbsence} />
+      )}
+
+      {/* ── Modals ── */}
       {editingProfile && <EditUserModal profile={editingProfile} profiles={safeProfiles} onClose={() => setEditingProfile(null)} onSave={handleSaveEdit} />}
       {resettingProfile && <ResetPasswordModal profile={resettingProfile} onClose={() => setResettingProfile(null)} onReset={adminResetUserPassword} />}
+      {absentProfile && <MarkAbsentModal profile={absentProfile} onClose={() => setAbsentProfile(null)} onSave={addAbsence} />}
       {createdCreds && <CredentialsModal name={createdCreds.name} loginId={createdCreds.loginId} password={createdCreds.password} onClose={() => setCreatedCreds(null)} />}
     </div>
   );

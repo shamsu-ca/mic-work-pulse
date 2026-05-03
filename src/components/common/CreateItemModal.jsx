@@ -56,6 +56,16 @@ export default function CreateItemModal({ onClose }) {
     return { type: 'daily' };
   };
 
+  const buildSubtaskSpawnRule = (spawnDay) => {
+    if (!spawnDay) return null;
+    const n = Number(spawnDay);
+    if (recurrenceType === 'weekly')         return { type: 'weekly',        day:    n };
+    if (recurrenceType === 'every_x_days')   return { type: 'every_x_days',  offset: n };
+    if (recurrenceType === 'monthly')        return { type: 'monthly',        date:   n };
+    if (recurrenceType === 'every_x_months') return { type: 'every_x_months', date:   n };
+    return null;
+  };
+
   const handleCreateTask = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -68,19 +78,19 @@ export default function CreateItemModal({ onClose }) {
       type: 'Task',
       ...(taskEstMins ? { estimated_hours: Number(taskEstMins) } : {}),
     };
-    const validSubs = subtasks.filter(s => s.trim());
+    const validSubs = subtasks.filter(s => s.title.trim());
     if (isRecurring) {
       const { data: savedData } = await addSavedTask({ ...taskBase, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
       if (savedData?.[0] && validSubs.length > 0) {
-        for (const subTitle of validSubs) {
-          await addSavedTask({ title: subTitle.trim(), type: 'Subtask', parent_id: savedData[0].id, priority: taskPriority, status: 'Assigned', assignee_id: taskAssignee || null, is_recurring: false, is_active: true });
+        for (const sub of validSubs) {
+          await addSavedTask({ title: sub.title.trim(), type: 'Subtask', parent_id: savedData[0].id, priority: taskPriority, status: 'Assigned', assignee_id: taskAssignee || null, is_recurring: false, is_active: true, recurrence_rule: buildSubtaskSpawnRule(sub.spawnDay), last_generated_at: null });
         }
       }
     } else {
       const { data: taskData } = await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
       if (taskData?.[0] && validSubs.length > 0) {
-        for (const subTitle of validSubs) {
-          await addWorkItem({ title: subTitle.trim(), type: 'Subtask', parent_id: taskData[0].id, assignee_id: taskAssignee || null, status: 'Assigned', expected_date: taskDate || null, is_recurring: false });
+        for (const sub of validSubs) {
+          await addWorkItem({ title: sub.title.trim(), type: 'Subtask', parent_id: taskData[0].id, assignee_id: taskAssignee || null, status: 'Assigned', expected_date: taskDate || null, is_recurring: false });
         }
       }
     }
@@ -245,7 +255,7 @@ export default function CreateItemModal({ onClose }) {
               {isRecurring ? (
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Recurrence</label>
-                  <select className={inputCls} value={recurrenceType} onChange={e => setRecurrenceType(e.target.value)}>
+                  <select className={inputCls} value={recurrenceType} onChange={e => { setRecurrenceType(e.target.value); setSubtasks(v => v.map(s => ({ ...s, spawnDay: '' }))); }}>
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
@@ -286,7 +296,7 @@ export default function CreateItemModal({ onClose }) {
               <div className="flex flex-col gap-2 pt-1">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Subtasks</label>
-                  <button type="button" onClick={() => setSubtasks(v => [...v, ''])} className="text-xs font-bold text-primary flex items-center gap-1 hover:underline">
+                  <button type="button" onClick={() => setSubtasks(v => [...v, { title: '', spawnDay: '' }])} className="text-xs font-bold text-primary flex items-center gap-1 hover:underline">
                     <span className="material-symbols-outlined text-[14px]">add_circle</span> Add
                   </button>
                 </div>
@@ -294,16 +304,45 @@ export default function CreateItemModal({ onClose }) {
                   <p className="text-[10px] text-on-surface-variant italic">Optional — click Add to include subtasks.</p>
                 )}
                 {subtasks.map((sub, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      className={inputCls}
-                      placeholder={`Subtask ${idx + 1}`}
-                      value={sub}
-                      onChange={e => setSubtasks(v => v.map((s, i) => i === idx ? e.target.value : s))}
-                    />
-                    <button type="button" onClick={() => setSubtasks(v => v.filter((_, i) => i !== idx))} className="text-on-surface-variant hover:text-error flex-shrink-0">
-                      <span className="material-symbols-outlined text-[18px]">close</span>
-                    </button>
+                  <div key={idx} className="flex flex-col gap-1.5 bg-surface-container-low rounded-xl p-2 border border-outline-variant/20">
+                    <div className="flex items-center gap-2">
+                      <input
+                        className={inputCls}
+                        placeholder={`Subtask ${idx + 1}`}
+                        value={sub.title}
+                        onChange={e => setSubtasks(v => v.map((s, i) => i === idx ? { ...s, title: e.target.value } : s))}
+                      />
+                      <button type="button" onClick={() => setSubtasks(v => v.filter((_, i) => i !== idx))} className="text-on-surface-variant hover:text-error flex-shrink-0">
+                        <span className="material-symbols-outlined text-[18px]">close</span>
+                      </button>
+                    </div>
+                    {isRecurring && recurrenceType !== 'daily' && (
+                      <div className="flex items-center gap-2 pl-1">
+                        <span className="material-symbols-outlined text-[14px] text-on-surface-variant flex-shrink-0">schedule_send</span>
+                        <select
+                          className="text-xs bg-white border border-outline-variant/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/30 flex-1"
+                          value={sub.spawnDay}
+                          onChange={e => setSubtasks(v => v.map((s, i) => i === idx ? { ...s, spawnDay: e.target.value } : s))}
+                        >
+                          <option value="">With parent</option>
+                          {recurrenceType === 'weekly' &&
+                            ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) =>
+                              <option key={i} value={String(i)}>{d}</option>
+                            )
+                          }
+                          {recurrenceType === 'every_x_days' && Number(recurrenceInterval) > 1 &&
+                            Array.from({ length: Number(recurrenceInterval) - 1 }, (_, i) =>
+                              <option key={i + 1} value={String(i + 1)}>+{i + 1} day{i > 0 ? 's' : ''} after</option>
+                            )
+                          }
+                          {(recurrenceType === 'monthly' || recurrenceType === 'every_x_months') &&
+                            Array.from({ length: 31 }, (_, i) =>
+                              <option key={i + 1} value={String(i + 1)}>{i + 1}{i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}</option>
+                            )
+                          }
+                        </select>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -337,20 +376,11 @@ export default function CreateItemModal({ onClose }) {
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Description</label>
                 <textarea className={inputCls + " resize-none"} rows={2} placeholder="Optional..." value={planDesc} onChange={e => setPlanDesc(e.target.value)} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Assignee</label>
-                  <select className={inputCls} value={planAssignee} onChange={e => setPlanAssignee(e.target.value)}>
-                    <option value="">— Unassigned —</option>
-                    {assigneeList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Priority</label>
-                  <select className={inputCls} value={planPriority} onChange={e => setPlanPriority(e.target.value)}>
-                    <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
-                  </select>
-                </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Priority</label>
+                <select className={inputCls} value={planPriority} onChange={e => setPlanPriority(e.target.value)}>
+                  <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+                </select>
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>

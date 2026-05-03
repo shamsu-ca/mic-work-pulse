@@ -83,19 +83,10 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-// Inline delete confirm: first click shows confirm, second click deletes
+// Inline delete button
 function DeleteBtn({ onDelete, size = 'sm' }) {
-  const [confirming, setConfirming] = useState(false);
-  if (confirming) return (
-    <div className="flex items-center gap-1">
-      <button onClick={() => { onDelete(); setConfirming(false); }}
-        className="text-[9px] font-bold bg-error text-white px-2 py-0.5 rounded-lg hover:opacity-90">Confirm</button>
-      <button onClick={() => setConfirming(false)}
-        className="text-[9px] font-bold bg-surface-container text-on-surface-variant px-2 py-0.5 rounded-lg">Cancel</button>
-    </div>
-  );
   return (
-    <button onClick={() => setConfirming(true)}
+    <button onClick={onDelete}
       className={`text-on-surface-variant hover:text-error transition-colors ${size === 'xs' ? 'opacity-0 group-hover:opacity-100' : ''}`}>
       <span className="material-symbols-outlined text-[16px]">delete</span>
     </button>
@@ -309,12 +300,6 @@ export default function ProjectsEventsPage() {
       await addSavedTask({ title: milestoneForm.title.trim(), type: 'Milestone', saved_container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null });
     } else {
       await addWorkItem({ title: milestoneForm.title.trim(), type: 'Milestone', container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null });
-      if (milestoneForm.date) {
-        const container = safeContainers.find(c => c.id === milestoneTarget);
-        if (container && !container.expected_date) {
-          await updateContainer(milestoneTarget, { expected_date: milestoneForm.date });
-        }
-      }
     }
     setSubmitting(false); setMilestoneTarget(null); setMilestoneForm({ title: '', date: '' });
   };

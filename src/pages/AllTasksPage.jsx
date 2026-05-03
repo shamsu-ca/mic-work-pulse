@@ -40,15 +40,8 @@ const getResolutionStatus = (item) => {
 
 
 function DeleteBtn({ onConfirm }) {
-  const [confirming, setConfirming] = useState(false);
-  if (confirming) return (
-    <span className="flex items-center gap-1">
-      <button onClick={onConfirm} className="text-[11px] font-bold bg-red-600 text-white px-2.5 py-1 rounded-lg hover:bg-red-700">Confirm</button>
-      <button onClick={() => setConfirming(false)} className="text-[11px] font-bold border border-outline-variant/40 text-on-surface-variant px-2 py-1 rounded-lg hover:bg-surface-container">Cancel</button>
-    </span>
-  );
   return (
-    <button onClick={() => setConfirming(true)} className="flex items-center gap-1.5 bg-white border border-red-200 text-red-600 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-50">
+    <button onClick={onConfirm} className="flex items-center gap-1.5 bg-white border border-red-200 text-red-600 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-50">
       <span className="material-symbols-outlined text-[14px]">delete</span> Delete
     </button>
   );
@@ -174,7 +167,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
       {showActions && (
         <div className="flex flex-col gap-2 pt-1">
           <div className="flex gap-2 flex-wrap">
-            {item.status === 'Assigned' && (
+            {item.status === 'Assigned' && currentUser?.role !== 'Admin' && (
               <button onClick={() => onStart(item.id)} className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90">
                 <span className="material-symbols-outlined text-[14px]">play_arrow</span> Start
               </button>

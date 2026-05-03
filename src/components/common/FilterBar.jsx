@@ -15,6 +15,8 @@ export function StaffToggle() {
   const options = [
     { key: 'Office Staff', icon: 'business_center', color: 'text-blue-600' },
     { key: 'Institution',  icon: 'school',          color: 'text-emerald-600' },
+    { key: 'Admin',        icon: 'admin_panel_settings', color: 'text-purple-600' },
+    { key: 'Self',         icon: 'person',          color: 'text-pink-600' },
   ];
   return (
     <div className="flex bg-surface-container p-1 rounded-xl gap-0.5">

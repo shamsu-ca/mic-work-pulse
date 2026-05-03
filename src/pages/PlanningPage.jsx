@@ -21,7 +21,35 @@ const getAgeClass = (ageStr) => {
   return 'bg-red-100 text-red-700';
 };
 
-function PlanningPoolTab({ poolItems, onAssign, profiles, currentUser, searchQuery, staffGroup }) {
+function AssignmentModal({ item, onClose, onAssignTask, onAssignProject }) {
+  if (!item) return null;
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-on-surface mb-2">Assign Item</h2>
+        <p className="text-sm text-on-surface-variant mb-6">How would you like to convert "<span className="font-semibold">{item.title}</span>"?</p>
+        <div className="flex flex-col gap-3">
+          <button onClick={() => onAssignTask(item)} className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
+            <span className="material-symbols-outlined text-[18px]">task</span>
+            Convert to Task
+          </button>
+          <button onClick={() => onAssignProject(item)} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
+            <span className="material-symbols-outlined text-[18px]">view_kanban</span>
+            Convert to Project
+          </button>
+        </div>
+        <p className="text-xs text-on-surface-variant text-center mt-4">
+          Note: Converting to a Project will create a new project and remove this item from the pool.
+        </p>
+        <button onClick={onClose} className="w-full mt-2 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-lg">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, searchQuery, staffGroup }) {
   // Filter based on search
   const filtered = poolItems.filter(item => {
     if (searchQuery && !item.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -70,7 +98,7 @@ function PlanningPoolTab({ poolItems, onAssign, profiles, currentUser, searchQue
                   )}
                   <td className="px-5 py-4 text-right pr-4">
                     <button
-                      onClick={() => onAssign(item.id)}
+                      onClick={() => onAssignClick(item)}
                       className="flex items-center gap-1 ml-auto text-[11px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
                     >
                       <span className="material-symbols-outlined text-[14px]">person_add</span>
@@ -244,12 +272,13 @@ function NotificationsTab() {
 // ─── MAIN PLANNING PAGE ────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
-  const { workItems, currentUser, profiles, updateWorkItem } = useDataContext();
+  const { workItems, currentUser, profiles, updateWorkItem, deleteWorkItem, addContainer } = useDataContext();
   const location = useLocation();
   
   const [staffGroup, setStaffGroup] = useState('Office Staff');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'Pool');
+  const [assignmentItem, setAssignmentItem] = useState(null);
 
   useEffect(() => {
     if (location.state?.activeTab) {
@@ -258,21 +287,33 @@ export default function PlanningPage() {
   }, [location.state]);
 
   const isSuperAdmin = currentUser?.role === 'Admin';
-  const poolItems = (workItems || []).filter(w => w.in_planning_pool && !w.is_recurring);
+  // Restrict planning pool to only items created by the current user.
+  const poolItems = (workItems || []).filter(w => w.in_planning_pool && !w.is_recurring && w.created_by === currentUser?.id);
 
-  const handleAssign = async (taskId) => {
+  const handleAssignTask = async (item) => {
     const assigneeId = currentUser?.role === 'Assignee' ? currentUser.id : null; 
-    // In final UI: "Only action: Assign -> becomes Task (Assigned)".
-    // If Assignee clicks, they self-assign. If Admin clicks, maybe they self-assign or just mark Assigned?
-    // Wait, the PRD says "Assign -> becomes Task (Assigned)". For now, if admin, they should select. 
-    // Wait, "No extra fields clutter". We'll just self-assign or leave assignee_id null but status Assigned, 
-    // or trigger a native prompt for assignment. We'll simply mark 'Assigned' and `in_planning_pool = false`.
-    // The user can assign it properly via Task Page edit.
-    await updateWorkItem(taskId, {
+    await updateWorkItem(item.id, {
       in_planning_pool: false,
       status: 'Assigned',
-      assignee_id: assigneeId // If assignee, claim it.
+      type: 'Task',
+      assignee_id: assigneeId
     });
+    setAssignmentItem(null);
+  };
+
+  const handleAssignProject = async (item) => {
+    // We already have a popup confirmation when deleting from context, 
+    // but the modal text also warned them. Let's do the add first, then delete.
+    const { data } = await addContainer({
+      title: item.title,
+      description: item.description,
+      type: 'Project',
+      status: 'Active'
+    });
+    if (data) {
+      await deleteWorkItem(item.id);
+    }
+    setAssignmentItem(null);
   };
 
   return (
@@ -332,7 +373,7 @@ export default function PlanningPage() {
       {(!isSuperAdmin || activeTab === 'Pool') && (
         <PlanningPoolTab 
           poolItems={poolItems} 
-          onAssign={handleAssign} 
+          onAssignClick={(item) => setAssignmentItem(item)} 
           profiles={profiles} 
           currentUser={currentUser}
           searchQuery={searchQuery}
@@ -344,6 +385,14 @@ export default function PlanningPage() {
         <NotificationsTab />
       )}
 
+      {assignmentItem && (
+        <AssignmentModal 
+          item={assignmentItem}
+          onClose={() => setAssignmentItem(null)}
+          onAssignTask={handleAssignTask}
+          onAssignProject={handleAssignProject}
+        />
+      )}
     </div>
   );
 }

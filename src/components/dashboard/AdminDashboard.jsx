@@ -1,18 +1,25 @@
 import { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
-import { getDisplayStatus, isOverdue, getActionableUnits, getStatusBadgeClass } from '../../lib/statusUtils';
+import { getDisplayStatus, isOverdue, getActionableUnits, getStatusBadgeClass, isItemExcludedByAbsence } from '../../lib/statusUtils';
 import { fmtDate } from '../../lib/dateUtils';
 import FilterBar from '../common/FilterBar';
 
 export default function AdminDashboard() {
-  const { profiles, workItems, containers, staffGroup } = useDataContext();
+  const { profiles, workItems, containers, absences, staffGroup, deleteAbsence } = useDataContext();
   const safeProfiles   = profiles   || [];
   const safeWorkItems  = workItems  || [];
   const safeContainers = containers || [];
+  const safeAbsences   = absences   || [];
 
   // Dashboard is a LIVE view — no date filter applied
 
   const [expandedCard, setExpandedCard] = useState(null); // 'tasks' | 'projects' | 'events'
+  const [expandedAlert, setExpandedAlert] = useState(null); // 'overdue' | 'notStarted'
+
+  const today = new Date().toISOString().split('T')[0];
+
+  // Users absent today
+  const absentTodayEntries = safeAbsences.filter(a => today >= a.from_date && today <= a.to_date);
 
   const getAvatarInitials = (name) => {
     if (!name) return 'U';
@@ -54,9 +61,13 @@ export default function AdminDashboard() {
   const evtChecklistsOngoing  = evtChecklists.filter(w => w.status === 'Ongoing').length;
   const evtChecklistsDone     = evtChecklists.filter(w => w.status === 'Completed').length;
 
-  // ── Overdue & Not Started (live) ──
-  const overdueItems    = staffActionableItems.filter(w => isOverdue(w) && w.status !== 'Completed');
-  const notStartedItems = staffActionableItems.filter(w => getDisplayStatus(w) === 'Not Started');
+  // ── Overdue & Not Started (live) — exclude items where assignee is absent ──
+  const overdueItems    = staffActionableItems.filter(w =>
+    isOverdue(w) && w.status !== 'Completed' && !isItemExcludedByAbsence(w, safeAbsences)
+  );
+  const notStartedItems = staffActionableItems.filter(w =>
+    getDisplayStatus(w) === 'Not Started' && !isItemExcludedByAbsence(w, safeAbsences)
+  );
 
   const groupByAssignee = (items) => {
     const map = {};
@@ -69,16 +80,20 @@ export default function AdminDashboard() {
   const overdueByAssignee    = groupByAssignee(overdueItems);
   const notStartedByAssignee = groupByAssignee(notStartedItems);
 
-  // ── Today's Focus: all incomplete items sorted by priority then urgency ──
+  // ── Today's Focus: assigned and ongoing items sorted by priority ──
   const todaysFocus = [...staffActionableItems]
-    .filter(w => w.status !== 'Completed')
+    .filter(w => {
+      if (isOverdue(w)) return false;
+      if (w.status === 'Ongoing') return true;
+      if (w.status === 'Assigned') {
+        return w.created_at && w.created_at.startsWith(today);
+      }
+      return false;
+    })
     .sort((a, b) => {
       const p = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-      const pDiff = (p[a.priority] ?? 2) - (p[b.priority] ?? 2);
+      const pDiff = (p[a.priority] ?? 3) - (p[b.priority] ?? 3);
       if (pDiff !== 0) return pDiff;
-      const aOd = isOverdue(a) ? 0 : 1;
-      const bOd = isOverdue(b) ? 0 : 1;
-      if (aOd !== bOd) return aOd - bOd;
       return (a.expected_date || 'z').localeCompare(b.expected_date || 'z');
     });
 
@@ -126,12 +141,60 @@ export default function AdminDashboard() {
           <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">System Overview</h1>
           <p className="text-xs text-on-surface-variant mt-0.5 font-medium">Live view · updates in real time</p>
         </div>
-        <FilterBar showToggle={true} showDateFilter={false} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <FilterBar showToggle={true} showDateFilter={false} />
+        </div>
       </div>
+
+      {/* ABSENT TODAY */}
+      {absentTodayEntries.length > 0 && (
+        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
+                <span className="material-symbols-outlined text-purple-600" style={{fontVariationSettings:"'FILL' 1"}}>event_busy</span>
+              </div>
+              <div>
+                <p className="text-xs font-black text-purple-700 uppercase tracking-widest">Absent Today</p>
+                <p className="text-[10px] text-purple-500">{absentTodayEntries.length} staff member{absentTodayEntries.length > 1 ? 's' : ''} out</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {absentTodayEntries.map(a => {
+              const user = safeProfiles.find(p => p.id === a.user_id);
+              return (
+                <div key={a.id} className="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5 border border-purple-100">
+                  <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-[10px] font-black text-purple-700 flex-shrink-0">
+                    {user?.name ? user.name.split(' ').map(s => s[0]).join('').substring(0, 2).toUpperCase() : 'U'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-on-surface truncate">{user?.name || 'Unknown'}</p>
+                    <p className="text-[10px] text-purple-500">
+                      {a.from_date === a.to_date ? fmtDate(a.from_date) : `${fmtDate(a.from_date)} – ${fmtDate(a.to_date)}`}
+                      {a.reason ? ` · ${a.reason}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => deleteAbsence(a.id)}
+                    className="w-6 h-6 rounded-full hover:bg-purple-100 flex items-center justify-center text-purple-400 hover:text-purple-600 transition-colors"
+                    title="Remove absence"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">close</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* OVERDUE & NOT STARTED */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl border-l-4 border-error shadow-sm p-5">
+        <div 
+          className={`bg-white rounded-2xl border-l-4 border-error shadow-sm p-5 cursor-pointer transition-all ${expandedAlert === 'overdue' ? 'md:col-span-2' : ''}`}
+          onClick={() => setExpandedAlert(expandedAlert === 'overdue' ? null : 'overdue')}
+        >
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
               <span className="material-symbols-outlined text-error" style={{fontVariationSettings:"'FILL' 1"}}>warning</span>
@@ -142,22 +205,39 @@ export default function AdminDashboard() {
             </div>
             <p className="text-4xl font-black text-error ml-auto">{overdueItems.length}</p>
           </div>
-          {overdueByAssignee.length > 0 ? (
-            <div className="flex flex-col gap-1.5 mt-2">
-              {overdueByAssignee.map(([name, count]) => (
-                <div key={name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center text-[8px] font-black text-red-700 flex-shrink-0">{getAvatarInitials(name)}</div>
-                    <span className="text-xs font-medium text-on-surface truncate max-w-[140px]">{name}</span>
+          {expandedAlert === 'overdue' ? (
+            <div className="mt-4 pt-4 border-t border-surface-container flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+              {overdueItems.map(w => (
+                <div key={w.id} className="flex justify-between items-center bg-red-50/50 border border-red-100 p-2.5 rounded-lg">
+                  <div className="flex-1 min-w-0 pr-2">
+                    <span className="text-sm font-semibold text-on-surface truncate block">{w.title}</span>
+                    <span className="text-[10px] text-on-surface-variant">{getAssigneeName(w.assignee_id)} · Due: {fmtDate(w.expected_date)}</span>
                   </div>
-                  <span className="text-xs font-black text-error bg-red-50 px-2 py-0.5 rounded-full">{count}</span>
                 </div>
               ))}
+              {overdueItems.length === 0 && <p className="text-xs text-green-600 font-bold mt-2">All clear!</p>}
             </div>
-          ) : <p className="text-xs text-green-600 font-bold mt-2">All clear!</p>}
+          ) : (
+            overdueByAssignee.length > 0 ? (
+              <div className="flex flex-col gap-1.5 mt-2">
+                {overdueByAssignee.map(([name, count]) => (
+                  <div key={name} className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center text-[8px] font-black text-red-700 flex-shrink-0">{getAvatarInitials(name)}</div>
+                      <span className="text-xs font-medium text-on-surface truncate max-w-[140px]">{name}</span>
+                    </div>
+                    <span className="text-xs font-black text-error bg-red-50 px-2 py-0.5 rounded-full">{count}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-xs text-green-600 font-bold mt-2">All clear!</p>
+          )}
         </div>
 
-        <div className="bg-white rounded-2xl border-l-4 border-amber-400 shadow-sm p-5">
+        <div 
+          className={`bg-white rounded-2xl border-l-4 border-amber-400 shadow-sm p-5 cursor-pointer transition-all ${expandedAlert === 'notStarted' ? 'md:col-span-2' : ''}`}
+          onClick={() => setExpandedAlert(expandedAlert === 'notStarted' ? null : 'notStarted')}
+        >
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
               <span className="material-symbols-outlined text-amber-600" style={{fontVariationSettings:"'FILL' 1"}}>schedule</span>
@@ -168,19 +248,159 @@ export default function AdminDashboard() {
             </div>
             <p className="text-4xl font-black text-amber-600 ml-auto">{notStartedItems.length}</p>
           </div>
-          {notStartedByAssignee.length > 0 ? (
-            <div className="flex flex-col gap-1.5 mt-2">
-              {notStartedByAssignee.map(([name, count]) => (
-                <div key={name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-[8px] font-black text-amber-700 flex-shrink-0">{getAvatarInitials(name)}</div>
-                    <span className="text-xs font-medium text-on-surface truncate max-w-[140px]">{name}</span>
+          {expandedAlert === 'notStarted' ? (
+            <div className="mt-4 pt-4 border-t border-surface-container flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+              {notStartedItems.map(w => (
+                <div key={w.id} className="flex justify-between items-center bg-amber-50/50 border border-amber-100 p-2.5 rounded-lg">
+                  <div className="flex-1 min-w-0 pr-2">
+                    <span className="text-sm font-semibold text-on-surface truncate block">{w.title}</span>
+                    <span className="text-[10px] text-on-surface-variant">{getAssigneeName(w.assignee_id)}</span>
                   </div>
-                  <span className="text-xs font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{count}</span>
+                </div>
+              ))}
+              {notStartedItems.length === 0 && <p className="text-xs text-green-600 font-bold mt-2">All clear!</p>}
+            </div>
+          ) : (
+            notStartedByAssignee.length > 0 ? (
+              <div className="flex flex-col gap-1.5 mt-2">
+                {notStartedByAssignee.map(([name, count]) => (
+                  <div key={name} className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-[8px] font-black text-amber-700 flex-shrink-0">{getAvatarInitials(name)}</div>
+                      <span className="text-xs font-medium text-on-surface truncate max-w-[140px]">{name}</span>
+                    </div>
+                    <span className="text-xs font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{count}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-xs text-green-600 font-bold mt-2">All clear!</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Bottom Split: Focus + Queue · Recent Activity ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2 flex flex-col gap-4">
+          {/* Today's Focus */}
+          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-5 bg-primary rounded-full"></div>
+                <h2 className="font-bold text-on-surface font-headline">Today's Focus</h2>
+              </div>
+              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full uppercase tracking-widest">
+                {new Date().toLocaleDateString('en-GB', {day:'2-digit',month:'short'})}
+              </span>
+            </div>
+            <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
+              {todaysFocus.length === 0 && <p className="text-sm text-on-surface-variant text-center py-6 italic">Nothing urgent today 🎉</p>}
+              {todaysFocus.map(t => {
+                const s = getDisplayStatus(t);
+                const isOd = s === 'Overdue';
+                const isNs = s === 'Not Started';
+                const contTag = getFocusTag(t);
+                const borderCls = isOd ? 'border-error bg-red-50' : isNs ? 'border-amber-400 bg-amber-50/50' : 'border-primary/30 bg-surface-container-low';
+                return (
+                  <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border-l-4 ${borderCls}`}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isOd ? 'bg-red-100' : isNs ? 'bg-amber-100' : 'bg-primary/10'}`}>
+                      <span className={`material-symbols-outlined text-[16px] ${isOd ? 'text-error' : isNs ? 'text-amber-600' : 'text-primary'}`} style={{fontVariationSettings:"'FILL' 1"}}>
+                        {isOd ? 'warning' : isNs ? 'schedule' : 'today'}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-on-surface truncate">{t.title}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                        {contTag && <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${contTag.cls}`}>{contTag.label}</span>}
+                        {t.priority && <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${priorityCls(t.priority)}`}>{t.priority}</span>}
+                        {t.expected_date && <span className="text-[10px] text-on-surface-variant">Due {fmtDate(t.expected_date)}</span>}
+                      </div>
+                    </div>
+                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${getStatusBadgeClass(s)}`}>{s}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Priority Queue — Critical & High only */}
+          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-on-surface font-headline">Priority Queue</h2>
+              <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2.5 py-1 rounded-full uppercase tracking-widest">Critical · High</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest border-b border-surface-container-high">
+                    <th className="pb-2 text-left">Subject</th>
+                    <th className="pb-2 text-left">Assignee</th>
+                    <th className="pb-2 text-left">Status</th>
+                    <th className="pb-2 text-left">Deadline</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-container-low">
+                  {priorityQueue.map(t => {
+                    const s = getDisplayStatus(t);
+                    const c = t.container_id ? getContainer(t.container_id) : null;
+                    return (
+                      <tr key={t.id} className="text-sm">
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.priority === 'Critical' ? 'bg-error' : 'bg-orange-500'}`}></span>
+                            <div className="min-w-0">
+                              <span className="font-medium text-on-surface truncate block max-w-[180px]">{t.title}</span>
+                              {c && <span className="text-[9px] text-indigo-600 truncate block">{c.title}</span>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary">{getAvatarInitials(getAssigneeName(t.assignee_id))}</div>
+                            <span className="text-on-surface-variant">{getAssigneeName(t.assignee_id).split(' ')[0]}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5">
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${getStatusBadgeClass(s)}`}>{s}</span>
+                        </td>
+                        <td className="py-2.5 text-on-surface-variant">{t.expected_date ? fmtDate(t.expected_date) : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {priorityQueue.length === 0 && <p className="text-center py-6 text-on-surface-variant text-sm italic">No critical or high priority items.</p>}
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="md:col-span-1">
+          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5 h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-1 h-5 bg-green-500 rounded-full"></div>
+              <h2 className="font-bold text-on-surface font-headline">Recent Activity</h2>
+            </div>
+            <div className="flex flex-col gap-3 flex-1">
+              {recentActivity.length === 0 && <p className="text-sm text-on-surface-variant italic text-center py-8">No activity yet.</p>}
+              {recentActivity.map(act => (
+                <div key={act.id} className="flex items-start gap-2.5">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${act.action === 'completed' ? 'bg-green-100' : 'bg-blue-100'}`}>
+                    <span className={`material-symbols-outlined text-[13px] ${act.action === 'completed' ? 'text-green-600' : 'text-blue-600'}`} style={{fontVariationSettings:"'FILL' 1"}}>
+                      {act.action === 'completed' ? 'check_circle' : 'play_circle'}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-on-surface leading-snug">
+                      <span className="font-bold">{act.assigneeName.split(' ')[0]}</span>
+                      {' '}<span className={`font-medium ${act.action === 'completed' ? 'text-green-600' : 'text-blue-600'}`}>{act.action}</span>{' '}
+                      <span className="truncate">{act.title}</span>
+                    </p>
+                    <p className="text-[10px] text-on-surface-variant mt-0.5">{act.time}</p>
+                  </div>
                 </div>
               ))}
             </div>
-          ) : <p className="text-xs text-green-600 font-bold mt-2">All clear!</p>}
+          </div>
         </div>
       </div>
 
@@ -385,131 +605,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── Bottom Split: Focus + Queue · Recent Activity ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 flex flex-col gap-4">
-          {/* Today's Focus */}
-          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-5 bg-primary rounded-full"></div>
-                <h2 className="font-bold text-on-surface font-headline">Today's Focus</h2>
-              </div>
-              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full uppercase tracking-widest">
-                {new Date().toLocaleDateString('en-GB', {day:'2-digit',month:'short'})}
-              </span>
-            </div>
-            <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
-              {todaysFocus.length === 0 && <p className="text-sm text-on-surface-variant text-center py-6 italic">Nothing urgent today 🎉</p>}
-              {todaysFocus.map(t => {
-                const s = getDisplayStatus(t);
-                const isOd = s === 'Overdue';
-                const isNs = s === 'Not Started';
-                const contTag = getFocusTag(t);
-                const borderCls = isOd ? 'border-error bg-red-50' : isNs ? 'border-amber-400 bg-amber-50/50' : 'border-primary/30 bg-surface-container-low';
-                return (
-                  <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border-l-4 ${borderCls}`}>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isOd ? 'bg-red-100' : isNs ? 'bg-amber-100' : 'bg-primary/10'}`}>
-                      <span className={`material-symbols-outlined text-[16px] ${isOd ? 'text-error' : isNs ? 'text-amber-600' : 'text-primary'}`} style={{fontVariationSettings:"'FILL' 1"}}>
-                        {isOd ? 'warning' : isNs ? 'schedule' : 'today'}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-on-surface truncate">{t.title}</p>
-                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                        {contTag && <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${contTag.cls}`}>{contTag.label}</span>}
-                        {t.priority && <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${priorityCls(t.priority)}`}>{t.priority}</span>}
-                        {t.expected_date && <span className="text-[10px] text-on-surface-variant">Due {fmtDate(t.expected_date)}</span>}
-                      </div>
-                    </div>
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${getStatusBadgeClass(s)}`}>{s}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Priority Queue — Critical & High only */}
-          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-on-surface font-headline">Priority Queue</h2>
-              <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2.5 py-1 rounded-full uppercase tracking-widest">Critical · High</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest border-b border-surface-container-high">
-                    <th className="pb-2 text-left">Subject</th>
-                    <th className="pb-2 text-left">Assignee</th>
-                    <th className="pb-2 text-left">Status</th>
-                    <th className="pb-2 text-left">Deadline</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-container-low">
-                  {priorityQueue.map(t => {
-                    const s = getDisplayStatus(t);
-                    const c = t.container_id ? getContainer(t.container_id) : null;
-                    return (
-                      <tr key={t.id} className="text-sm">
-                        <td className="py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.priority === 'Critical' ? 'bg-error' : 'bg-orange-500'}`}></span>
-                            <div className="min-w-0">
-                              <span className="font-medium text-on-surface truncate block max-w-[180px]">{t.title}</span>
-                              {c && <span className="text-[9px] text-indigo-600 truncate block">{c.title}</span>}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary">{getAvatarInitials(getAssigneeName(t.assignee_id))}</div>
-                            <span className="text-on-surface-variant">{getAssigneeName(t.assignee_id).split(' ')[0]}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5">
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${getStatusBadgeClass(s)}`}>{s}</span>
-                        </td>
-                        <td className="py-2.5 text-on-surface-variant">{t.expected_date ? fmtDate(t.expected_date) : '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {priorityQueue.length === 0 && <p className="text-center py-6 text-on-surface-variant text-sm italic">No critical or high priority items.</p>}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="md:col-span-1">
-          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-5 h-full flex flex-col">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-1 h-5 bg-green-500 rounded-full"></div>
-              <h2 className="font-bold text-on-surface font-headline">Recent Activity</h2>
-            </div>
-            <div className="flex flex-col gap-3 flex-1">
-              {recentActivity.length === 0 && <p className="text-sm text-on-surface-variant italic text-center py-8">No activity yet.</p>}
-              {recentActivity.map(act => (
-                <div key={act.id} className="flex items-start gap-2.5">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${act.action === 'completed' ? 'bg-green-100' : 'bg-blue-100'}`}>
-                    <span className={`material-symbols-outlined text-[13px] ${act.action === 'completed' ? 'text-green-600' : 'text-blue-600'}`} style={{fontVariationSettings:"'FILL' 1"}}>
-                      {act.action === 'completed' ? 'check_circle' : 'play_circle'}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-on-surface leading-snug">
-                      <span className="font-bold">{act.assigneeName.split(' ')[0]}</span>
-                      {' '}<span className={`font-medium ${act.action === 'completed' ? 'text-green-600' : 'text-blue-600'}`}>{act.action}</span>{' '}
-                      <span className="truncate">{act.title}</span>
-                    </p>
-                    <p className="text-[10px] text-on-surface-variant mt-0.5">{act.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

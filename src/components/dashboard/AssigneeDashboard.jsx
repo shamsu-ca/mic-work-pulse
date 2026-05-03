@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
-import { getDisplayStatus, isOverdue, getActionableUnits } from '../../lib/statusUtils';
+import { getDisplayStatus, isOverdue, getActionableUnits, isItemExcludedByAbsence } from '../../lib/statusUtils';
 import { fmtDate } from '../../lib/dateUtils';
 import CompletionPanel from '../common/CompletionPanel';
+import AbsenceModal from '../common/AbsenceModal';
 
 // ─── Expandable work item card for pipeline ───────────────────────────────────
 function WorkItemCard({ item, containers, workItems, showStart = false, showComplete = false, onStart, onComplete }) {
@@ -175,6 +176,9 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
 
 // ─── Alert card (shared layout for Overdue and Not Started) ──────────────────
 function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, emptyMsg }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const displayItems = isExpanded ? items : items.slice(0, 3);
+  
   return (
     <div className={`bg-white rounded-xl shadow-sm border p-5 relative overflow-hidden flex flex-col ${accent.border}`}>
       <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${accent.bar}`}></div>
@@ -186,7 +190,7 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
         <span className={`px-2 py-0.5 font-extrabold text-xs rounded ${accent.badge}`}>{count}</span>
       </div>
       <div className="ml-2 flex flex-col gap-2 flex-1">
-        {items.slice(0, 3).map(w => (
+        {displayItems.map(w => (
           <div key={w.id} className="flex justify-between items-center border-b border-surface-container pb-2 last:border-0 last:pb-0">
             <div className="flex-1 min-w-0 pr-2">
               <span className="text-sm font-semibold text-on-surface truncate block">{w.title}</span>
@@ -200,15 +204,24 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
           </div>
         ))}
         {items.length === 0 && <span className="text-sm font-medium text-slate-400 mt-2">{emptyMsg}</span>}
-        {items.length > 3 && <span className="text-[10px] text-outline uppercase font-bold mt-2 text-center">+{items.length - 3} MORE</span>}
+        
+        {items.length > 3 && (
+          <button 
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-[10px] text-outline uppercase font-bold mt-2 text-center hover:text-on-surface-variant transition-colors py-1"
+          >
+            {isExpanded ? 'SHOW LESS' : `+${items.length - 3} MORE`}
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 export default function AssigneeDashboard() {
-  const { currentUser, workItems, containers, profiles, startWorkItem, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
+  const { currentUser, workItems, containers, profiles, absences, startWorkItem, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
   const [pendingCompleteItem, setPendingCompleteItem] = useState(null);
+  const [showAbsenceModal, setShowAbsenceModal] = useState(false);
 
   const handleDashComplete = async ({ note, tag }) => {
     if (!pendingCompleteItem) return;
@@ -216,15 +229,24 @@ export default function AssigneeDashboard() {
     setPendingCompleteItem(null);
   };
 
-  const safeWorkItems = workItems   || [];
-  const safeContainers = containers || [];
-  const unreadNotifs  = getUnreadNotifications() || [];
+  const safeWorkItems  = workItems   || [];
+  const safeContainers = containers  || [];
+  const safeAbsences   = absences    || [];
+  const unreadNotifs   = getUnreadNotifications() || [];
+
+  const today = new Date().toISOString().split('T')[0];
+  const isAbsentToday = safeAbsences.some(
+    a => a.user_id === currentUser.id && today >= a.from_date && today <= a.to_date
+  );
+  const todayAbsence = safeAbsences.find(
+    a => a.user_id === currentUser.id && today >= a.from_date && today <= a.to_date
+  );
 
   const myItemsAll   = safeWorkItems.filter(w => w.assignee_id === currentUser.id);
   const myItems      = getActionableUnits(myItemsAll);
 
-  const overdueItems    = myItems.filter(w => isOverdue(w) && w.status !== 'Completed');
-  const notStartedItems = myItems.filter(w => getDisplayStatus(w) === 'Not Started');
+  const overdueItems    = isAbsentToday ? [] : myItems.filter(w => isOverdue(w) && w.status !== 'Completed' && !isItemExcludedByAbsence(w, safeAbsences));
+  const notStartedItems = isAbsentToday ? [] : myItems.filter(w => getDisplayStatus(w) === 'Not Started' && !isItemExcludedByAbsence(w, safeAbsences));
   const completedItems  = myItems.filter(w => w.status === 'Completed').slice(0, 5);
 
   // Pipeline: root tasks (no parent) — subtasks shown beneath their parent
@@ -239,19 +261,41 @@ export default function AssigneeDashboard() {
     <div className="flex flex-col gap-6 max-w-[1400px] mx-auto pb-12">
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">
-          Welcome back, {currentUser.name || 'User'}
-        </h1>
-        {currentUser.position && (
-          <p className="text-sm text-primary font-semibold mt-0.5">{currentUser.position}</p>
-        )}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">
+            Welcome back, {currentUser.name || 'User'}
+          </h1>
+          {currentUser.position && (
+            <p className="text-sm text-primary font-semibold mt-0.5">{currentUser.position}</p>
+          )}
+        </div>
       </div>
+
+      {/* Absent Today Banner */}
+      {isAbsentToday && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-center gap-3 relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-purple-500 rounded-l-xl"></div>
+          <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0 ml-2">
+            <span className="material-symbols-outlined text-purple-600" style={{fontVariationSettings:"'FILL' 1"}}>event_busy</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-purple-800">You are marked absent today</p>
+            {todayAbsence?.reason && (
+              <p className="text-xs text-purple-600 mt-0.5">{todayAbsence.reason}</p>
+            )}
+            {todayAbsence?.to_date && todayAbsence.to_date !== todayAbsence.from_date && (
+              <p className="text-xs text-purple-500 mt-0.5">Until {fmtDate(todayAbsence.to_date)}</p>
+            )}
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-purple-500 bg-purple-100 px-2.5 py-1 rounded-full ml-2">Absent</span>
+        </div>
+      )}
 
       {/* Notifications Banner */}
       {unreadNotifs.length > 0 && (
         <div className="flex flex-col gap-2">
-          {unreadNotifs.map(n => (
+          {unreadNotifs.slice(0, 3).map(n => (
             <div key={n.id} className="bg-primary/10 border border-primary/20 rounded-xl p-4 flex justify-between items-center relative overflow-hidden">
               <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
               <div className="flex items-center gap-3 ml-2">
@@ -260,7 +304,11 @@ export default function AssigneeDashboard() {
               </div>
               <button
                 className="px-4 py-1.5 bg-white text-primary text-xs font-bold rounded flex items-center gap-1 shadow-sm border border-outline-variant/30 hover:bg-surface-container transition-colors"
-                onClick={() => markNotificationRead(n.id)}
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to dismiss this notification?')) {
+                    markNotificationRead(n.id);
+                  }
+                }}
               >
                 <span className="material-symbols-outlined text-[14px]">done</span> Dismiss
               </button>
@@ -284,7 +332,7 @@ export default function AssigneeDashboard() {
           }}
           items={overdueItems}
           count={overdueItems.length}
-          onAction={startWorkItem}
+          onAction={currentUser?.role !== 'Admin' ? startWorkItem : undefined}
           actionLabel="START"
           emptyMsg="Zero overdue items. Great work!"
         />
@@ -301,7 +349,7 @@ export default function AssigneeDashboard() {
           }}
           items={notStartedItems}
           count={notStartedItems.length}
-          onAction={startWorkItem}
+          onAction={currentUser?.role !== 'Admin' ? startWorkItem : undefined}
           actionLabel="START"
           emptyMsg="All assigned items are ongoing."
         />
@@ -353,7 +401,7 @@ export default function AssigneeDashboard() {
               const subs = mySubsOf(w.id);
               return (
                 <div key={w.id} className="flex flex-col gap-1">
-                  <WorkItemCard item={w} {...cardProps} showStart onStart={startWorkItem} />
+                  <WorkItemCard item={w} {...cardProps} showStart={currentUser?.role !== 'Admin'} onStart={startWorkItem} />
                   {subs.map(s => {
                     const sds = getDisplayStatus(s);
                     return (
@@ -403,6 +451,10 @@ export default function AssigneeDashboard() {
           onConfirm={handleDashComplete}
           onCancel={() => setPendingCompleteItem(null)}
         />
+      )}
+
+      {showAbsenceModal && (
+        <AbsenceModal onClose={() => setShowAbsenceModal(false)} />
       )}
     </div>
   );

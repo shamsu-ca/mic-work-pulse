@@ -87,6 +87,29 @@ CREATE TABLE public.announcements (
 );
 ALTER TABLE public.announcements DISABLE ROW LEVEL SECURITY;
 
+CREATE TABLE public.absences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+  from_date DATE NOT NULL,
+  to_date DATE NOT NULL,
+  reason TEXT,
+  created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.absences DISABLE ROW LEVEL SECURITY;
+
+-- MIGRATION (run this on an existing DB without resetting):
+-- CREATE TABLE IF NOT EXISTS public.absences (
+--   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+--   from_date DATE NOT NULL,
+--   to_date DATE NOT NULL,
+--   reason TEXT,
+--   created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+--   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+-- ALTER TABLE public.absences DISABLE ROW LEVEL SECURITY;
+
 -- Disable RLS everywhere just in case
 -- (already done on creation above)
 

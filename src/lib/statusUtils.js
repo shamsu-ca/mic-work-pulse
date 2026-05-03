@@ -99,8 +99,8 @@ export function getStatusBadgeClass(displayStatus) {
 export function isLowestLevelActionableUnit(item, allItems = []) {
   const type = item.type?.toLowerCase();
 
-  // Containers are never actionable units
-  if (type === 'project' || type === 'event' || type === 'phase') return false;
+  // Containers and Plans are never actionable units
+  if (type === 'project' || type === 'event' || type === 'phase' || type === 'plan' || item.in_planning_pool) return false;
 
   // Helper: resolve the nearest Phase ancestor (if any)
   const getNearestPhase = (itm) => {
@@ -138,6 +138,21 @@ export function isLowestLevelActionableUnit(item, allItems = []) {
   }
 
   return true;
+}
+
+/**
+ * True if an item's due date falls within the assignee's absence period.
+ * Used to exclude items from overdue/not-started counts.
+ * @param {object} item - work item with assignee_id and expected_date
+ * @param {Array}  absences - array of absence records from context
+ */
+export function isItemExcludedByAbsence(item, absences) {
+  if (!absences?.length || !item.expected_date || item.status === 'Completed') return false;
+  return absences.some(a =>
+    a.user_id === item.assignee_id &&
+    item.expected_date >= a.from_date &&
+    item.expected_date <= a.to_date
+  );
 }
 
 /** Count of actionable units in a list (phase-aware). */

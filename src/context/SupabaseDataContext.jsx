@@ -12,6 +12,7 @@ export function SupabaseDataProvider({ children, session }) {
   const [savedTasks, setSavedTasks] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [absences, setAbsences] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [dateFilter, setDateFilter] = useState('today');
   const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
@@ -67,10 +68,14 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: allSavedTasks } = await supabase.from('saved_tasks').select('*');
         if (allSavedTasks) setSavedTasks(allSavedTasks);
 
+        // 5.5 Fetch absences (needed for recurring tasks)
+        const { data: allAbsences } = await supabase.from('absences').select('*');
+        if (allAbsences) setAbsences(allAbsences);
+
         // 6. Fetch work items, then spawn any due recurring tasks
         let { data: allWorkItems } = await supabase.from('work_items').select('*');
         if (allWorkItems) {
-          const newItems = await checkAndSpawnRecurringTasks(allSavedTasks ?? []);
+          const newItems = await checkAndSpawnRecurringTasks(allSavedTasks ?? [], allAbsences ?? []);
           if (newItems && newItems.length > 0) {
             const { data: latestWorkItems } = await supabase.from('work_items').select('*');
             if (latestWorkItems) allWorkItems = latestWorkItems;
@@ -92,6 +97,7 @@ export function SupabaseDataProvider({ children, session }) {
           .select('*')
           .order('event_date', { ascending: true });
         if (allAnnouncements) setAnnouncements(allAnnouncements);
+
 
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -143,6 +149,11 @@ export function SupabaseDataProvider({ children, session }) {
           .then(({ data }) => { if (data) setAnnouncements(data); });
       }).subscribe();
 
+    const absencesSub = supabase.channel('public:absences')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'absences' }, () => {
+        supabase.from('absences').select('*').then(({ data }) => { if (data) setAbsences(data); });
+      }).subscribe();
+
     return () => {
       supabase.removeChannel(profilesSub);
       supabase.removeChannel(containersSub);
@@ -151,19 +162,70 @@ export function SupabaseDataProvider({ children, session }) {
       supabase.removeChannel(workItemsSub);
       supabase.removeChannel(notifSub);
       supabase.removeChannel(annSub);
+      supabase.removeChannel(absencesSub);
     };
   }, [session]);
 
+  function shouldSubtaskSpawnToday(sub, parentTemplate, today) {
+    const rule = sub.recurrence_rule;
+    if (!rule || sub.last_generated_at === today) return false;
+    const currentDate = new Date(today);
+
+    if (rule.type === 'weekly' && rule.day !== undefined) {
+      if (currentDate.getDay() !== rule.day) return false;
+      if (!sub.last_generated_at) return true;
+      const diffDays = Math.ceil(Math.abs(currentDate - new Date(sub.last_generated_at)) / 86400000);
+      return diffDays >= 7;
+    }
+    if (rule.type === 'every_x_days' && rule.offset !== undefined) {
+      const parentLastGen = parentTemplate.last_generated_at;
+      if (!parentLastGen) return false;
+      const daysSinceParent = Math.ceil(Math.abs(currentDate - new Date(parentLastGen)) / 86400000);
+      if (daysSinceParent < rule.offset) return false;
+      if (!sub.last_generated_at) return true;
+      return new Date(sub.last_generated_at) < new Date(parentLastGen);
+    }
+    if (rule.type === 'monthly' && rule.date !== undefined) {
+      if (currentDate.getDate() !== rule.date) return false;
+      if (!sub.last_generated_at) return true;
+      const last = new Date(sub.last_generated_at);
+      return currentDate.getMonth() !== last.getMonth() || currentDate.getFullYear() !== last.getFullYear();
+    }
+    if (rule.type === 'every_x_months' && rule.date !== undefined) {
+      if (currentDate.getDate() !== rule.date) return false;
+      if (!sub.last_generated_at) return true;
+      const last = new Date(sub.last_generated_at);
+      const interval = parentTemplate.recurrence_rule?.interval ?? 1;
+      const monthDiff = (currentDate.getFullYear() - last.getFullYear()) * 12
+        + (currentDate.getMonth() - last.getMonth());
+      return monthDiff >= interval;
+    }
+    return false;
+  }
+
   // Reads from saved_tasks, spawns actual task entries into work_items
-  const checkAndSpawnRecurringTasks = async (savedTasksList) => {
+  const checkAndSpawnRecurringTasks = async (savedTasksList, currentAbsences = []) => {
     const today = new Date().toISOString().split('T')[0];
-    const templates = savedTasksList.filter(w => w.is_recurring && w.is_active);
+
+    const isAbsentToday = (userId) => {
+      if (!userId || !currentAbsences.length) return false;
+      return currentAbsences.some(a => a.user_id === userId && today >= a.from_date && today <= a.to_date);
+    };
+
+    // ── Phase A: parent templates ──────────────────────────────────────────
+    let spawnedParents = [];
+    const templateToSpawn = {};
+    const templateAssignee = {};
+
+    const templates = savedTasksList.filter(w => w.is_recurring && w.is_active && !w.parent_id);
     const candidateTemplates = [];
 
     for (const template of templates) {
       if (!template.recurrence_rule) continue;
       const lastGenerated = template.last_generated_at;
       if (lastGenerated === today) continue;
+      // Skip spawn if assignee is absent today
+      if (isAbsentToday(template.assignee_id)) continue;
 
       let shouldGenerate = false;
       const rule = template.recurrence_rule;
@@ -192,70 +254,105 @@ export function SupabaseDataProvider({ children, session }) {
       if (shouldGenerate) candidateTemplates.push(template);
     }
 
-    if (candidateTemplates.length === 0) return [];
+    if (candidateTemplates.length > 0) {
+      const candidateIds = candidateTemplates.map(t => t.id);
+      const { data: claimed } = await supabase
+        .from('saved_tasks')
+        .update({ last_generated_at: today })
+        .in('id', candidateIds)
+        .or(`last_generated_at.is.null,last_generated_at.neq.${today}`)
+        .select('id');
 
-    const candidateIds = candidateTemplates.map(t => t.id);
-    const { data: claimed } = await supabase
-      .from('saved_tasks')
-      .update({ last_generated_at: today })
-      .in('id', candidateIds)
-      .or(`last_generated_at.is.null,last_generated_at.neq.${today}`)
-      .select('id');
+      if (claimed?.length) {
+        const claimedIds = new Set(claimed.map(t => t.id));
+        const claimedList = candidateTemplates.filter(t => claimedIds.has(t.id));
 
-    if (!claimed || claimed.length === 0) return [];
+        const toInsert = claimedList.map(t => ({
+          title: t.title, description: t.description, type: t.type,
+          assignee_id: t.assignee_id, container_id: null,
+          estimated_hours: t.estimated_hours, priority: t.priority,
+          status: 'Assigned', expected_date: today, is_recurring: false,
+        }));
 
-    const claimedIds = new Set(claimed.map(t => t.id));
+        const { data: insertedParents, error } = await supabase.from('work_items').insert(toInsert).select();
+        if (error) {
+          console.error('Failed to spawn recurring tasks:', error);
+        } else if (insertedParents?.length) {
+          spawnedParents = insertedParents;
+          claimedList.forEach((t, i) => {
+            templateToSpawn[t.id] = insertedParents[i].id;
+            templateAssignee[t.id] = t.assignee_id;
+          });
 
-    const toInsert = candidateTemplates
-      .filter(t => claimedIds.has(t.id))
-      .map(t => ({
-        title: t.title,
-        description: t.description,
-        type: t.type,
-        assignee_id: t.assignee_id,
-        container_id: null,
-        estimated_hours: t.estimated_hours,
-        priority: t.priority,
-        status: 'Assigned',
-        expected_date: today,
-        is_recurring: false,
-      }));
+          // Persist last_spawned_id into each parent template's recurrence_rule
+          await Promise.all(claimedList.map((t, i) =>
+            supabase.from('saved_tasks')
+              .update({ recurrence_rule: { ...t.recurrence_rule, last_spawned_id: insertedParents[i].id } })
+              .eq('id', t.id)
+          ));
 
-    if (toInsert.length === 0) return [];
+          // Spawn "with parent" subtasks (recurrence_rule IS NULL)
+          const { data: withParentSubs } = await supabase
+            .from('saved_tasks').select('*')
+            .in('parent_id', claimedList.map(t => t.id))
+            .eq('type', 'Subtask')
+            .is('recurrence_rule', null);
 
-    const { data, error } = await supabase.from('work_items').insert(toInsert).select();
-    if (error) {
-      console.error('Failed to spawn recurring tasks:', error);
-      return [];
+          if (withParentSubs?.length) {
+            await supabase.from('work_items').insert(withParentSubs.map(sub => ({
+              title: sub.title, description: sub.description, type: 'Subtask',
+              assignee_id: templateAssignee[sub.parent_id] ?? null,
+              priority: sub.priority, estimated_hours: sub.estimated_hours,
+              status: 'Assigned', expected_date: today, is_recurring: false,
+              parent_id: templateToSpawn[sub.parent_id],
+            })));
+          }
+        }
+      }
     }
 
-    const claimedList = candidateTemplates.filter(t => claimedIds.has(t.id));
-    const templateToSpawn = {};
-    const templateAssignee = {};
-    claimedList.forEach((t, i) => {
-      templateToSpawn[t.id] = data[i].id;
-      templateAssignee[t.id] = t.assignee_id;
+    // ── Phase B: day-specific subtask templates (always runs) ──────────────
+    const parentById = Object.fromEntries(
+      savedTasksList.filter(t => t.is_recurring && t.is_active).map(t => [t.id, t])
+    );
+    const candidateDaySubs = savedTasksList.filter(t =>
+      t.type === 'Subtask' && t.recurrence_rule !== null &&
+      t.is_active !== false && t.last_generated_at !== today
+    ).filter(sub => {
+      const p = parentById[sub.parent_id];
+      if (!p || isAbsentToday(p.assignee_id)) return false;
+      return shouldSubtaskSpawnToday(sub, p, today);
     });
 
-    // Subtask templates live in saved_tasks (parent_id → recurring template in saved_tasks)
-    const { data: templateSubs } = await supabase
-      .from('saved_tasks')
-      .select('*')
-      .in('parent_id', claimedList.map(t => t.id))
-      .eq('type', 'Subtask');
+    if (candidateDaySubs.length > 0) {
+      const { data: claimedDaySubs } = await supabase
+        .from('saved_tasks')
+        .update({ last_generated_at: today })
+        .in('id', candidateDaySubs.map(s => s.id))
+        .or(`last_generated_at.is.null,last_generated_at.neq.${today}`)
+        .select('id');
 
-    if (templateSubs?.length) {
-      await supabase.from('work_items').insert(templateSubs.map(sub => ({
-        title: sub.title, description: sub.description, type: 'Subtask',
-        assignee_id: templateAssignee[sub.parent_id] ?? null,
-        priority: sub.priority,
-        estimated_hours: sub.estimated_hours,
-        status: 'Assigned', expected_date: today, is_recurring: false,
-        parent_id: templateToSpawn[sub.parent_id],
-      })));
+      if (claimedDaySubs?.length) {
+        const claimedDayIds = new Set(claimedDaySubs.map(s => s.id));
+        const toInsertDay = candidateDaySubs.filter(s => claimedDayIds.has(s.id)).map(sub => {
+          const p = parentById[sub.parent_id];
+          const parentWorkItemId =
+            templateToSpawn[sub.parent_id] ??
+            p?.recurrence_rule?.last_spawned_id ?? null;
+          return {
+            title: sub.title, description: sub.description, type: 'Subtask',
+            assignee_id: p?.assignee_id ?? null,
+            priority: sub.priority, estimated_hours: sub.estimated_hours,
+            status: 'Assigned', expected_date: today, is_recurring: false,
+            parent_id: parentWorkItemId,
+          };
+        });
+        await supabase.from('work_items').insert(toInsertDay);
+        return [...spawnedParents, ...claimedDaySubs];
+      }
     }
 
-    return data;
+    return spawnedParents;
   };
 
   const startWorkItem = async (itemId) => {
@@ -299,6 +396,7 @@ export function SupabaseDataProvider({ children, session }) {
   };
 
   const deleteWorkItem = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this item? This action cannot be undone.")) return { error: null };
     setWorkItems(prev => prev.filter(w => w.id !== id));
     const { error } = await supabase.from('work_items').delete().eq('id', id);
     if (error) {
@@ -327,6 +425,7 @@ export function SupabaseDataProvider({ children, session }) {
   };
 
   const deleteSavedContainer = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this item? This action cannot be undone.")) return { error: null };
     setSavedContainers(prev => prev.filter(c => c.id !== id));
     const { error } = await supabase.from('saved_containers').delete().eq('id', id);
     if (error) {
@@ -355,6 +454,7 @@ export function SupabaseDataProvider({ children, session }) {
   };
 
   const deleteSavedTask = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this item? This action cannot be undone.")) return { error: null };
     setSavedTasks(prev => prev.filter(t => t.id !== id));
     const { error } = await supabase.from('saved_tasks').delete().eq('id', id);
     if (error) {
@@ -511,6 +611,45 @@ export function SupabaseDataProvider({ children, session }) {
     return `${diffDays} ${plural} left`;
   };
 
+  // ── Absences ──────────────────────────────────────────────────────────────
+
+  const addAbsence = async (absenceData) => {
+    const { data, error } = await supabase.from('absences').insert([{
+      ...absenceData,
+      created_by: currentUser?.id || null,
+    }]).select();
+    if (error) console.error('Error adding absence:', error);
+    else if (data) setAbsences(prev => [...prev, ...data]);
+    return { data, error };
+  };
+
+  const updateAbsence = async (id, updates) => {
+    setAbsences(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+    const { data, error } = await supabase.from('absences').update(updates).eq('id', id).select();
+    if (error) {
+      console.error('Error updating absence:', error);
+      supabase.from('absences').select('*').then(({ data: d }) => { if (d) setAbsences(d); });
+    }
+    return { data, error };
+  };
+
+  const deleteAbsence = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this absence? This action cannot be undone.")) return { error: null };
+    setAbsences(prev => prev.filter(a => a.id !== id));
+    const { error } = await supabase.from('absences').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting absence:', error);
+      supabase.from('absences').select('*').then(({ data: d }) => { if (d) setAbsences(d); });
+    }
+    return { error };
+  };
+
+  /** Returns true if userId is absent on the given YYYY-MM-DD date string. */
+  const isUserAbsentOn = (userId, dateStr) => {
+    if (!userId || !dateStr) return false;
+    return absences.some(a => a.user_id === userId && dateStr >= a.from_date && dateStr <= a.to_date);
+  };
+
   const addAnnouncement = async (announcementData) => {
     const { data, error } = await supabase.from('announcements').insert([announcementData]).select();
     if (error) console.error('Error adding announcement:', error);
@@ -528,6 +667,7 @@ export function SupabaseDataProvider({ children, session }) {
   };
 
   const deleteAnnouncement = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this announcement? This action cannot be undone.")) return { error: null };
     setAnnouncements(prev => prev.filter(a => a.id !== id));
     const { error } = await supabase.from('announcements').delete().eq('id', id);
     if (error) {
@@ -547,6 +687,11 @@ export function SupabaseDataProvider({ children, session }) {
       savedTasks,
       notifications,
       announcements,
+      absences,
+      addAbsence,
+      updateAbsence,
+      deleteAbsence,
+      isUserAbsentOn,
       dateFilter,
       setDateFilter,
       staffGroup,
