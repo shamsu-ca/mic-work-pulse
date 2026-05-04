@@ -651,7 +651,8 @@ export function SupabaseDataProvider({ children, session }) {
   };
 
   const addAnnouncement = async (announcementData) => {
-    const { data, error } = await supabase.from('announcements').insert([announcementData]).select();
+    const payload = { ...announcementData, created_by: currentUser?.id };
+    const { data, error } = await supabase.from('announcements').insert([payload]).select();
     if (error) console.error('Error adding announcement:', error);
     return { data, error };
   };

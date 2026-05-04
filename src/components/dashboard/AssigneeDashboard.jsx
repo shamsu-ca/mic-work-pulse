@@ -175,7 +175,7 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
 }
 
 // ─── Alert card (shared layout for Overdue and Not Started) ──────────────────
-function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, emptyMsg }) {
+function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, emptyMsg, cardProps, currentUser, onComplete }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const displayItems = isExpanded ? items : items.slice(0, 3);
   
@@ -189,19 +189,17 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
         </div>
         <span className={`px-2 py-0.5 font-extrabold text-xs rounded ${accent.badge}`}>{count}</span>
       </div>
-      <div className="ml-2 flex flex-col gap-2 flex-1">
+      <div className="ml-2 flex flex-col gap-3 flex-1">
         {displayItems.map(w => (
-          <div key={w.id} className="flex justify-between items-center border-b border-surface-container pb-2 last:border-0 last:pb-0">
-            <div className="flex-1 min-w-0 pr-2">
-              <span className="text-sm font-semibold text-on-surface truncate block">{w.title}</span>
-              {w.expected_date && <span className="text-[10px] text-on-surface-variant">{fmtDate(w.expected_date)}</span>}
-            </div>
-            {onAction && (
-              <button className={`text-[10px] font-bold px-2 py-1 rounded flex-shrink-0 ${accent.btn}`} onClick={() => onAction(w.id)}>
-                {actionLabel}
-              </button>
-            )}
-          </div>
+          <WorkItemCard 
+            key={w.id} 
+            item={w} 
+            {...cardProps} 
+            showStart={currentUser?.role !== 'Admin' && onAction} 
+            showComplete={!!onComplete}
+            onStart={onAction}
+            onComplete={onComplete}
+          />
         ))}
         {items.length === 0 && <span className="text-sm font-medium text-slate-400 mt-2">{emptyMsg}</span>}
         
@@ -252,8 +250,14 @@ export default function AssigneeDashboard() {
   // Pipeline: root tasks + checklists/milestones (subtasks are nested under parent tasks)
   const myRoots      = myItemsAll.filter(w => !w.parent_id || w.type === 'Checklist' || w.type === 'Milestone');
   const mySubsOf     = (parentId) => safeWorkItems.filter(w => w.parent_id === parentId);
-  const assignedItems = myRoots.filter(w => w.status === 'Assigned');
-  const ongoingItems  = myRoots.filter(w => w.status === 'Ongoing');
+  
+  const priorityOrder = { 'Critical': 4, 'High': 3, 'Medium': 2, 'Low': 1, undefined: 0, null: 0 };
+  
+  // Filter out Overdue and Not Started items from Today's Focus
+  const assignedItems = myRoots.filter(w => w.status === 'Assigned' && getDisplayStatus(w) === 'Assigned')
+                               .sort((a, b) => (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0));
+  const ongoingItems  = myRoots.filter(w => w.status === 'Ongoing' && getDisplayStatus(w) === 'Ongoing')
+                               .sort((a, b) => (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0));
 
   const cardProps = { containers: safeContainers, workItems: safeWorkItems };
 
@@ -333,8 +337,11 @@ export default function AssigneeDashboard() {
           items={overdueItems}
           count={overdueItems.length}
           onAction={currentUser?.role !== 'Admin' ? startWorkItem : undefined}
+          onComplete={setPendingCompleteItem}
           actionLabel="START"
           emptyMsg="Zero overdue items. Great work!"
+          cardProps={cardProps}
+          currentUser={currentUser}
         />
         <AlertCard
           icon="schedule"
@@ -350,16 +357,19 @@ export default function AssigneeDashboard() {
           items={notStartedItems}
           count={notStartedItems.length}
           onAction={currentUser?.role !== 'Admin' ? startWorkItem : undefined}
+          onComplete={setPendingCompleteItem}
           actionLabel="START"
           emptyMsg="All assigned items are ongoing."
+          cardProps={cardProps}
+          currentUser={currentUser}
         />
       </div>
 
-      {/* Work Pipeline */}
+      {/* Today's Focus */}
       <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30">
         <div className="p-5 border-b border-surface-container-high flex items-center gap-2">
           <span className="material-symbols-outlined">view_kanban</span>
-          <h2 className="font-bold text-base font-headline text-on-surface">Work Pipeline</h2>
+          <h2 className="font-bold text-base font-headline text-on-surface">Today's Focus</h2>
           <p className="text-xs text-on-surface-variant ml-1">— click any card to expand details</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5 bg-surface-container-lowest">

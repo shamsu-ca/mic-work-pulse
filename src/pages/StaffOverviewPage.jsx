@@ -419,6 +419,7 @@ export default function StaffOverviewPage() {
       department: editData.department || null,
       manager: editData.manager || null,
       position: editData.position || null,
+      category: editData.category || 'Office Staff',
     });
     console.log('Save result:', error);
     return { error: error?.message || error || null };
@@ -841,7 +842,7 @@ export default function StaffOverviewPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-3 font-mono text-xs text-on-surface-variant">{p.email || <span className="italic text-outline text-xs">not set</span>}</td>
+                      <td className="px-5 py-3 font-mono text-xs text-on-surface-variant">{p.username || p.email || <span className="italic text-outline text-xs">not set</span>}</td>
                       <td className="px-5 py-3 text-center">
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${p.role === 'Admin' ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container text-on-surface-variant'}`}>{p.role}</span>
                       </td>

@@ -2,18 +2,18 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
 
-export default function CreateItemModal({ onClose }) {
+export default function CreateItemModal({ onClose, initialData, onSuccessConvert }) {
   const { addWorkItem, addSavedTask, profiles, currentUser, addAnnouncement } = useDataContext();
   const navigate = useNavigate();
-  const [step, setStep] = useState('choose'); // 'choose' | 'task' | 'plan' | 'notification'
+  const [step, setStep] = useState(initialData ? 'task' : 'choose'); // 'choose' | 'task' | 'plan' | 'notification'
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const selfOnly = currentUser?.role === 'Assignee';
 
   // Task form
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskDesc, setTaskDesc] = useState('');
+  const [taskTitle, setTaskTitle] = useState(initialData?.title || '');
+  const [taskDesc, setTaskDesc] = useState(initialData?.description || '');
   const [taskAssignee, setTaskAssignee] = useState(selfOnly ? (currentUser?.id || '') : '');
   const [taskPriority, setTaskPriority] = useState('Medium');
   const [taskDate, setTaskDate] = useState(new Date().toISOString().split('T')[0]);
@@ -96,6 +96,9 @@ export default function CreateItemModal({ onClose }) {
     }
     setLoading(false);
     setSuccess(true);
+    if (onSuccessConvert) {
+      await onSuccessConvert();
+    }
     setTimeout(() => onClose(), 1200);
   };
 

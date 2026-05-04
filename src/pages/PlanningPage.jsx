@@ -22,9 +22,13 @@ const getAgeClass = (ageStr) => {
 };
 
 function AssignmentModal({ item, onClose, onAssignTask, onAssignProject, profiles, currentUser }) {
+  const [step, setStep] = React.useState('choose');
   const [selectedAssignee, setSelectedAssignee] = React.useState(
     currentUser?.role === 'Assignee' ? (currentUser?.id || '') : ''
   );
+  const [projDate, setProjDate] = React.useState('');
+  const [milestoneTitle, setMilestoneTitle] = React.useState('');
+  
   if (!item) return null;
 
   const assigneeList = (profiles || []).filter(p => p.role !== 'Admin');
@@ -33,39 +37,124 @@ function AssignmentModal({ item, onClose, onAssignTask, onAssignProject, profile
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-on-surface mb-2">Assign Item</h2>
-        <p className="text-sm text-on-surface-variant mb-4">How would you like to convert "<span className="font-semibold">{item.title}</span>"?</p>
+        {step === 'choose' ? (
+          <>
+            <h2 className="text-lg font-bold text-on-surface mb-2">Assign Item</h2>
+            <p className="text-sm text-on-surface-variant mb-4">How would you like to convert "<span className="font-semibold">{item.title}</span>"?</p>
 
-        {isAdmin && (
-          <div className="mb-4">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1.5 block">Assign To</label>
-            <select
-              value={selectedAssignee}
-              onChange={e => setSelectedAssignee(e.target.value)}
-              className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              <option value="">— Unassigned —</option>
-              {assigneeList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
+            {isAdmin && (
+              <div className="mb-4">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1.5 block">Assign To</label>
+                <select
+                  value={selectedAssignee}
+                  onChange={e => setSelectedAssignee(e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="">— Unassigned —</option>
+                  {assigneeList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3">
+              <button onClick={() => onAssignTask(item, selectedAssignee || null)} className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">task</span>
+                Convert to Task
+              </button>
+              <button onClick={() => setStep('project')} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">view_kanban</span>
+                Convert to Project
+              </button>
+            </div>
+            <p className="text-xs text-on-surface-variant text-center mt-4">
+              Note: Converting to a Project will create a new project and remove this item from the pool.
+            </p>
+            <button onClick={onClose} className="w-full mt-2 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-lg">
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => setStep('choose')} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">arrow_back</span>
+              </button>
+              <h2 className="text-lg font-bold text-on-surface leading-tight">Project Details</h2>
+            </div>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Milestone Date (Optional)</label>
+                <input type="date" className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm focus:outline-none" value={projDate} onChange={e => setProjDate(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">First Milestone Title</label>
+                <input className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm focus:outline-none" placeholder="e.g. Planning Phase" value={milestoneTitle} onChange={e => setMilestoneTitle(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Milestone Assignee</label>
+                <select
+                  disabled={!isAdmin}
+                  value={selectedAssignee}
+                  onChange={e => setSelectedAssignee(e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none disabled:opacity-50"
+                >
+                  <option value="">— Unassigned —</option>
+                  {assigneeList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={onClose} className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl">Cancel</button>
+              <button 
+                onClick={() => onAssignProject(item, selectedAssignee, projDate, milestoneTitle)}
+                className="flex-1 py-2.5 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:opacity-90 flex items-center justify-center gap-1"
+              >
+                Create Project
+              </button>
+            </div>
+          </>
         )}
+      </div>
+    </div>
+  );
+}
 
-        <div className="flex flex-col gap-3">
-          <button onClick={() => onAssignTask(item, selectedAssignee || null)} className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
-            <span className="material-symbols-outlined text-[18px]">task</span>
-            Convert to Task
-          </button>
-          <button onClick={() => onAssignProject(item)} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
-            <span className="material-symbols-outlined text-[18px]">view_kanban</span>
-            Convert to Project
+function EditPoolModal({ item, onClose, onSave }) {
+  const [title, setTitle] = useState(item.title || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    await onSave(item.id, { title: title.trim() });
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-on-surface mb-4">Edit Pool Item</h2>
+        <div className="flex flex-col gap-1.5 mb-6">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Task Title</label>
+          <input 
+            autoFocus
+            className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" 
+            value={title} 
+            onChange={e => setTitle(e.target.value)} 
+            placeholder="Item title..."
+          />
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl">Cancel</button>
+          <button 
+            onClick={handleSave}
+            disabled={saving || !title.trim()}
+            className="flex-1 py-2.5 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 flex items-center justify-center disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
-        <p className="text-xs text-on-surface-variant text-center mt-4">
-          Note: Converting to a Project will create a new project and remove this item from the pool.
-        </p>
-        <button onClick={onClose} className="w-full mt-2 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-lg">
-          Cancel
-        </button>
       </div>
     </div>
   );
@@ -92,7 +181,7 @@ function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, sear
               <th className="px-5 py-3">Task Title</th>
               <th className="px-5 py-3 w-32">Aging Status</th>
               {currentUser?.role === 'Admin' && <th className="px-5 py-3">Created By</th>}
-              <th className="px-5 py-3 text-right pr-4 w-32">Action</th>
+              <th className="px-5 py-3 text-right pr-4 w-48">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-container-low text-sm font-medium">
@@ -119,13 +208,33 @@ function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, sear
                     <td className="px-5 py-4 text-on-surface-variant text-xs">{creator}</td>
                   )}
                   <td className="px-5 py-4 text-right pr-4">
-                    <button
-                      onClick={() => onAssignClick(item)}
-                      className="flex items-center gap-1 ml-auto text-[11px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">person_add</span>
-                      Assign
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {currentUser?.role === 'Admin' || currentUser?.id === item.created_by ? (
+                        <>
+                          <button
+                            onClick={() => onAssignClick(item, 'edit')}
+                            className="text-on-surface-variant hover:text-primary transition-colors p-1"
+                            title="Edit"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">edit</span>
+                          </button>
+                          <button
+                            onClick={() => onAssignClick(item, 'delete')}
+                            className="text-on-surface-variant hover:text-error transition-colors p-1"
+                            title="Delete"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">delete</span>
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        onClick={() => onAssignClick(item, 'assign')}
+                        className="flex items-center gap-1 ml-2 text-[11px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">person_add</span>
+                        Assign
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -139,7 +248,7 @@ function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, sear
 
 // ─── NOTIFICATIONS TAB (ADMIN ONLY) ──────────────────────────────────────────
 
-function NotificationsTab() {
+function NotificationsTab({ currentUser, profiles }) {
   const { announcements, addAnnouncement, deleteAnnouncement, getActiveAnnouncements, getDynamicNotificationText } = useDataContext();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [type, setType] = useState('Text'); // 'Text' or 'Program'
@@ -164,6 +273,8 @@ function NotificationsTab() {
     setForm({ message: '', event_date: '', event_time: '', staff_group: 'Both' });
   };
 
+  const isAdmin = currentUser?.role === 'Admin';
+
   return (
     <>
       <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
@@ -187,6 +298,8 @@ function NotificationsTab() {
             const isText = notice.type === 'Text';
             const displayStr = getDynamicNotificationText(notice);
             const mainText = isText ? notice.message : notice.title;
+            const creatorName = profiles?.find(p => p.id === notice.created_by)?.name || 'Unknown';
+            const canDelete = isAdmin || currentUser?.id === notice.created_by;
             
             return (
               <div key={notice.id} className="flex items-start justify-between px-5 py-4 hover:bg-surface-container-low/30 transition-colors group">
@@ -197,18 +310,25 @@ function NotificationsTab() {
                   <div>
                     <h3 className="font-semibold text-sm text-on-surface">{mainText}</h3>
                     {displayStr && <p className="text-xs text-on-surface-variant font-medium mt-0.5">{displayStr}</p>}
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block ${notice.staff_group === 'Both' ? 'bg-purple-100 text-purple-700' : notice.staff_group === 'Institution' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                      {notice.staff_group === 'Both' ? 'All Staff' : notice.staff_group}
-                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded inline-block ${notice.staff_group === 'Both' ? 'bg-purple-100 text-purple-700' : notice.staff_group === 'Institution' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                        {notice.staff_group === 'Both' ? 'All Staff' : notice.staff_group}
+                      </span>
+                      <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
+                        Tagged by {creatorName.split(' ')[0]}
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => deleteAnnouncement(notice.id)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-error px-2 py-1"
-                  title="Delete"
-                >
-                  <span className="material-symbols-outlined text-[18px]">delete</span>
-                </button>
+                {canDelete && (
+                  <button
+                    onClick={() => deleteAnnouncement(notice.id)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-error px-2 py-1"
+                    title="Delete"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                  </button>
+                )}
               </div>
             );
           })}
@@ -294,13 +414,14 @@ function NotificationsTab() {
 // ─── MAIN PLANNING PAGE ────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
-  const { workItems, currentUser, profiles, updateWorkItem, deleteWorkItem, addContainer } = useDataContext();
+  const { workItems, currentUser, profiles, updateWorkItem, deleteWorkItem, addContainer, addWorkItem } = useDataContext();
   const location = useLocation();
   
   const [staffGroup, setStaffGroup] = useState('Office Staff');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'Pool');
   const [assignmentItem, setAssignmentItem] = useState(null);
+  const [editingPoolItem, setEditingPoolItem] = useState(null);
 
   useEffect(() => {
     if (location.state?.activeTab) {
@@ -325,20 +446,42 @@ export default function PlanningPage() {
     setAssignmentItem(null);
   };
 
-  const handleAssignProject = async (item) => {
-    // We already have a popup confirmation when deleting from context, 
-    // but the modal text also warned them. Let's do the add first, then delete.
+  const handleAssignProject = async (item, assigneeId, date, milestoneTitle) => {
     const { data } = await addContainer({
       title: item.title,
       description: item.description,
       type: 'Project',
-      status: 'Active'
+      status: 'Active',
+      created_by: currentUser?.id
     });
-    if (data) {
+    if (data && data[0]) {
+      const projId = data[0].id;
+      if (milestoneTitle || date || assigneeId) {
+        await addWorkItem({
+          title: milestoneTitle || 'Initial Milestone',
+          type: 'Milestone',
+          container_id: projId,
+          assignee_id: assigneeId || null,
+          expected_date: date || null,
+          status: 'Assigned',
+          created_by: currentUser?.id
+        });
+      }
       await deleteWorkItem(item.id);
     }
     setAssignmentItem(null);
   };
+
+  const handlePoolAction = async (item, action) => {
+    if (action === 'edit') {
+      setEditingPoolItem(item);
+    } else if (action === 'delete') {
+      await deleteWorkItem(item.id);
+    } else {
+      setAssignmentItem(item);
+    }
+  };
+
 
   return (
     <div className="flex flex-col gap-6 max-w-[1200px] mx-auto pb-12 animate-fade-in">
@@ -373,31 +516,29 @@ export default function PlanningPage() {
             />
           </div>
           
-          {/* Mobile-only tab toggle; on desktop we show them side-by-side or stacked? The PRD implies tabs or separate sections. We'll use tabs for clean UI if they both fit full width, or split if desktop. Let's use simple Tabs here for everyone (Assignees only see Pool though). */}
-          {isSuperAdmin && (
-            <div className="flex bg-surface-container rounded-xl p-1 gap-0.5">
-              <button 
-                onClick={() => setActiveTab('Pool')} 
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'Pool' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
-              >
-                Pool
-              </button>
-              <button 
-                onClick={() => setActiveTab('Notifications')} 
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'Notifications' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
-              >
-                Notifications
-              </button>
-            </div>
-          )}
+          {/* Tabs for all roles */}
+          <div className="flex bg-surface-container rounded-xl p-1 gap-0.5">
+            <button 
+              onClick={() => setActiveTab('Pool')} 
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'Pool' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+            >
+              Pool
+            </button>
+            <button 
+              onClick={() => setActiveTab('Notifications')} 
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'Notifications' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+            >
+              Notifications
+            </button>
+          </div>
         </div>
       </div>
 
       {/* TABS CONTENT */}
-      {(!isSuperAdmin || activeTab === 'Pool') && (
+      {activeTab === 'Pool' && (
         <PlanningPoolTab 
           poolItems={poolItems} 
-          onAssignClick={(item) => setAssignmentItem(item)} 
+          onAssignClick={handlePoolAction} 
           profiles={profiles} 
           currentUser={currentUser}
           searchQuery={searchQuery}
@@ -405,8 +546,8 @@ export default function PlanningPage() {
         />
       )}
 
-      {isSuperAdmin && activeTab === 'Notifications' && (
-        <NotificationsTab />
+      {activeTab === 'Notifications' && (
+        <NotificationsTab currentUser={currentUser} profiles={profiles} />
       )}
 
       {assignmentItem && (
@@ -417,6 +558,14 @@ export default function PlanningPage() {
           onAssignProject={handleAssignProject}
           profiles={profiles}
           currentUser={currentUser}
+        />
+      )}
+
+      {editingPoolItem && (
+        <EditPoolModal 
+          item={editingPoolItem}
+          onClose={() => setEditingPoolItem(null)}
+          onSave={updateWorkItem}
         />
       )}
     </div>
