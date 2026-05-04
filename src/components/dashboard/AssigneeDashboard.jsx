@@ -249,8 +249,8 @@ export default function AssigneeDashboard() {
   const notStartedItems = isAbsentToday ? [] : myItems.filter(w => getDisplayStatus(w) === 'Not Started' && !isItemExcludedByAbsence(w, safeAbsences));
   const completedItems  = myItems.filter(w => w.status === 'Completed').slice(0, 5);
 
-  // Pipeline: root tasks (no parent) — subtasks shown beneath their parent
-  const myRoots      = myItemsAll.filter(w => !w.parent_id);
+  // Pipeline: root tasks + checklists/milestones (subtasks are nested under parent tasks)
+  const myRoots      = myItemsAll.filter(w => !w.parent_id || w.type === 'Checklist' || w.type === 'Milestone');
   const mySubsOf     = (parentId) => safeWorkItems.filter(w => w.parent_id === parentId);
   const assignedItems = myRoots.filter(w => w.status === 'Assigned');
   const ongoingItems  = myRoots.filter(w => w.status === 'Ongoing');

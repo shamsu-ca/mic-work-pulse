@@ -548,7 +548,7 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
         </div>
       </div>
       {editingItem && (
-        <EditItemModal item={editingItem} profiles={profiles} workItems={safeWorkItems} onClose={() => setEditingItem(null)}
+        <EditItemModal item={editingItem} profiles={profiles} workItems={workItems || []} onClose={() => setEditingItem(null)}
           onSave={async (id, updates) => { await updateWorkItem(id, updates); setEditingItem(null); }} />
       )}
     </>

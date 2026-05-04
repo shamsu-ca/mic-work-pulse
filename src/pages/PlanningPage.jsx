@@ -21,15 +21,37 @@ const getAgeClass = (ageStr) => {
   return 'bg-red-100 text-red-700';
 };
 
-function AssignmentModal({ item, onClose, onAssignTask, onAssignProject }) {
+function AssignmentModal({ item, onClose, onAssignTask, onAssignProject, profiles, currentUser }) {
+  const [selectedAssignee, setSelectedAssignee] = React.useState(
+    currentUser?.role === 'Assignee' ? (currentUser?.id || '') : ''
+  );
   if (!item) return null;
+
+  const assigneeList = (profiles || []).filter(p => p.role !== 'Admin');
+  const isAdmin = currentUser?.role === 'Admin';
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-on-surface mb-2">Assign Item</h2>
-        <p className="text-sm text-on-surface-variant mb-6">How would you like to convert "<span className="font-semibold">{item.title}</span>"?</p>
+        <p className="text-sm text-on-surface-variant mb-4">How would you like to convert "<span className="font-semibold">{item.title}</span>"?</p>
+
+        {isAdmin && (
+          <div className="mb-4">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1.5 block">Assign To</label>
+            <select
+              value={selectedAssignee}
+              onChange={e => setSelectedAssignee(e.target.value)}
+              className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">— Unassigned —</option>
+              {assigneeList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+        )}
+
         <div className="flex flex-col gap-3">
-          <button onClick={() => onAssignTask(item)} className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
+          <button onClick={() => onAssignTask(item, selectedAssignee || null)} className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
             <span className="material-symbols-outlined text-[18px]">task</span>
             Convert to Task
           </button>
@@ -287,16 +309,18 @@ export default function PlanningPage() {
   }, [location.state]);
 
   const isSuperAdmin = currentUser?.role === 'Admin';
-  // Restrict planning pool to only items created by the current user.
-  const poolItems = (workItems || []).filter(w => w.in_planning_pool && !w.is_recurring && w.created_by === currentUser?.id);
+  // Admin sees all pool items; Assignees/Managers see only their own.
+  const poolItems = (workItems || []).filter(w =>
+    w.in_planning_pool && !w.is_recurring &&
+    (isSuperAdmin || w.created_by === currentUser?.id)
+  );
 
-  const handleAssignTask = async (item) => {
-    const assigneeId = currentUser?.role === 'Assignee' ? currentUser.id : null; 
+  const handleAssignTask = async (item, assigneeId) => {
     await updateWorkItem(item.id, {
       in_planning_pool: false,
       status: 'Assigned',
       type: 'Task',
-      assignee_id: assigneeId
+      assignee_id: assigneeId || null,
     });
     setAssignmentItem(null);
   };
@@ -386,11 +410,13 @@ export default function PlanningPage() {
       )}
 
       {assignmentItem && (
-        <AssignmentModal 
+        <AssignmentModal
           item={assignmentItem}
           onClose={() => setAssignmentItem(null)}
           onAssignTask={handleAssignTask}
           onAssignProject={handleAssignProject}
+          profiles={profiles}
+          currentUser={currentUser}
         />
       )}
     </div>

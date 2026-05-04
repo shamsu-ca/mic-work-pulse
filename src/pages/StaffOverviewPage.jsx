@@ -331,6 +331,7 @@ export default function StaffOverviewPage() {
 
   const [pageTab, setPageTab] = useState('Overview');
   const [expandedId, setExpandedId] = useState(null);
+  const [expandedFilter, setExpandedFilter] = useState(null);
   const [deptFilter, setDeptFilter] = useState('All');
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -541,7 +542,7 @@ export default function StaffOverviewPage() {
               <div
                 key={staff.id}
                 className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-all duration-300 ${isExpanded ? 'border-primary/40 shadow-md md:col-span-2' : 'border-outline-variant/30 hover:shadow-md cursor-pointer'}`}
-                onClick={() => setExpandedId(isExpanded ? null : staff.id)}
+                onClick={() => { if (isExpanded) { setExpandedId(null); setExpandedFilter(null); } else { setExpandedId(staff.id); setExpandedFilter(null); } }}
               >
                 {/* ── Card Header ── */}
                 <div className="px-5 pt-5 pb-4 flex items-start justify-between">
@@ -567,19 +568,22 @@ export default function StaffOverviewPage() {
                     ● {isOverloaded ? 'AT RISK' : 'ACTIVE'}
                   </span>
                 </div>
-                <div className="px-5 pb-3">
-                   <button onClick={(e) => { e.stopPropagation(); setAbsentProfile(staff); }} className="text-[10px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded transition-colors flex items-center gap-1 w-fit">
+                <div className="px-5 pb-3 flex items-center gap-2">
+                   <button onClick={(e) => { e.stopPropagation(); setAbsentProfile(staff); }} className="text-[10px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded transition-colors flex items-center gap-1">
                      <span className="material-symbols-outlined text-[13px]">event_busy</span> Mark Absent
+                   </button>
+                   <button onClick={(e) => { e.stopPropagation(); setEditingProfile(staff); }} className="text-[10px] font-bold text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 px-2 py-1 rounded transition-colors flex items-center gap-1">
+                     <span className="material-symbols-outlined text-[13px]">edit</span> Edit
                    </button>
                 </div>
 
                 {/* ── Overdue + Not Started ── */}
                 <div className="px-5 pb-3 grid grid-cols-2 gap-3">
-                  <div className={`rounded-xl p-3 ${m.overdue > 0 ? 'bg-red-50 border border-red-100' : 'bg-surface-container-low'}`}>
+                  <div onClick={(e) => { e.stopPropagation(); setExpandedId(staff.id); setExpandedFilter(expandedFilter === 'Overdue' && expandedId === staff.id ? null : 'Overdue'); }} className={`rounded-xl p-3 cursor-pointer transition-all ${isExpanded && expandedFilter === 'Overdue' ? 'ring-2 ring-error' : ''} ${m.overdue > 0 ? 'bg-red-50 border border-red-100 hover:bg-red-100' : 'bg-surface-container-low hover:bg-surface-container'}`}>
                     <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${m.overdue > 0 ? 'text-error' : 'text-on-surface-variant'}`}>Overdue</p>
                     <p className={`text-2xl font-black ${m.overdue > 0 ? 'text-error' : 'text-on-surface-variant'}`}>{m.overdue}</p>
                   </div>
-                  <div className={`rounded-xl p-3 ${m.notStarted > 0 ? 'bg-amber-50 border border-amber-100' : 'bg-surface-container-low'}`}>
+                  <div onClick={(e) => { e.stopPropagation(); setExpandedId(staff.id); setExpandedFilter(expandedFilter === 'Not Started' && expandedId === staff.id ? null : 'Not Started'); }} className={`rounded-xl p-3 cursor-pointer transition-all ${isExpanded && expandedFilter === 'Not Started' ? 'ring-2 ring-amber-400' : ''} ${m.notStarted > 0 ? 'bg-amber-50 border border-amber-100 hover:bg-amber-100' : 'bg-surface-container-low hover:bg-surface-container'}`}>
                     <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${m.notStarted > 0 ? 'text-amber-700' : 'text-on-surface-variant'}`}>Not Started</p>
                     <p className={`text-2xl font-black ${m.notStarted > 0 ? 'text-amber-600' : 'text-on-surface'}`}>{m.notStarted}</p>
                   </div>
@@ -588,11 +592,13 @@ export default function StaffOverviewPage() {
                 {/* ── Assigned / Ongoing / Completed ── */}
                 <div className="px-5 pb-3 grid grid-cols-3 gap-2 text-center">
                   {[
-                    { label: 'Assigned', val: m.assigned, cls: 'text-on-surface' },
-                    { label: 'Ongoing',  val: m.ongoing,  cls: 'text-blue-600' },
-                    { label: 'Completed',val: m.completed, cls: 'text-green-600' },
+                    { label: 'Assigned',  val: m.assigned,  cls: 'text-on-surface' },
+                    { label: 'Ongoing',   val: m.ongoing,   cls: 'text-blue-600'   },
+                    { label: 'Completed', val: m.completed, cls: 'text-green-600'  },
                   ].map(({ label, val, cls }) => (
-                    <div key={label} className="bg-surface-container-low rounded-xl py-2.5">
+                    <div key={label}
+                      onClick={(e) => { e.stopPropagation(); setExpandedId(staff.id); setExpandedFilter(expandedFilter === label && expandedId === staff.id ? null : label); }}
+                      className={`bg-surface-container-low rounded-xl py-2.5 cursor-pointer hover:bg-surface-container transition-all ${isExpanded && expandedFilter === label ? 'ring-2 ring-primary/40' : ''}`}>
                       <p className="text-[8px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">{label}</p>
                       <p className={`text-lg font-black ${cls}`}>{val}</p>
                     </div>
@@ -629,47 +635,64 @@ export default function StaffOverviewPage() {
                     <div>
                       <p className="text-xs font-black text-on-surface uppercase tracking-widest mb-3 flex items-center gap-2">
                         <span className="material-symbols-outlined text-[14px]">list_alt</span>
-                        Work Items Summary
+                        {expandedFilter ? `${expandedFilter} Tasks` : 'Work Items Summary'}
+                        {expandedFilter && (
+                          <button onClick={() => setExpandedFilter(null)} className="text-[9px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full hover:bg-primary/20 transition-colors ml-1">
+                            Show All
+                          </button>
+                        )}
                       </p>
                       <div className="flex flex-col gap-3">
-                        {overdueTasks.length > 0 && (
+                        {(!expandedFilter || expandedFilter === 'Overdue') && overdueTasks.length > 0 && (
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-error mb-1.5 flex items-center gap-1">
                               <span className="w-2 h-2 bg-error rounded-full inline-block"></span>
                               Overdue ({overdueTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{overdueTasks.slice(0,3).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{overdueTasks.slice(0,5).map(taskRow)}</div>
                           </div>
                         )}
-                        {ongoingTasks.length > 0 && (
+                        {(!expandedFilter || expandedFilter === 'Ongoing') && ongoingTasks.length > 0 && (
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-1.5 flex items-center gap-1">
                               <span className="w-2 h-2 bg-blue-500 rounded-full inline-block"></span>
                               Ongoing ({ongoingTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{ongoingTasks.slice(0,3).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{ongoingTasks.slice(0,5).map(taskRow)}</div>
                           </div>
                         )}
-                        {notStartedTasks.length > 0 && (
+                        {(!expandedFilter || expandedFilter === 'Not Started') && notStartedTasks.length > 0 && (
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-amber-700 mb-1.5 flex items-center gap-1">
                               <span className="w-2 h-2 bg-amber-400 rounded-full inline-block"></span>
                               Not Started ({notStartedTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{notStartedTasks.slice(0,3).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{notStartedTasks.slice(0,5).map(taskRow)}</div>
                           </div>
                         )}
-                        {assignedTasks.length > 0 && (
+                        {(!expandedFilter || expandedFilter === 'Assigned') && assignedTasks.length > 0 && (
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant mb-1.5 flex items-center gap-1">
                               <span className="w-2 h-2 bg-outline rounded-full inline-block"></span>
                               Assigned ({assignedTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{assignedTasks.slice(0,3).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{assignedTasks.slice(0,5).map(taskRow)}</div>
                           </div>
                         )}
-                        {activeTasks.length === 0 && (
+                        {expandedFilter === 'Completed' && (
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-green-700 mb-1.5 flex items-center gap-1">
+                              <span className="w-2 h-2 bg-green-500 rounded-full inline-block"></span>
+                              Completed ({m.tasks.filter(t => t.status === 'Completed').length})
+                            </p>
+                            <div className="flex flex-col gap-1.5">{m.tasks.filter(t => t.status === 'Completed').slice(0,5).map(taskRow)}</div>
+                          </div>
+                        )}
+                        {!expandedFilter && activeTasks.length === 0 && (
                           <p className="text-xs text-on-surface-variant italic text-center py-4">No active tasks in this period.</p>
+                        )}
+                        {expandedFilter && expandedFilter !== 'Completed' && activeTasks.filter(t => getDisplayStatus(t) === expandedFilter).length === 0 && (
+                          <p className="text-xs text-on-surface-variant italic text-center py-4">No {expandedFilter.toLowerCase()} tasks.</p>
                         )}
                       </div>
                     </div>

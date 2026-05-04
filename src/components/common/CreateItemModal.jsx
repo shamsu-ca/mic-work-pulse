@@ -111,6 +111,7 @@ export default function CreateItemModal({ onClose }) {
       type: 'Plan',
       in_planning_pool: true,
       is_recurring: false,
+      created_by: currentUser?.id || null,
       ...(planEstMins ? { estimated_hours: Number(planEstMins) } : {}),
     });
     setLoading(false);
