@@ -152,7 +152,7 @@ export default function ProjectsEventsPage() {
   const [newTitle, setNewTitle]               = useState('');
   const [submitting, setSubmitting]           = useState(false);
   const [milestoneTarget, setMilestoneTarget] = useState(null);
-  const [milestoneForm, setMilestoneForm]     = useState({ title: '', date: '' });
+  const [milestoneForm, setMilestoneForm]     = useState({ title: '', date: '', assignee_id: '' });
   const [phaseTarget, setPhaseTarget]         = useState(null);
   const [phaseForm, setPhaseForm]             = useState({ title: '', date: '' });
   const [checklistTarget, setChecklistTarget] = useState(null);
@@ -196,6 +196,9 @@ export default function ProjectsEventsPage() {
   const filteredProfiles = safeProfiles.filter(p =>
     p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup
   );
+  const milestoneAssigneeOptions = isAdmin
+    ? filteredProfiles
+    : safeProfiles.filter(p => p.id === currentUser?.id || p.manager === currentUser?.name);
 
   const getProfile    = (id) => safeProfiles.find(p => p.id === id);
   const containerType = typeTab === 'Projects' ? 'Project' : typeTab === 'Events' ? 'Event' : null;
@@ -297,11 +300,11 @@ export default function ProjectsEventsPage() {
     setSubmitting(true);
     const isSaved = safeSavedContainers.some(c => c.id === milestoneTarget);
     if (isSaved) {
-      await addSavedTask({ title: milestoneForm.title.trim(), type: 'Milestone', saved_container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null });
+      await addSavedTask({ title: milestoneForm.title.trim(), type: 'Milestone', saved_container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null, assignee_id: milestoneForm.assignee_id || null });
     } else {
-      await addWorkItem({ title: milestoneForm.title.trim(), type: 'Milestone', container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null });
+      await addWorkItem({ title: milestoneForm.title.trim(), type: 'Milestone', container_id: milestoneTarget, status: 'Assigned', created_by: currentUser.id, expected_date: milestoneForm.date || null, assignee_id: milestoneForm.assignee_id || null });
     }
-    setSubmitting(false); setMilestoneTarget(null); setMilestoneForm({ title: '', date: '' });
+    setSubmitting(false); setMilestoneTarget(null); setMilestoneForm({ title: '', date: '', assignee_id: '' });
   };
 
   const submitPhase = async () => {
@@ -394,13 +397,13 @@ export default function ProjectsEventsPage() {
                   {showStatus && <td className="px-3 py-2.5 text-xs text-on-surface-variant">{m.expected_date ? fmtDate(m.expected_date) : '—'}</td>}
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {showStatus && m.status === 'Assigned' && (isAdmin || m.assignee_id === currentUser?.id) && (
+                      {showStatus && m.status === 'Assigned' && m.assignee_id === currentUser?.id && (
                         <button onClick={() => updateAnyItem(m.id, { status: 'Ongoing' })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
                         </button>
                       )}
-                      {showStatus && m.status === 'Ongoing' && (isAdmin || m.assignee_id === currentUser?.id) && (
+                      {showStatus && m.status === 'Ongoing' && m.assignee_id === currentUser?.id && (
                         <button onClick={() => setPendingCompleteItem(m)}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
@@ -473,13 +476,13 @@ export default function ProjectsEventsPage() {
                   {showStatus && <td className="px-3 py-2">{statusBadge(ds)}</td>}
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {showStatus && item.status === 'Assigned' && (isAdmin || item.assignee_id === currentUser?.id) && (
+                      {showStatus && item.status === 'Assigned' && item.assignee_id === currentUser?.id && (
                         <button onClick={() => updateAnyItem(item.id, { status: 'Ongoing' })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
                         </button>
                       )}
-                      {showStatus && item.status === 'Ongoing' && (isAdmin || item.assignee_id === currentUser?.id) && (
+                      {showStatus && item.status === 'Ongoing' && item.assignee_id === currentUser?.id && (
                         <button onClick={() => setPendingCompleteItem(item)}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
@@ -744,13 +747,13 @@ export default function ProjectsEventsPage() {
                   <td className="px-3 py-2.5 text-xs text-on-surface-variant">{task.expected_date ? fmtDate(task.expected_date) : '—'}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1 justify-end flex-wrap">
-                      {task.status === 'Assigned' && (isAdmin || task.assignee_id === currentUser?.id) && (
+                      {task.status === 'Assigned' && task.assignee_id === currentUser?.id && (
                         <button onClick={() => updateWorkItem(task.id, { status: 'Ongoing' })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
                         </button>
                       )}
-                      {task.status === 'Ongoing' && (isAdmin || task.assignee_id === currentUser?.id) && (
+                      {task.status === 'Ongoing' && task.assignee_id === currentUser?.id && (
                         <button onClick={() => updateWorkItem(task.id, { status: 'Completed', completed_at: new Date().toISOString() })}
                           className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                           <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
@@ -778,9 +781,9 @@ export default function ProjectsEventsPage() {
                   const subAssignee = getProfile(sub.assignee_id);
                   return (
                     <tr key={sub.id} className="group bg-surface-container-low/20 hover:bg-surface-container-low/50 transition-colors">
-                      <td className="px-4 py-2 pl-10">
+                      <td className="px-4 py-2 pl-14 border-l-2 border-primary/20">
                         <div className="flex items-center gap-2">
-                          <span className="text-on-surface-variant text-[11px]">↳</span>
+                          <span className="text-primary/50 text-[11px]">↳</span>
                           <StatusDot ds={sds} />
                           <span className={`text-xs font-medium ${sds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{sub.title}</span>
                         </div>
@@ -1403,6 +1406,10 @@ export default function ProjectsEventsPage() {
           <div className="flex flex-col gap-3">
             <input autoFocus className={inputCls} placeholder="Milestone title…" value={milestoneForm.title} onChange={e => setMilestoneForm(f => ({ ...f, title: e.target.value }))} />
             <input type="date" className={inputCls} value={milestoneForm.date} onChange={e => setMilestoneForm(f => ({ ...f, date: e.target.value }))} />
+            <select className={inputCls} value={milestoneForm.assignee_id} onChange={e => setMilestoneForm(f => ({ ...f, assignee_id: e.target.value }))}>
+              <option value="">— Unassigned —</option>
+              {milestoneAssigneeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
             <button onClick={submitMilestone} disabled={submitting || !milestoneForm.title.trim()} className={btnPrimary}>{submitting ? 'Adding…' : 'Add Milestone'}</button>
           </div>
         </Modal>

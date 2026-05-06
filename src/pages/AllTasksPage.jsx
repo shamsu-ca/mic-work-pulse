@@ -148,7 +148,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
       })()}
 
       {subItems.length > 0 && (
-        <div className="flex flex-col gap-1.5 pl-2 border-l-2 border-outline-variant/20">
+        <div className="flex flex-col gap-1.5 pl-4 border-l-2 border-primary/20">
           {subItems.map(s => {
             const sds = getDisplayStatus(s);
             const sName = (profiles || []).find(p => p.id === s.assignee_id)?.name ?? 'Unassigned';
@@ -172,7 +172,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
                 <span className="material-symbols-outlined text-[14px]">play_arrow</span> Start
               </button>
             )}
-            {item.status === 'Ongoing' && (
+            {item.status === 'Ongoing' && (currentUser?.role !== 'Admin' || item.assignee_id === currentUser?.id) && (
               <button onClick={() => onComplete(item.id)} className="flex items-center gap-1.5 bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90">
                 <span className="material-symbols-outlined text-[14px]">check_circle</span> Complete &amp; Report
               </button>

@@ -66,8 +66,22 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
     return null;
   };
 
-  const handleCreateTask = async (e) => {
-    e.preventDefault();
+  const [confirmDateOpen, setConfirmDateOpen] = useState(false);
+
+  const handleCreateTask = async (e, forceConfirm = false) => {
+    if (e) e.preventDefault();
+    if (!taskAssignee) {
+      alert("Please select an assignee before proceeding.");
+      return;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (taskDate === todayStr && !isRecurring && !forceConfirm) {
+       setConfirmDateOpen(true);
+       return;
+    }
+    setConfirmDateOpen(false);
+
     setLoading(true);
     const taskBase = {
       title: taskTitle,
@@ -186,25 +200,25 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                   <p className="text-[10px] text-on-surface-variant">Add to planning pool</p>
                 </div>
               </button>
-              {currentUser?.role === 'Admin' && (
-                <div className="col-span-2 mt-2">
-                  <button
-                    onClick={() => setStep('notification')}
-                    className="w-full flex items-center justify-between p-3 rounded-xl border border-outline-variant/30 hover:border-pink-300 hover:bg-pink-50 transition-all group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-pink-50 flex items-center justify-center group-hover:bg-pink-100 transition-colors">
-                        <span className="material-symbols-outlined text-pink-600 text-[20px]" style={{fontVariationSettings:"'FILL' 1"}}>campaign</span>
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold text-on-surface text-sm leading-none">Broadcast Notification</p>
-                        <p className="text-[10px] text-on-surface-variant mt-1.5 leading-none">Alert staff immediately</p>
-                      </div>
+              <div className="col-span-2 mt-2">
+                <button
+                  onClick={() => setStep('notification')}
+                  className="w-full flex items-center justify-between p-3 rounded-xl border border-outline-variant/30 hover:border-pink-300 hover:bg-pink-50 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-pink-50 flex items-center justify-center group-hover:bg-pink-100 transition-colors">
+                      <span className="material-symbols-outlined text-pink-600 text-[20px]" style={{fontVariationSettings:"'FILL' 1"}}>campaign</span>
                     </div>
-                    <span className="material-symbols-outlined text-outline group-hover:text-pink-500 transition-colors text-[20px]">chevron_right</span>
-                  </button>
-                </div>
-              )}
+                    <div className="text-left">
+                      <p className="font-bold text-on-surface text-sm leading-none">
+                        {currentUser?.role === 'Admin' ? 'Broadcast Notification' : 'Create Announcement'}
+                      </p>
+                      <p className="text-[10px] text-on-surface-variant mt-1.5 leading-none">Alert staff immediately</p>
+                    </div>
+                  </div>
+                  <span className="material-symbols-outlined text-outline group-hover:text-pink-500 transition-colors text-[20px]">chevron_right</span>
+                </button>
+              </div>
             </div>
             <div className="px-6 pb-5">
               <button onClick={onClose} className="w-full py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors">Cancel</button>
@@ -351,7 +365,21 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                 ))}
               </div>
             </div>
-            <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
+            <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4 relative">
+              {confirmDateOpen && (
+                <div className="absolute bottom-full left-0 right-0 mb-4 mx-6 p-4 bg-orange-50 border border-orange-200 rounded-xl shadow-lg flex flex-col gap-3 z-10 animate-fade-in">
+                  <div className="flex gap-2">
+                    <span className="material-symbols-outlined text-orange-500">warning</span>
+                    <div className="text-sm text-orange-800">
+                      <strong>Due today?</strong> You haven't changed the due date. Proceed?
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button type="button" className="px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg" onClick={() => setConfirmDateOpen(false)}>Cancel</button>
+                    <button type="button" className="px-3 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-lg" onClick={(e) => handleCreateTask(e, true)}>Yes, Create</button>
+                  </div>
+                </div>
+              )}
               <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
               <button type="submit" disabled={loading} className="flex-1 py-2.5 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                 <span className="material-symbols-outlined text-[16px]">add</span>{loading ? 'Creating...' : 'Create Task'}

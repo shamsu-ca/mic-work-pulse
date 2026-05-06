@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDataContext } from '../context/SupabaseDataContext';
+import CreateItemModal from '../components/common/CreateItemModal';
 
 // ─── PLANNING POOL TAB ────────────────────────────────────────────────────────
 
@@ -21,103 +22,7 @@ const getAgeClass = (ageStr) => {
   return 'bg-red-100 text-red-700';
 };
 
-function AssignmentModal({ item, onClose, onAssignTask, onAssignProject, profiles, currentUser }) {
-  const [step, setStep] = React.useState('choose');
-  const [selectedAssignee, setSelectedAssignee] = React.useState(
-    currentUser?.role === 'Assignee' ? (currentUser?.id || '') : ''
-  );
-  const [projDate, setProjDate] = React.useState('');
-  const [milestoneTitle, setMilestoneTitle] = React.useState('');
-  
-  if (!item) return null;
-
-  const assigneeList = (profiles || []).filter(p => p.role !== 'Admin');
-  const isAdmin = currentUser?.role === 'Admin';
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-        {step === 'choose' ? (
-          <>
-            <h2 className="text-lg font-bold text-on-surface mb-2">Assign Item</h2>
-            <p className="text-sm text-on-surface-variant mb-4">How would you like to convert "<span className="font-semibold">{item.title}</span>"?</p>
-
-            {isAdmin && (
-              <div className="mb-4">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1.5 block">Assign To</label>
-                <select
-                  value={selectedAssignee}
-                  onChange={e => setSelectedAssignee(e.target.value)}
-                  className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                >
-                  <option value="">— Unassigned —</option>
-                  {assigneeList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-3">
-              <button onClick={() => onAssignTask(item, selectedAssignee || null)} className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
-                <span className="material-symbols-outlined text-[18px]">task</span>
-                Convert to Task
-              </button>
-              <button onClick={() => setStep('project')} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
-                <span className="material-symbols-outlined text-[18px]">view_kanban</span>
-                Convert to Project
-              </button>
-            </div>
-            <p className="text-xs text-on-surface-variant text-center mt-4">
-              Note: Converting to a Project will create a new project and remove this item from the pool.
-            </p>
-            <button onClick={onClose} className="w-full mt-2 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-lg">
-              Cancel
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => setStep('choose')} className="text-on-surface-variant hover:text-on-surface">
-                <span className="material-symbols-outlined">arrow_back</span>
-              </button>
-              <h2 className="text-lg font-bold text-on-surface leading-tight">Project Details</h2>
-            </div>
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Milestone Date (Optional)</label>
-                <input type="date" className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm focus:outline-none" value={projDate} onChange={e => setProjDate(e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">First Milestone Title</label>
-                <input className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm focus:outline-none" placeholder="e.g. Planning Phase" value={milestoneTitle} onChange={e => setMilestoneTitle(e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Milestone Assignee</label>
-                <select
-                  disabled={!isAdmin}
-                  value={selectedAssignee}
-                  onChange={e => setSelectedAssignee(e.target.value)}
-                  className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none disabled:opacity-50"
-                >
-                  <option value="">— Unassigned —</option>
-                  {assigneeList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={onClose} className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl">Cancel</button>
-              <button 
-                onClick={() => onAssignProject(item, selectedAssignee, projDate, milestoneTitle)}
-                className="flex-1 py-2.5 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:opacity-90 flex items-center justify-center gap-1"
-              >
-                Create Project
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+// AssignmentModal removed in favor of CreateItemModal directly
 
 function EditPoolModal({ item, onClose, onSave }) {
   const [title, setTitle] = useState(item.title || '');
@@ -160,17 +65,14 @@ function EditPoolModal({ item, onClose, onSave }) {
   );
 }
 
-function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, searchQuery, staffGroup }) {
+function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, searchQuery, poolSubTab }) {
   // Filter based on search
   const filtered = poolItems.filter(item => {
     if (searchQuery && !item.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    // Note: The UI mockup simply filters items based on search.
-    // The "Office Staff | Institution" toggle is handled here if pool items have a tie to staff group.
-    // However, work_items don't currently have a 'category' / 'staff_group', they are global unless assigned.
-    // Assuming the user just wants the toggle UI but it might only filter assignable staff, or it applies to notifications?
-    // The user's PRD simply lists it. We'll leave it in the Top Bar and maybe filter nothing for Pool unless it's mapped.
     return true; 
   });
+
+  const showCreatedBy = currentUser?.role === 'Admin' && poolSubTab !== 'Self';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
@@ -180,7 +82,7 @@ function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, sear
             <tr>
               <th className="px-5 py-3">Task Title</th>
               <th className="px-5 py-3 w-32">Aging Status</th>
-              {currentUser?.role === 'Admin' && <th className="px-5 py-3">Created By</th>}
+              {showCreatedBy && <th className="px-5 py-3">Created By</th>}
               <th className="px-5 py-3 text-right pr-4 w-48">Actions</th>
             </tr>
           </thead>
@@ -204,7 +106,7 @@ function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, sear
                       {ageStr}
                     </span>
                   </td>
-                  {currentUser?.role === 'Admin' && (
+                  {showCreatedBy && (
                     <td className="px-5 py-4 text-on-surface-variant text-xs">{creator}</td>
                   )}
                   <td className="px-5 py-4 text-right pr-4">
@@ -294,44 +196,26 @@ function NotificationsTab({ currentUser, profiles }) {
         <div className="divide-y divide-surface-container-low">
           {activeNotices.length === 0 ? (
             <p className="px-5 py-10 text-center text-on-surface-variant text-sm">No active notifications.</p>
-          ) : activeNotices.map(notice => {
-            const isText = notice.type === 'Text';
-            const displayStr = getDynamicNotificationText(notice);
-            const mainText = isText ? notice.message : notice.title;
-            const creatorName = profiles?.find(p => p.id === notice.created_by)?.name || 'Unknown';
-            const canDelete = isAdmin || currentUser?.id === notice.created_by;
-            
-            return (
-              <div key={notice.id} className="flex items-start justify-between px-5 py-4 hover:bg-surface-container-low/30 transition-colors group">
-                <div className="flex items-start gap-3">
-                  <span className={`material-symbols-outlined text-[20px] pt-0.5 ${isText ? 'text-blue-500' : 'text-indigo-500'}`}>
-                    {isText ? 'campaign' : 'event'}
-                  </span>
-                  <div>
-                    <h3 className="font-semibold text-sm text-on-surface">{mainText}</h3>
-                    {displayStr && <p className="text-xs text-on-surface-variant font-medium mt-0.5">{displayStr}</p>}
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded inline-block ${notice.staff_group === 'Both' ? 'bg-purple-100 text-purple-700' : notice.staff_group === 'Institution' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                        {notice.staff_group === 'Both' ? 'All Staff' : notice.staff_group}
-                      </span>
-                      <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
-                        Tagged by {creatorName.split(' ')[0]}
-                      </span>
-                    </div>
+          ) : (
+            <>
+              {isAdmin && (
+                <>
+                  <div className="bg-surface-container-lowest border-b border-surface-container-low px-5 py-2">
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-primary">Admin Announcements</h3>
                   </div>
-                </div>
-                {canDelete && (
-                  <button
-                    onClick={() => deleteAnnouncement(notice.id)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-error px-2 py-1"
-                    title="Delete"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                  {activeNotices.filter(n => profiles?.find(p => p.id === n.created_by)?.role === 'Admin').map(notice => renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement, getDynamicNotificationText))}
+                  
+                  <div className="bg-surface-container-lowest border-b border-surface-container-low border-t border-surface-container-high px-5 py-2 mt-4">
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Assignee Announcements</h3>
+                  </div>
+                  {activeNotices.filter(n => profiles?.find(p => p.id === n.created_by)?.role !== 'Admin').map(notice => renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement, getDynamicNotificationText))}
+                </>
+              )}
+              {!isAdmin && (
+                activeNotices.map(notice => renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement, getDynamicNotificationText))
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -411,15 +295,57 @@ function NotificationsTab({ currentUser, profiles }) {
   );
 }
 
+// Helper to render individual notices
+function renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement, getDynamicNotificationText) {
+  const isText = notice.type === 'Text';
+  const displayStr = getDynamicNotificationText(notice);
+  const mainText = isText ? notice.message : notice.title;
+  const creatorName = profiles?.find(p => p.id === notice.created_by)?.name || 'Unknown';
+  const canDelete = isAdmin || currentUser?.id === notice.created_by;
+  
+  return (
+    <div key={notice.id} className="flex items-start justify-between px-5 py-4 hover:bg-surface-container-low/30 transition-colors group">
+      <div className="flex items-start gap-3">
+        <span className={`material-symbols-outlined text-[20px] pt-0.5 ${isText ? 'text-blue-500' : 'text-indigo-500'}`}>
+          {isText ? 'campaign' : 'event'}
+        </span>
+        <div>
+          <h3 className="font-semibold text-sm text-on-surface">{mainText}</h3>
+          {displayStr && <p className="text-xs text-on-surface-variant font-medium mt-0.5">{displayStr}</p>}
+          <div className="flex items-center gap-2 mt-1">
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded inline-block ${notice.staff_group === 'Both' ? 'bg-purple-100 text-purple-700' : notice.staff_group === 'Institution' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+              {notice.staff_group === 'Both' ? 'All Staff' : notice.staff_group}
+            </span>
+            <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
+              Tagged by {creatorName.split(' ')[0]}
+            </span>
+          </div>
+        </div>
+      </div>
+      {canDelete && (
+        <button
+          onClick={() => deleteAnnouncement(notice.id)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-error px-2 py-1"
+          title="Delete"
+        >
+          <span className="material-symbols-outlined text-[18px]">delete</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── MAIN PLANNING PAGE ────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
   const { workItems, currentUser, profiles, updateWorkItem, deleteWorkItem, addContainer, addWorkItem } = useDataContext();
   const location = useLocation();
   
-  const [staffGroup, setStaffGroup] = useState('Office Staff');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'Pool');
+  const [poolSubTab, setPoolSubTab] = useState('Self'); // 'Self' | 'Admins' | 'Assignees'
+  const [assigneeFilterCategory, setAssigneeFilterCategory] = useState('');
+  const [assigneeFilterName, setAssigneeFilterName]         = useState('');
   const [assignmentItem, setAssignmentItem] = useState(null);
   const [editingPoolItem, setEditingPoolItem] = useState(null);
 
@@ -430,46 +356,44 @@ export default function PlanningPage() {
   }, [location.state]);
 
   const isSuperAdmin = currentUser?.role === 'Admin';
-  // Admin sees all pool items; Assignees/Managers see only their own.
-  const poolItems = (workItems || []).filter(w =>
-    w.in_planning_pool && !w.is_recurring &&
-    (isSuperAdmin || w.created_by === currentUser?.id)
-  );
+
+  let poolItems = (workItems || []).filter(w => w.in_planning_pool && !w.is_recurring);
+
+  if (!isSuperAdmin) {
+    poolItems = poolItems.filter(w => w.created_by === currentUser?.id);
+  } else {
+    poolItems = poolItems.filter(w => {
+      const creator = profiles?.find(p => p.id === w.created_by);
+      if (poolSubTab === 'Self') return w.created_by === currentUser?.id;
+      if (poolSubTab === 'Admins') return creator?.role === 'Admin' && w.created_by !== currentUser?.id;
+      if (poolSubTab === 'Assignees') return creator?.role !== 'Admin';
+      return true;
+    });
+    if (poolSubTab === 'Assignees') {
+      if (assigneeFilterCategory) {
+        poolItems = poolItems.filter(w => {
+          const creator = profiles?.find(p => p.id === w.created_by);
+          return (creator?.category || 'Office Staff') === assigneeFilterCategory;
+        });
+      }
+      if (assigneeFilterName) {
+        poolItems = poolItems.filter(w => w.created_by === assigneeFilterName);
+      }
+    }
+  }
+
+  const assigneeProfiles = (profiles || []).filter(p => p.role !== 'Admin');
+  const assigneeCategories = [...new Set(assigneeProfiles.map(p => p.category || 'Office Staff'))];
+  const filteredByCategory = assigneeFilterCategory
+    ? assigneeProfiles.filter(p => (p.category || 'Office Staff') === assigneeFilterCategory)
+    : assigneeProfiles;
 
   const handleAssignTask = async (item, assigneeId) => {
-    await updateWorkItem(item.id, {
-      in_planning_pool: false,
-      status: 'Assigned',
-      type: 'Task',
-      assignee_id: assigneeId || null,
-    });
-    setAssignmentItem(null);
+    // Keep it here just in case, but no longer used directly by direct conversion.
   };
 
   const handleAssignProject = async (item, assigneeId, date, milestoneTitle) => {
-    const { data } = await addContainer({
-      title: item.title,
-      description: item.description,
-      type: 'Project',
-      status: 'Active',
-      created_by: currentUser?.id
-    });
-    if (data && data[0]) {
-      const projId = data[0].id;
-      if (milestoneTitle || date || assigneeId) {
-        await addWorkItem({
-          title: milestoneTitle || 'Initial Milestone',
-          type: 'Milestone',
-          container_id: projId,
-          assignee_id: assigneeId || null,
-          expected_date: date || null,
-          status: 'Assigned',
-          created_by: currentUser?.id
-        });
-      }
-      await deleteWorkItem(item.id);
-    }
-    setAssignmentItem(null);
+    // Keep it here just in case, but no longer used directly.
   };
 
   const handlePoolAction = async (item, action) => {
@@ -488,20 +412,31 @@ export default function PlanningPage() {
 
       {/* TOP HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* View Toggle */}
-        <div className="flex bg-surface-container rounded-xl p-1 gap-0.5">
-          <button 
-            onClick={() => setStaffGroup('Office Staff')} 
-            className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${staffGroup === 'Office Staff' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
-          >
-            Office Staff
-          </button>
-          <button 
-            onClick={() => setStaffGroup('Institution')} 
-            className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${staffGroup === 'Institution' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
-          >
-            Institution
-          </button>
+        {/* Admin Sub-Tabs */}
+        <div className="flex flex-col gap-2">
+          {isSuperAdmin && activeTab === 'Pool' ? (
+            <>
+              <div className="flex bg-surface-container rounded-xl p-1 gap-0.5">
+                <button onClick={() => setPoolSubTab('Self')} className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${poolSubTab === 'Self' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>Self</button>
+                <button onClick={() => setPoolSubTab('Admins')} className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${poolSubTab === 'Admins' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>Admins</button>
+                <button onClick={() => { setPoolSubTab('Assignees'); setAssigneeFilterCategory(''); setAssigneeFilterName(''); }} className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${poolSubTab === 'Assignees' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>Assignees</button>
+              </div>
+              {poolSubTab === 'Assignees' && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select value={assigneeFilterCategory} onChange={e => { setAssigneeFilterCategory(e.target.value); setAssigneeFilterName(''); }}
+                    className="border border-outline-variant/40 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
+                    <option value="">All Categories</option>
+                    {assigneeCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select value={assigneeFilterName} onChange={e => setAssigneeFilterName(e.target.value)}
+                    className="border border-outline-variant/40 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
+                    <option value="">All Names</option>
+                    {filteredByCategory.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </>
+          ) : <div className="hidden md:block w-4" />}
         </div>
 
         {/* Global Search & Action Tabs */}
@@ -542,7 +477,7 @@ export default function PlanningPage() {
           profiles={profiles} 
           currentUser={currentUser}
           searchQuery={searchQuery}
-          staffGroup={staffGroup}
+          poolSubTab={poolSubTab}
         />
       )}
 
@@ -551,13 +486,12 @@ export default function PlanningPage() {
       )}
 
       {assignmentItem && (
-        <AssignmentModal
-          item={assignmentItem}
+        <CreateItemModal
+          initialData={assignmentItem}
           onClose={() => setAssignmentItem(null)}
-          onAssignTask={handleAssignTask}
-          onAssignProject={handleAssignProject}
-          profiles={profiles}
-          currentUser={currentUser}
+          onSuccessConvert={async () => {
+             await deleteWorkItem(assignmentItem.id);
+          }}
         />
       )}
 
