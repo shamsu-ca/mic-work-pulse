@@ -6,7 +6,7 @@ import CompletionPanel from '../common/CompletionPanel';
 import AbsenceModal from '../common/AbsenceModal';
 
 // ─── Expandable work item card for pipeline ───────────────────────────────────
-function WorkItemCard({ item, containers, workItems, showStart = false, showComplete = false, onStart, onComplete }) {
+function WorkItemCard({ item, containers, onStart, onComplete }) {
   const { addWorkItem, updateWorkItem } = useDataContext();
   const [expanded, setExpanded] = useState(false);
   const [addingSubtask, setAddingSubtask] = useState(false);
@@ -15,7 +15,6 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
   const [stSaving, setStSaving] = useState(false);
 
   const container = item.container_id ? (containers || []).find(c => c.id === item.container_id) : null;
-  const parentItem = item.parent_id   ? (workItems  || []).find(w => w.id === item.parent_id)   : null;
 
   const handleAddSubtask = async (e) => {
     e.preventDefault();
@@ -79,16 +78,11 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
               {container.description && <p className="mt-0.5 text-on-surface-variant/70 line-clamp-2">{container.description}</p>}
             </div>
           )}
-          {parentItem && (
-            <p className="text-xs text-on-surface-variant">
-              <span className="font-bold">Parent:</span> {parentItem.title}
-            </p>
-          )}
           {item.description && (
             <p className="text-xs text-on-surface-variant leading-relaxed">{item.description}</p>
           )}
           <div className="flex gap-2 pt-1">
-            {showStart && (
+            {item.status === 'Assigned' && onStart && (
               <button
                 className="flex-1 py-1.5 bg-primary text-white text-xs font-bold rounded shadow-sm hover:opacity-90 active:scale-95 transition-all"
                 onClick={(e) => { e.stopPropagation(); onStart(item.id); }}
@@ -96,7 +90,7 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
                 START
               </button>
             )}
-            {showComplete && (
+            {item.status === 'Ongoing' && onComplete && (
               <button
                 className="flex-1 py-1.5 bg-green-600 text-white text-xs font-bold rounded shadow-sm hover:opacity-90 active:scale-95 transition-all"
                 onClick={(e) => { e.stopPropagation(); onComplete(item); }}
@@ -146,7 +140,7 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
       {!expanded && (
         <div className="px-4 pb-3">
           <div className="flex gap-2">
-            {showStart && (
+            {item.status === 'Assigned' && onStart && (
               <button
                 className="flex-1 py-1.5 bg-primary text-white text-xs font-bold rounded shadow-sm hover:opacity-90 active:scale-95 transition-all"
                 onClick={(e) => { e.stopPropagation(); onStart(item.id); }}
@@ -154,7 +148,7 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
                 START
               </button>
             )}
-            {showComplete && (
+            {item.status === 'Ongoing' && onComplete && (
               <button
                 className="flex-1 py-1.5 bg-green-600 text-white text-xs font-bold rounded shadow-sm hover:opacity-90 active:scale-95 transition-all"
                 onClick={(e) => { e.stopPropagation(); onComplete(item); }}
@@ -162,7 +156,7 @@ function WorkItemCard({ item, containers, workItems, showStart = false, showComp
                 COMPLETE
               </button>
             )}
-            {!showStart && !showComplete && (
+            {item.status !== 'Assigned' && item.status !== 'Ongoing' && (
               <span className="text-[10px] font-bold uppercase tracking-wider text-outline px-2 py-1 bg-surface-container rounded-md">
                 {item.status}
               </span>
@@ -191,13 +185,11 @@ function AlertCard({ icon, title, accent, items, count, onAction, actionLabel, e
       </div>
       <div className="ml-2 flex flex-col gap-3 flex-1">
         {displayItems.map(w => (
-          <WorkItemCard 
-            key={w.id} 
-            item={w} 
-            {...cardProps} 
-            showStart={currentUser?.role !== 'Admin' && onAction} 
-            showComplete={!!onComplete}
-            onStart={onAction}
+          <WorkItemCard
+            key={w.id}
+            item={w}
+            {...cardProps}
+            onStart={currentUser?.role !== 'Admin' ? onAction : null}
             onComplete={onComplete}
           />
         ))}
@@ -247,16 +239,12 @@ export default function AssigneeDashboard() {
   const notStartedItems = isAbsentToday ? [] : myItems.filter(w => getDisplayStatus(w) === 'Not Started' && !isItemExcludedByAbsence(w, safeAbsences));
   const completedItems  = myItems.filter(w => w.status === 'Completed').slice(0, 5);
 
-  // Pipeline: root tasks + checklists/milestones (subtasks are nested under parent tasks)
-  const myRoots      = myItemsAll.filter(w => !w.parent_id || w.type === 'Checklist' || w.type === 'Milestone');
-  const mySubsOf     = (parentId) => safeWorkItems.filter(w => w.parent_id === parentId);
-  
   const priorityOrder = { 'Critical': 4, 'High': 3, 'Medium': 2, 'Low': 1, undefined: 0, null: 0 };
-  
-  // Filter out Overdue and Not Started items from Today's Focus
-  const assignedItems = myRoots.filter(w => w.status === 'Assigned' && getDisplayStatus(w) === 'Assigned')
+
+  // Today's Focus: leaf-only items (no parent tasks with children), exclude overdue/not-started
+  const assignedItems = myItems.filter(w => getDisplayStatus(w) === 'Assigned')
                                .sort((a, b) => (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0));
-  const ongoingItems  = myRoots.filter(w => w.status === 'Ongoing' && getDisplayStatus(w) === 'Ongoing')
+  const ongoingItems  = myItems.filter(w => w.status === 'Ongoing')
                                .sort((a, b) => (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0));
 
   const cardProps = { containers: safeContainers, workItems: safeWorkItems };
@@ -379,24 +367,9 @@ export default function AssigneeDashboard() {
               Ongoing Activity
               <span className="bg-white border border-outline-variant/50 text-on-surface-variant rounded-full text-[10px] px-2 py-0.5">{ongoingItems.length}</span>
             </h3>
-            {ongoingItems.map(w => {
-              const subs = mySubsOf(w.id);
-              return (
-                <div key={w.id} className="flex flex-col gap-1">
-                  <WorkItemCard item={w} {...cardProps} showComplete onComplete={(item) => setPendingCompleteItem(item)} />
-                  {subs.map(s => {
-                    const sds = getDisplayStatus(s);
-                    return (
-                      <div key={s.id} className="ml-4 flex items-center gap-2 bg-white/60 border border-outline-variant/20 rounded-lg px-3 py-1.5">
-                        <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>
-                        <span className={`text-xs font-medium flex-1 leading-tight ${sds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{s.title}</span>
-                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${sds === 'Completed' ? 'bg-green-100 text-green-700' : sds === 'Ongoing' ? 'bg-blue-100 text-blue-700' : 'bg-surface-container text-on-surface-variant'}`}>{sds}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+            {ongoingItems.map(w => (
+              <WorkItemCard key={w.id} item={w} {...cardProps} onComplete={(item) => setPendingCompleteItem(item)} />
+            ))}
             {ongoingItems.length === 0 && (
               <div className="text-center p-6 border-2 border-dashed border-outline-variant/40 rounded-lg text-outline text-xs font-medium">No ongoing tasks.</div>
             )}
@@ -407,24 +380,9 @@ export default function AssigneeDashboard() {
               New / Assigned
               <span className="bg-white border border-outline-variant/50 text-on-surface-variant rounded-full text-[10px] px-2 py-0.5">{assignedItems.length}</span>
             </h3>
-            {assignedItems.map(w => {
-              const subs = mySubsOf(w.id);
-              return (
-                <div key={w.id} className="flex flex-col gap-1">
-                  <WorkItemCard item={w} {...cardProps} showStart={currentUser?.role !== 'Admin'} onStart={startWorkItem} />
-                  {subs.map(s => {
-                    const sds = getDisplayStatus(s);
-                    return (
-                      <div key={s.id} className="ml-4 flex items-center gap-2 bg-white/60 border border-outline-variant/20 rounded-lg px-3 py-1.5">
-                        <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>
-                        <span className={`text-xs font-medium flex-1 leading-tight ${sds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{s.title}</span>
-                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${sds === 'Completed' ? 'bg-green-100 text-green-700' : sds === 'Ongoing' ? 'bg-blue-100 text-blue-700' : 'bg-surface-container text-on-surface-variant'}`}>{sds}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+            {assignedItems.map(w => (
+              <WorkItemCard key={w.id} item={w} {...cardProps} onStart={currentUser?.role !== 'Admin' ? startWorkItem : null} />
+            ))}
             {assignedItems.length === 0 && (
               <div className="text-center p-6 border-2 border-dashed border-outline-variant/40 rounded-lg text-outline text-xs font-medium">No new assignments.</div>
             )}

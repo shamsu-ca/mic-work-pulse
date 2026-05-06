@@ -161,6 +161,9 @@ export default function ProjectsEventsPage() {
   const [editNameVal, setEditNameVal]         = useState('');
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [deploying, setDeploying]             = useState(false);
+  const [deployError, setDeployError]         = useState(null);
+  const [deployModalTpl, setDeployModalTpl]   = useState(null);
+  const [deployPhaseDates, setDeployPhaseDates] = useState({});
   const [editingItem, setEditingItem]         = useState(null);
   const [pendingCompleteItem, setPendingCompleteItem] = useState(null);
 
@@ -275,24 +278,34 @@ export default function ProjectsEventsPage() {
     setModeTab('Saved');
   };
 
-  const deployTemplate = async (tpl) => {
+  const deployTemplate = async (tpl, phaseDates = {}) => {
     setDeploying(true);
-    const { data: newCont } = await addContainer(mkContainer({ title: cName(tpl), type: tpl.type, source_template_id: tpl.id }));
-    if (!newCont?.length) { setDeploying(false); return; }
-    const newId = newCont[0].id;
-    if (tpl.type === 'Event') {
-      for (const ph of getSavedPhases(tpl.id)) {
-        const { data: newPh } = await addWorkItem({ title: ph.title, type: 'Phase', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: ph.expected_date ?? null });
-        for (const item of getSavedPhaseItems(ph.id)) {
-          await addWorkItem({ title: item.title, type: 'Checklist', container_id: newId, parent_id: newPh?.[0]?.id ?? null, status: 'Assigned', assignee_id: item.assignee_id ?? null, created_by: currentUser.id, expected_date: ph.expected_date ?? null });
+    setDeployError(null);
+    try {
+      const { data: newCont, error: contErr } = await addContainer(mkContainer({ title: cName(tpl), type: tpl.type, source_template_id: tpl.id }));
+      if (contErr || !newCont?.length) {
+        setDeployError(contErr?.message || 'Failed to create container. Check permissions.');
+        setDeploying(false); return;
+      }
+      const newId = newCont[0].id;
+      if (tpl.type === 'Event') {
+        for (const ph of getSavedPhases(tpl.id)) {
+          const phDate = phaseDates[ph.id] || null;
+          const { data: newPh } = await addWorkItem({ title: ph.title, type: 'Phase', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: phDate });
+          for (const item of getSavedPhaseItems(ph.id)) {
+            await addWorkItem({ title: item.title, type: 'Checklist', container_id: newId, parent_id: newPh?.[0]?.id ?? null, status: 'Assigned', assignee_id: item.assignee_id ?? null, created_by: currentUser.id, expected_date: phDate });
+          }
+        }
+      } else {
+        for (const m of getSavedMilestones(tpl.id)) {
+          await addWorkItem({ title: m.title, type: 'Milestone', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: m.expected_date ?? null });
         }
       }
-    } else {
-      for (const m of getSavedMilestones(tpl.id)) {
-        await addWorkItem({ title: m.title, type: 'Milestone', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: m.expected_date ?? null });
-      }
+      setDeploying(false); setDeployModalTpl(null); setDeployPhaseDates({}); setModeTab('Active');
+    } catch (err) {
+      setDeployError(err?.message || 'Unexpected error during deploy.');
+      setDeploying(false);
     }
-    setDeploying(false); setModeTab('Active');
   };
 
   const submitMilestone = async () => {
@@ -312,7 +325,7 @@ export default function ProjectsEventsPage() {
     setSubmitting(true);
     const isSaved = safeSavedContainers.some(c => c.id === phaseTarget);
     if (isSaved) {
-      await addSavedTask({ title: phaseForm.title.trim(), type: 'Phase', saved_container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: phaseForm.date || null });
+      await addSavedTask({ title: phaseForm.title.trim(), type: 'Phase', saved_container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: null });
     } else {
       await addWorkItem({ title: phaseForm.title.trim(), type: 'Phase', container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: phaseForm.date || null });
     }
@@ -1186,7 +1199,7 @@ export default function ProjectsEventsPage() {
                   <p className="font-bold text-on-surface text-sm leading-tight mb-2">{cName(c)}</p>
                   <div className="flex gap-2">
                     {isAdmin && (
-                      <button onClick={e => { e.stopPropagation(); deployTemplate(c); }} disabled={deploying}
+                      <button onClick={e => { e.stopPropagation(); setDeployModalTpl(c); setDeployPhaseDates({}); }} disabled={deploying}
                         className="flex-1 py-1.5 text-xs font-bold bg-primary text-white rounded-xl hover:opacity-90 disabled:opacity-50">{deploying ? '…' : 'Deploy'}</button>
                     )}
                     <button onClick={e => { e.stopPropagation(); setSelectedTplId(c.id); }}
@@ -1263,7 +1276,7 @@ export default function ProjectsEventsPage() {
               {isAdmin && (
                 <div className="px-6 py-4 border-t border-surface-container-high flex items-center justify-between">
                   <span className="text-xs text-on-surface-variant">Deploy creates a live {isProject ? 'project' : 'event'} from this template</span>
-                  <button onClick={() => deployTemplate(active)} disabled={deploying}
+                  <button onClick={() => { setDeployModalTpl(active); setDeployPhaseDates({}); }} disabled={deploying}
                     className="bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
                     {deploying
                       ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying…</>
@@ -1418,7 +1431,9 @@ export default function ProjectsEventsPage() {
         <Modal title="Add Phase" onClose={() => setPhaseTarget(null)}>
           <div className="flex flex-col gap-3">
             <input autoFocus className={inputCls} placeholder="Phase name…" value={phaseForm.title} onChange={e => setPhaseForm(f => ({ ...f, title: e.target.value }))} />
-            <input type="date" className={inputCls} value={phaseForm.date} onChange={e => setPhaseForm(f => ({ ...f, date: e.target.value }))} />
+            {!safeSavedContainers.some(c => c.id === phaseTarget) && (
+              <input type="date" className={inputCls} value={phaseForm.date} onChange={e => setPhaseForm(f => ({ ...f, date: e.target.value }))} />
+            )}
             <button onClick={submitPhase} disabled={submitting || !phaseForm.title.trim()} className={btnPrimary}>{submitting ? 'Adding…' : 'Add Phase'}</button>
           </div>
         </Modal>
@@ -1431,7 +1446,6 @@ export default function ProjectsEventsPage() {
               <option value="">— Unassigned —</option>
               {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-            <input type="date" className={inputCls} value={checklistForm.date || checklistTarget.phaseDate || ''} onChange={e => setChecklistForm(f => ({ ...f, date: e.target.value }))} />
             <button onClick={submitChecklist} disabled={submitting || !checklistForm.title.trim()} className={btnPrimary}>{submitting ? 'Adding…' : 'Add Item'}</button>
           </div>
         </Modal>
@@ -1453,6 +1467,78 @@ export default function ProjectsEventsPage() {
       {editingItem && (
         <EditItemModal item={editingItem} profiles={safeProfiles} onClose={() => setEditingItem(null)} onSave={updateAnyItem} />
       )}
+
+      {/* ── Deploy Modal ── */}
+      {deployModalTpl && (() => {
+        const tpl = deployModalTpl;
+        const isEvent = tpl.type === 'Event';
+        const phases = isEvent ? getSavedPhases(tpl.id) : [];
+        const allDated = phases.every(ph => !!deployPhaseDates[ph.id]);
+        const canDeploy = !isEvent || phases.length === 0 || allDated;
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4" onClick={() => setDeployModalTpl(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-surface-container">
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-primary">rocket_launch</span>
+                  <div>
+                    <h2 className="font-bold text-lg font-headline">Deploy — {cName(tpl)}</h2>
+                    {isEvent && phases.length > 0 && (
+                      <p className="text-xs text-on-surface-variant">Set a due date for each phase</p>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => setDeployModalTpl(null)}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
+              </div>
+
+              <div className="p-6 flex flex-col gap-4 max-h-[60vh] overflow-y-auto">
+                {isEvent && phases.length === 0 && (
+                  <p className="text-sm text-on-surface-variant italic">No phases in this template. Deploy will create an empty event.</p>
+                )}
+                {isEvent && phases.map((ph, i) => (
+                  <div key={ph.id} className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-on-surface truncate">{ph.title}</p>
+                      <p className="text-[10px] text-on-surface-variant">{getSavedPhaseItems(ph.id).length} items</p>
+                    </div>
+                    <input
+                      type="date"
+                      required
+                      className="border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary flex-shrink-0"
+                      value={deployPhaseDates[ph.id] || ''}
+                      onChange={e => setDeployPhaseDates(prev => ({ ...prev, [ph.id]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+                {!isEvent && (
+                  <p className="text-sm text-on-surface-variant">Deploy will create a live project from this template.</p>
+                )}
+              </div>
+
+              {deployError && (
+                <div className="mx-6 mb-2 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm font-medium rounded-xl">{deployError}</div>
+              )}
+              {isEvent && !canDeploy && (
+                <p className="mx-6 mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 font-medium">Set a date for every phase to enable deploy.</p>
+              )}
+              <div className="flex justify-end gap-3 px-6 py-4 border-t border-surface-container">
+                <button className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={() => { setDeployModalTpl(null); setDeployError(null); }} disabled={deploying}>Cancel</button>
+                <button
+                  className="px-5 py-2 text-sm font-bold bg-primary text-white rounded-xl flex items-center gap-2 disabled:opacity-50"
+                  disabled={!canDeploy || deploying}
+                  onClick={() => deployTemplate(tpl, deployPhaseDates)}
+                >
+                  {deploying
+                    ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying…</>
+                    : <><span className="material-symbols-outlined text-[16px]">rocket_launch</span> Confirm Deploy</>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {pendingCompleteItem && (
         <CompletionPanel
           item={pendingCompleteItem}

@@ -1,10 +1,10 @@
 import { useDataContext } from '../../context/SupabaseDataContext';
 
 const DATE_OPTIONS = [
-  { key: 'today',     label: 'Today' },
-  { key: 'last7days', label: 'Last 7 Days' },
-  { key: 'lastmonth', label: 'Last Month' },
-  { key: 'custom',    label: 'Custom' },
+  { key: 'today',      label: 'Today' },
+  { key: 'this_week',  label: 'This Week' },
+  { key: 'this_month', label: 'This Month' },
+  { key: 'custom',     label: 'Custom Range' },
 ];
 
 const todayISO = () => new Date().toISOString().split('T')[0];
@@ -40,7 +40,6 @@ export default function FilterBar({ showToggle = false, showDateFilter = true })
   const {
     dateFilter, setDateFilter,
     customDateRange, setCustomDateRange,
-    staffGroup, setStaffGroup,
   } = useDataContext();
 
   const handleDateFilterChange = (val) => {

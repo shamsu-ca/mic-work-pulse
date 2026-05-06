@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
-import { getDisplayStatus, isOverdue, getActionableUnits } from '../lib/statusUtils';
+import { getDisplayStatus, getActionableUnits } from '../lib/statusUtils';
 import { fmtDate } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 
@@ -321,18 +321,103 @@ function MarkAbsentModal({ profile, onClose, onSave }) {
   );
 }
 
+function TaskDetailModal({ task, workItems, containers, profiles, onClose }) {
+  const container = task.container_id ? containers.find(c => c.id === task.container_id) : null;
+  const assignee = task.assignee_id ? profiles.find(p => p.id === task.assignee_id) : null;
+  const status = getDisplayStatus(task);
+  const followUps = workItems.filter(w => w.linked_to === task.id);
+
+  const typeColors = {
+    Task: 'bg-blue-100 text-blue-700',
+    Milestone: 'bg-purple-100 text-purple-700',
+    Checklist: 'bg-green-100 text-green-700',
+    Subtask: 'bg-orange-100 text-orange-700',
+    Phase: 'bg-emerald-100 text-emerald-700',
+  };
+  const statusColors = {
+    Overdue: 'bg-red-100 text-red-700',
+    Ongoing: 'bg-blue-100 text-blue-700',
+    Completed: 'bg-green-100 text-green-700',
+    'Not Started': 'bg-amber-100 text-amber-700',
+    Assigned: 'bg-surface-container text-on-surface-variant',
+  };
+
+  const Row = ({ label, value }) => value ? (
+    <div className="flex items-start gap-3 py-2.5 border-b border-surface-container last:border-0">
+      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest w-24 flex-shrink-0 pt-0.5">{label}</span>
+      <span className="text-sm text-on-surface font-medium flex-1">{value}</span>
+    </div>
+  ) : null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between px-6 py-4 border-b border-surface-container">
+          <div className="flex-1 pr-3">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${typeColors[task.type] || 'bg-surface-container text-on-surface-variant'}`}>{task.type || 'Task'}</span>
+              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${statusColors[status] || ''}`}>{status}</span>
+            </div>
+            <h2 className="font-bold text-base text-on-surface leading-snug">{task.title}</h2>
+          </div>
+          <button onClick={onClose} className="flex-shrink-0"><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
+        </div>
+        <div className="px-6 py-2 overflow-y-auto max-h-[70vh]">
+          <Row label="Due Date" value={task.expected_date ? fmtDate(task.expected_date) : 'No date set'} />
+          <Row label="Assignee" value={assignee?.name || (task.assignee_id ? 'Unknown' : 'Unassigned')} />
+          {container && <Row label={container.type} value={container.title} />}
+          {!container && !task.container_id && <Row label="Context" value="Standalone Task" />}
+          {task.description && <Row label="Description" value={task.description} />}
+          {task.status === 'Completed' && task.completion_note && (
+            <div className="py-2.5 border-b border-surface-container">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Completion Note</span>
+              <p className="text-sm text-on-surface font-medium bg-green-50 border border-green-100 rounded-xl px-3 py-2">{task.completion_note}</p>
+            </div>
+          )}
+          {task.status === 'Completed' && task.completion_tag && (
+            <Row label="Tag" value={task.completion_tag} />
+          )}
+          {followUps.length > 0 && (
+            <div className="py-2.5">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-2">Follow-up Tasks</span>
+              <div className="flex flex-col gap-1.5">
+                {followUps.map(f => {
+                  const fds = getDisplayStatus(f);
+                  const fCls = fds === 'Completed' ? 'bg-green-100 text-green-700' : fds === 'Overdue' ? 'bg-red-100 text-red-700' : fds === 'Ongoing' ? 'bg-blue-100 text-blue-700' : 'bg-surface-container text-on-surface-variant';
+                  return (
+                    <div key={f.id} className="flex items-center gap-2 bg-surface-container-low border border-outline-variant/20 rounded-xl px-3 py-2">
+                      <span className="text-sm font-medium text-on-surface flex-1 leading-tight">{f.title}</span>
+                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${fCls}`}>{fds}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="px-6 py-3 border-t border-surface-container">
+          <button className="w-full py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StaffOverviewPage() {
   const {
-    profiles, workItems, staffGroup, currentUser, absences, addAbsence, deleteAbsence,
+    profiles, workItems, containers, staffGroup, currentUser, absences, addAbsence, deleteAbsence,
     createUser, adminUpdateProfile, adminResetUserPassword,
   } = useDataContext();
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
+  const safeContainers = containers || [];
 
   const [pageTab, setPageTab] = useState('Overview');
   const [expandedId, setExpandedId] = useState(null);
   const [expandedFilter, setExpandedFilter] = useState(null);
   const [deptFilter, setDeptFilter] = useState('All');
+  const [efficiencyDetailId, setEfficiencyDetailId] = useState(null);
+  const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -370,27 +455,27 @@ export default function StaffOverviewPage() {
     const allTasks = safeWorkItems.filter(t => t.assignee_id === staffId);
     const tasks = getActionableUnits(allTasks); // live view — no date filter
 
-    let assigned = 0, ongoing = 0, completed = 0, overdue = 0;
+    let assigned = 0, notStarted = 0, ongoing = 0, completed = 0, overdue = 0;
     tasks.forEach(t => {
-      if (t.status === 'Assigned') assigned++;
-      else if (t.status === 'Ongoing') ongoing++;
-      else if (t.status === 'Completed') completed++;
-      if (isOverdue(t) && t.status !== 'Completed') overdue++;
+      const ds = getDisplayStatus(t);
+      if (ds === 'Completed')    completed++;
+      else if (ds === 'Overdue') overdue++;
+      else if (ds === 'Ongoing') ongoing++;
+      else if (ds === 'Not Started') notStarted++;
+      else assigned++; // 'Assigned' — not yet at trigger date
     });
 
     const total = tasks.length;
     const efficiency = total === 0 ? 0 : Math.round((completed / total) * 100);
-    const workload = total === 0 ? 0 : Math.min(100, Math.round(((overdue * 2 + ongoing + assigned) / Math.max(total, 8)) * 100));
     return {
       overdue,
-      notStarted: assigned,  // all assigned tasks are logically "Not Started"
+      notStarted,
       assigned,
       ongoing,
       completed,
       total,
-      active: assigned + ongoing,
+      active: assigned + ongoing + notStarted,
       efficiency,
-      workload,
       tasks
     };
   };
@@ -524,7 +609,7 @@ export default function StaffOverviewPage() {
             const taskRow = (t) => {
               const s = getDisplayStatus(t);
               return (
-                <div key={t.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-outline-variant/20">
+                <div key={t.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-outline-variant/20 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all" onClick={() => setSelectedTaskDetail(t)}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s === 'Overdue' ? 'bg-error' : s === 'Ongoing' ? 'bg-blue-500' : s === 'Completed' ? 'bg-green-500' : 'bg-amber-400'}`}></span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-on-surface truncate">{t.title}</p>
@@ -573,9 +658,6 @@ export default function StaffOverviewPage() {
                    <button onClick={(e) => { e.stopPropagation(); setAbsentProfile(staff); }} className="text-[10px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded transition-colors flex items-center gap-1">
                      <span className="material-symbols-outlined text-[13px]">event_busy</span> Mark Absent
                    </button>
-                   <button onClick={(e) => { e.stopPropagation(); setEditingProfile(staff); }} className="text-[10px] font-bold text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 px-2 py-1 rounded transition-colors flex items-center gap-1">
-                     <span className="material-symbols-outlined text-[13px]">edit</span> Edit
-                   </button>
                 </div>
 
                 {/* ── Overdue + Not Started ── */}
@@ -607,25 +689,21 @@ export default function StaffOverviewPage() {
                 </div>
 
                 {/* ── Work Efficiency ── */}
-                <div className="px-5 pb-2">
+                <div className="px-5 pb-4 cursor-pointer" onClick={(e) => { e.stopPropagation(); setEfficiencyDetailId(efficiencyDetailId === staff.id ? null : staff.id); }}>
                   <div className="flex justify-between text-[9px] font-bold text-on-surface-variant mb-1">
-                    <span>WORK EFFICIENCY</span>
-                    <span className="text-primary font-black">{m.efficiency}% AVERAGE</span>
+                    <span className="flex items-center gap-1">WORK EFFICIENCY <span className="material-symbols-outlined text-[11px] opacity-50">info</span></span>
+                    <span className="text-primary font-black">{m.efficiency}%</span>
                   </div>
                   <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
                     <div className={`h-full rounded-full transition-all ${m.efficiency < 40 ? 'bg-error' : m.efficiency < 70 ? 'bg-amber-400' : 'bg-primary'}`} style={{width:`${m.efficiency}%`}}></div>
                   </div>
-                </div>
-
-                {/* ── Workload Capacity ── */}
-                <div className="px-5 pb-4">
-                  <div className="flex justify-between text-[9px] font-bold text-on-surface-variant mb-1">
-                    <span>WORKLOAD CAPACITY</span>
-                    <span className={`font-black ${m.workload > 85 ? 'text-error' : 'text-primary'}`}>{m.workload}% CAP</span>
-                  </div>
-                  <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all ${m.workload > 85 ? 'bg-error' : m.workload > 60 ? 'bg-amber-400' : 'bg-primary'}`} style={{width:`${m.workload}%`}}></div>
-                  </div>
+                  {efficiencyDetailId === staff.id && (
+                    <div className="mt-2 bg-surface-container-low border border-outline-variant/20 rounded-xl p-3 text-xs text-on-surface-variant">
+                      <p className="font-bold text-on-surface mb-1">Efficiency Calculation</p>
+                      <p>{m.completed} completed out of {m.total} total items</p>
+                      <p className="text-[10px] mt-1 opacity-70">Formula: (completed ÷ total) × 100 — across all assigned work items, no date filter</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Expanded Detail ── */}
@@ -643,14 +721,14 @@ export default function StaffOverviewPage() {
                           </button>
                         )}
                       </p>
-                      <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-3 max-h-96 overflow-y-auto">
                         {(!expandedFilter || expandedFilter === 'Overdue') && overdueTasks.length > 0 && (
                           <div>
                             <p className="text-[9px] font-black uppercase tracking-widest text-error mb-1.5 flex items-center gap-1">
                               <span className="w-2 h-2 bg-error rounded-full inline-block"></span>
                               Overdue ({overdueTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{overdueTasks.slice(0,5).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{overdueTasks.map(taskRow)}</div>
                           </div>
                         )}
                         {(!expandedFilter || expandedFilter === 'Ongoing') && ongoingTasks.length > 0 && (
@@ -659,7 +737,7 @@ export default function StaffOverviewPage() {
                               <span className="w-2 h-2 bg-blue-500 rounded-full inline-block"></span>
                               Ongoing ({ongoingTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{ongoingTasks.slice(0,5).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{ongoingTasks.map(taskRow)}</div>
                           </div>
                         )}
                         {(!expandedFilter || expandedFilter === 'Not Started') && notStartedTasks.length > 0 && (
@@ -668,7 +746,7 @@ export default function StaffOverviewPage() {
                               <span className="w-2 h-2 bg-amber-400 rounded-full inline-block"></span>
                               Not Started ({notStartedTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{notStartedTasks.slice(0,5).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{notStartedTasks.map(taskRow)}</div>
                           </div>
                         )}
                         {(!expandedFilter || expandedFilter === 'Assigned') && assignedTasks.length > 0 && (
@@ -677,7 +755,7 @@ export default function StaffOverviewPage() {
                               <span className="w-2 h-2 bg-outline rounded-full inline-block"></span>
                               Assigned ({assignedTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{assignedTasks.slice(0,5).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{assignedTasks.map(taskRow)}</div>
                           </div>
                         )}
                         {expandedFilter === 'Completed' && (
@@ -686,7 +764,7 @@ export default function StaffOverviewPage() {
                               <span className="w-2 h-2 bg-green-500 rounded-full inline-block"></span>
                               Completed ({m.tasks.filter(t => t.status === 'Completed').length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{m.tasks.filter(t => t.status === 'Completed').slice(0,5).map(taskRow)}</div>
+                            <div className="flex flex-col gap-1.5">{m.tasks.filter(t => t.status === 'Completed').map(taskRow)}</div>
                           </div>
                         )}
                         {!expandedFilter && activeTasks.length === 0 && (
@@ -878,6 +956,15 @@ export default function StaffOverviewPage() {
       {resettingProfile && <ResetPasswordModal profile={resettingProfile} onClose={() => setResettingProfile(null)} onReset={adminResetUserPassword} />}
       {absentProfile && <MarkAbsentModal profile={absentProfile} onClose={() => setAbsentProfile(null)} onSave={addAbsence} />}
       {createdCreds && <CredentialsModal name={createdCreds.name} loginId={createdCreds.loginId} password={createdCreds.password} onClose={() => setCreatedCreds(null)} />}
+      {selectedTaskDetail && (
+        <TaskDetailModal
+          task={selectedTaskDetail}
+          workItems={safeWorkItems}
+          containers={safeContainers}
+          profiles={safeProfiles}
+          onClose={() => setSelectedTaskDetail(null)}
+        />
+      )}
     </div>
   );
 }

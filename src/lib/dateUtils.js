@@ -1,5 +1,11 @@
 /**
  * Date filtering utilities shared across all pages.
+ *
+ * FILTER DEFINITIONS — all ranges end at today (no future data):
+ *   today      : today → today
+ *   this_week  : last Monday → today
+ *   this_month : 1st of current month → today
+ *   custom     : user-selected start → user-selected end
  */
 
 /**
@@ -7,28 +13,27 @@
  */
 export function getDateRange(dateFilter, customDateRange) {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setHours(23, 59, 59, 999);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
   if (dateFilter === 'today') {
-    const end = new Date(today); end.setHours(23, 59, 59, 999);
-    return { from: today, to: end };
+    return { from: todayStart, to: today };
   }
 
-  // Last 7 days (including today)
-  if (dateFilter === 'last7days') {
-    const from = new Date(today);
-    from.setDate(today.getDate() - 6); // 6 days back + today = 7 days total
-    const to = new Date(today); to.setHours(23, 59, 59, 999);
-    return { from, to };
+  // This week: last Monday → today
+  if (dateFilter === 'this_week') {
+    const from = new Date(todayStart);
+    const day = from.getDay(); // 0 = Sun, 1 = Mon ...
+    const diff = day === 0 ? 6 : day - 1; // days since last Monday
+    from.setDate(from.getDate() - diff);
+    return { from, to: today };
   }
 
-  // Last month (previous calendar month)
-  if (dateFilter === 'lastmonth') {
-    const year = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
-    const month = today.getMonth() === 0 ? 11 : today.getMonth() - 1;
-    const from = new Date(year, month, 1);
-    const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
-    return { from, to };
+  // This month: 1st of current month → today
+  if (dateFilter === 'this_month') {
+    const from = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
+    return { from, to: today };
   }
 
   if (dateFilter === 'custom' && customDateRange?.from && customDateRange?.to) {
@@ -71,8 +76,8 @@ export function fmtDate(dateStr) {
 /** Human-readable label for the current filter */
 export function getFilterLabel(dateFilter, customDateRange) {
   if (dateFilter === 'today') return 'Today';
-  if (dateFilter === 'last7days') return 'Last 7 Days';
-  if (dateFilter === 'lastmonth') return 'Last Month';
+  if (dateFilter === 'this_week') return 'This Week';
+  if (dateFilter === 'this_month') return 'This Month';
   if (dateFilter === 'custom' && customDateRange?.from && customDateRange?.to) {
     return `${customDateRange.from} → ${customDateRange.to}`;
   }
