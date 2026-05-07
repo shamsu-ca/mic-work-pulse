@@ -164,7 +164,7 @@ export function SupabaseDataProvider({ children, session }) {
       supabase.removeChannel(annSub);
       supabase.removeChannel(absencesSub);
     };
-  }, [session]);
+  }, [session?.user?.id]);
 
   function shouldSubtaskSpawnToday(sub, parentTemplate, today) {
     const rule = sub.recurrence_rule;

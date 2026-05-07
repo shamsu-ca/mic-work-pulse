@@ -5,8 +5,101 @@ import { fmtDate } from '../../lib/dateUtils';
 import CompletionPanel from '../common/CompletionPanel';
 import AbsenceModal from '../common/AbsenceModal';
 
+// ─── Item detail modal (same style as staff page) ────────────────────────────
+function ItemDetailModal({ item, containers, workItems, profiles, onClose, onStart, onComplete }) {
+  const container = item.container_id ? containers.find(c => c.id === item.container_id) : null;
+  const parent    = item.parent_id    ? workItems.find(w => w.id === item.parent_id)     : null;
+  const assignee  = item.assignee_id  ? profiles.find(p => p.id === item.assignee_id)    : null;
+  const status    = getDisplayStatus(item);
+  const followUps = workItems.filter(w => w.linked_to === item.id);
+
+  const typeColors = {
+    Task: 'bg-blue-100 text-blue-700', Milestone: 'bg-purple-100 text-purple-700',
+    Checklist: 'bg-green-100 text-green-700', Subtask: 'bg-orange-100 text-orange-700',
+    Phase: 'bg-emerald-100 text-emerald-700',
+  };
+  const statusColors = {
+    Overdue: 'bg-red-100 text-red-700', Ongoing: 'bg-blue-100 text-blue-700',
+    Completed: 'bg-green-100 text-green-700', 'Not Started': 'bg-amber-100 text-amber-700',
+    Assigned: 'bg-surface-container text-on-surface-variant',
+  };
+
+  const Row = ({ label, value }) => value ? (
+    <div className="flex items-start gap-3 py-2.5 border-b border-surface-container last:border-0">
+      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest w-24 flex-shrink-0 pt-0.5">{label}</span>
+      <span className="text-sm text-on-surface font-medium flex-1">{value}</span>
+    </div>
+  ) : null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between px-6 py-4 border-b border-surface-container">
+          <div className="flex-1 pr-3">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${typeColors[item.type] || 'bg-surface-container text-on-surface-variant'}`}>{item.type || 'Task'}</span>
+              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${statusColors[status] || ''}`}>{status}</span>
+            </div>
+            <h2 className="font-bold text-base text-on-surface leading-snug">{item.title}</h2>
+          </div>
+          <button onClick={onClose} className="flex-shrink-0 p-1 rounded-lg hover:bg-surface-container transition-colors">
+            <span className="material-symbols-outlined text-on-surface-variant">close</span>
+          </button>
+        </div>
+        <div className="px-6 py-2 overflow-y-auto max-h-[60vh]">
+          <Row label="Due Date"  value={item.expected_date ? fmtDate(item.expected_date) : 'No date set'} />
+          {assignee  && <Row label="Assignee"  value={assignee.name} />}
+          {container && <Row label={container.type} value={container.title} />}
+          {parent    && <Row label="Parent"    value={parent.title} />}
+          {item.priority && <Row label="Priority" value={item.priority} />}
+          {item.description && <Row label="Description" value={item.description} />}
+          {item.status === 'Completed' && item.completion_note && (
+            <div className="py-2.5 border-b border-surface-container">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Completion Note</span>
+              <p className="text-sm text-on-surface font-medium bg-green-50 border border-green-100 rounded-xl px-3 py-2">{item.completion_note}</p>
+            </div>
+          )}
+          {item.completion_tag && <Row label="Tag" value={item.completion_tag} />}
+          {followUps.length > 0 && (
+            <div className="py-2.5">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-2">Follow-up Tasks</span>
+              <div className="flex flex-col gap-1.5">
+                {followUps.map(f => {
+                  const fds = getDisplayStatus(f);
+                  const fCls = fds === 'Completed' ? 'bg-green-100 text-green-700' : fds === 'Overdue' ? 'bg-red-100 text-red-700' : fds === 'Ongoing' ? 'bg-blue-100 text-blue-700' : 'bg-surface-container text-on-surface-variant';
+                  return (
+                    <div key={f.id} className="flex items-center gap-2 bg-surface-container-low border border-outline-variant/20 rounded-xl px-3 py-2">
+                      <span className="text-sm font-medium text-on-surface flex-1 leading-tight">{f.title}</span>
+                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${fCls}`}>{fds}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="px-6 py-3 border-t border-surface-container flex gap-2">
+          {item.status === 'Assigned' && onStart && (
+            <button
+              className="flex-1 py-2 bg-primary text-white text-sm font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all"
+              onClick={() => { onStart(item.id); onClose(); }}
+            >START</button>
+          )}
+          {item.status === 'Ongoing' && onComplete && (
+            <button
+              className="flex-1 py-2 bg-green-600 text-white text-sm font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all"
+              onClick={() => { onComplete(item); onClose(); }}
+            >COMPLETE</button>
+          )}
+          <button className="flex-1 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors border border-outline-variant/30" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Expandable work item card for pipeline ───────────────────────────────────
-function WorkItemCard({ item, containers, onStart, onComplete }) {
+function WorkItemCard({ item, containers, workItems, onStart, onComplete, onViewDetail }) {
   const { addWorkItem, updateWorkItem } = useDataContext();
   const [expanded, setExpanded] = useState(false);
   const [addingSubtask, setAddingSubtask] = useState(false);
@@ -15,6 +108,9 @@ function WorkItemCard({ item, containers, onStart, onComplete }) {
   const [stSaving, setStSaving] = useState(false);
 
   const container = item.container_id ? (containers || []).find(c => c.id === item.container_id) : null;
+  const parent    = item.parent_id    ? (workItems  || []).find(w => w.id === item.parent_id)    : null;
+  const parentContainer = parent?.container_id ? (containers || []).find(c => c.id === parent.container_id) : null;
+  const contextContainer = parentContainer || (parent ? null : container);
 
   const handleAddSubtask = async (e) => {
     e.preventDefault();
@@ -49,6 +145,15 @@ function WorkItemCard({ item, containers, onStart, onComplete }) {
                 container.type === 'Project' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
               }`}>{container.type}</span>
             )}
+            {onViewDetail && (
+              <button
+                title="View details"
+                className="text-on-surface-variant hover:text-primary transition-colors"
+                onClick={e => { e.stopPropagation(); onViewDetail(item); }}
+              >
+                <span className="material-symbols-outlined text-[15px]">open_in_full</span>
+              </button>
+            )}
             <span className={`material-symbols-outlined text-[16px] text-on-surface-variant transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}>
               chevron_right
             </span>
@@ -72,10 +177,16 @@ function WorkItemCard({ item, containers, onStart, onComplete }) {
       {/* Expanded detail */}
       {expanded && (
         <div className="border-t border-surface-container-high bg-surface-container-low/30 px-4 py-3 flex flex-col gap-2">
-          {container && (
-            <div className="text-xs text-on-surface-variant">
-              <span className="font-bold text-on-surface">{container.type}:</span> {container.title}
-              {container.description && <p className="mt-0.5 text-on-surface-variant/70 line-clamp-2">{container.description}</p>}
+          {(contextContainer || parent) && (
+            <div className="flex items-center gap-1.5">
+              {contextContainer && (
+                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
+                  contextContainer.type === 'Project' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                }`}>{contextContainer.type}</span>
+              )}
+              <span className="text-xs font-medium text-on-surface-variant line-clamp-1">
+                {parent ? parent.title : contextContainer?.title}
+              </span>
             </div>
           )}
           {item.description && (
@@ -212,6 +323,7 @@ export default function AssigneeDashboard() {
   const { currentUser, workItems, containers, profiles, absences, startWorkItem, completeWorkItem, getUnreadNotifications, markNotificationRead } = useDataContext();
   const [pendingCompleteItem, setPendingCompleteItem] = useState(null);
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
+  const [selectedItemDetail, setSelectedItemDetail] = useState(null);
 
   const handleDashComplete = async ({ note, tag }) => {
     if (!pendingCompleteItem) return;
@@ -247,7 +359,7 @@ export default function AssigneeDashboard() {
   const ongoingItems  = myItems.filter(w => w.status === 'Ongoing')
                                .sort((a, b) => (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0));
 
-  const cardProps = { containers: safeContainers, workItems: safeWorkItems };
+  const cardProps = { containers: safeContainers, workItems: safeWorkItems, onViewDetail: setSelectedItemDetail };
 
   return (
     <div className="flex flex-col gap-6 max-w-[1400px] mx-auto pb-12">
@@ -412,10 +524,23 @@ export default function AssigneeDashboard() {
         </div>
       )}
 
+      {selectedItemDetail && (
+        <ItemDetailModal
+          item={selectedItemDetail}
+          containers={safeContainers}
+          workItems={safeWorkItems}
+          profiles={profiles || []}
+          onClose={() => setSelectedItemDetail(null)}
+          onStart={currentUser?.role !== 'Admin' ? startWorkItem : null}
+          onComplete={item => { setPendingCompleteItem(item); setSelectedItemDetail(null); }}
+        />
+      )}
+
       {pendingCompleteItem && (
         <CompletionPanel
           item={pendingCompleteItem}
           profiles={profiles || []}
+          currentUser={currentUser}
           onConfirm={handleDashComplete}
           onCancel={() => setPendingCompleteItem(null)}
         />

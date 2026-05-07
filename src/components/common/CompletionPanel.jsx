@@ -26,7 +26,7 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
   const resolution = getResolutionInfo(item);
 
   const followUpAssigneeOptions = (() => {
-    if (currentUser?.role === 'Assignee') return profiles.filter(p => p.id === currentUser.id);
+    if (currentUser?.role === 'Assignee') return profiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
     if (currentUser?.role === 'Manager') return profiles.filter(p => p.manager === currentUser.name);
     return profiles;
   })();

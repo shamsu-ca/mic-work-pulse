@@ -33,6 +33,60 @@ export default function ReportsPage() {
     const notStarted = myItems.filter(w => w.status === 'Assigned');
     const effDenom = completed.length + overdue.length + notStarted.length;
     const productivityScore = effDenom === 0 ? 100 : Math.round((completed.length / effDenom) * 100);
+    const reportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    const handleAssigneePdfExport = () => {
+      const printWin = window.open('', '_blank', 'width=900,height=700');
+      if (!printWin) return;
+      const statusColor = (w) => {
+        const s = getDisplayStatus(w);
+        if (s === 'Completed') return '#16a34a';
+        if (s === 'Overdue')   return '#dc2626';
+        if (s === 'Ongoing')   return '#2563eb';
+        return '#d97706';
+      };
+      const rows = myItems.map(w => `
+        <tr>
+          <td>${w.title}</td>
+          <td style="text-align:center">${w.type}</td>
+          <td style="text-align:center;font-weight:700;color:${statusColor(w)}">${getDisplayStatus(w)}</td>
+          <td style="text-align:right">${w.expected_date ? fmtDate(w.expected_date) : '—'}</td>
+        </tr>`).join('');
+      printWin.document.write(`
+        <!DOCTYPE html><html><head><title>${currentUser.name} — Performance Report</title>
+        <style>
+          body{font-family:system-ui,sans-serif;padding:32px;color:#111}
+          h1{font-size:22px;font-weight:900;margin-bottom:4px}
+          h2{font-size:15px;font-weight:700;margin:24px 0 10px}
+          .meta{color:#666;font-size:12px;margin-bottom:24px}
+          .score-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:8px}
+          .score-box{background:#f4f4f5;border-radius:12px;padding:16px 20px}
+          .score-box .n{font-size:28px;font-weight:900}
+          .score-box .l{font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+          table{width:100%;border-collapse:collapse;font-size:13px}
+          th{background:#f4f4f5;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#555}
+          td{padding:8px 10px;border-bottom:1px solid #e5e7eb}
+          tr:hover td{background:#fafafa}
+          .footer{margin-top:24px;font-size:11px;color:#999;text-align:right}
+          @media print{body{padding:16px}.footer{position:fixed;bottom:16px;right:16px}}
+        </style></head><body>
+        <h1>${currentUser.name} — Performance Report</h1>
+        <div class="meta">Generated: ${reportDate} &nbsp;·&nbsp; Period: ${dateFilter?.replace(/_/g, ' ') ?? 'All Time'}</div>
+        <div class="score-grid">
+          <div class="score-box"><div class="n">${productivityScore}%</div><div class="l">Productivity Score</div></div>
+          <div class="score-box"><div class="n">${completed.length} / ${myItems.length}</div><div class="l">Tasks Completed</div></div>
+          <div class="score-box"><div class="n" style="color:#dc2626">${overdue.length}</div><div class="l">Overdue</div></div>
+        </div>
+        <h2>Task History</h2>
+        <table>
+          <thead><tr><th>Task</th><th style="text-align:center">Type</th><th style="text-align:center">Status</th><th style="text-align:right">Due Date</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="footer">MIC WorkPulse &nbsp;·&nbsp; Confidential</div>
+        <script>window.onload=()=>{window.print();}</script>
+        </body></html>`);
+      printWin.document.close();
+    };
 
     return (
       <div className="flex flex-col gap-8 max-w-[1400px] mx-auto pb-12">
@@ -42,8 +96,8 @@ export default function ReportsPage() {
           </div>
           <div className="flex items-center gap-3">
             <FilterBar showToggle={false} showDateFilter={true} compact />
-            <button onClick={() => window.print()} className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm hover:bg-surface transition-colors flex items-center gap-2">
-              <span className="material-symbols-outlined text-[18px]">download</span> Download PDF
+            <button onClick={handleAssigneePdfExport} className="bg-white border border-outline-variant/40 rounded-lg px-4 py-2 text-sm font-bold shadow-sm hover:bg-surface transition-colors flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span> Download PDF
             </button>
           </div>
         </div>

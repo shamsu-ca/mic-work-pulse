@@ -16,34 +16,33 @@ import NotificationsPage from './pages/NotificationsPage';
 
 function AppContent() {
   const { currentUser, loadingInitial } = useDataContext();
-
-  if (loadingInitial || !currentUser) {
-    return <div className="h-screen w-full flex items-center justify-center font-bold text-on-surface-variant font-headline">Loading application data...</div>;
-  }
-
   const role = currentUser?.role || 'Assignee';
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<AppLayout userRole={role} currentUser={currentUser} />}>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/tasks" element={<AllTasksPage />} />
-          <Route path="/planning" element={<PlanningPage />} />
-          <Route path="/projects-events" element={<ProjectsEventsPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
+      {(loadingInitial || !currentUser) ? (
+        <div className="h-screen w-full flex items-center justify-center font-bold text-on-surface-variant font-headline">Loading application data...</div>
+      ) : (
+        <Routes>
+          <Route element={<AppLayout userRole={role} currentUser={currentUser} />}>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/tasks" element={<AllTasksPage />} />
+            <Route path="/planning" element={<PlanningPage />} />
+            <Route path="/projects-events" element={<ProjectsEventsPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
 
-          {role === 'Admin' && (
-            <Route path="/staff" element={<StaffOverviewPage />} />
-          )}
-          {role !== 'Admin' && (
-            <Route path="/staff" element={<Navigate to="/" replace />} />
-          )}
+            {role === 'Admin' && (
+              <Route path="/staff" element={<StaffOverviewPage />} />
+            )}
+            {role !== 'Admin' && (
+              <Route path="/staff" element={<Navigate to="/" replace />} />
+            )}
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      )}
     </BrowserRouter>
   );
 }
