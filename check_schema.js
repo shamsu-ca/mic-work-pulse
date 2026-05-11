@@ -8,13 +8,12 @@ env.split('\n').forEach(line => {
   if (line.startsWith('VITE_SUPABASE_SERVICE_ROLE_KEY=')) supabaseKey = line.split('=')[1].trim();
 });
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-async function checkSchema() {
-  const { data, error } = await supabase.rpc('get_schema');
-  // OR just select from announcements limit 1
-  const res = await supabase.from('announcements').select('*').limit(1);
-  console.log("Data:", res.data);
+async function checkProfiles() {
+  const { data, error } = await supabaseAdmin.from('users').select('*').limit(1);
+  if (error) console.error(error);
+  else console.log(data);
 }
 
-checkSchema();
+checkProfiles();
