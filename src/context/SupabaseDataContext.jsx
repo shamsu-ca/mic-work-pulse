@@ -579,6 +579,12 @@ export function SupabaseDataProvider({ children, session }) {
     const todayDate = new Date(today + 'T00:00:00');
     return announcements.filter(a => {
       const eventDate = new Date(a.event_date + 'T00:00:00');
+      // Text announcements auto-delete AFTER the date.
+      // Program announcements show "Expired" if past the date. We will keep them active but the UI will filter them if needed.
+      // Wait, the prompt says "Dashboard: show active announcements only".
+      // Active means todayDate <= eventDate for Text. 
+      // For Program, if they are shown in Admin Expired Tab, they must remain in the state. 
+      // Let's filter out expired ones from getActiveAnnouncements, but we can access `announcements` directly for the Expired Tab.
       return todayDate <= eventDate;
     });
   };
@@ -595,20 +601,10 @@ export function SupabaseDataProvider({ children, session }) {
     const diffTime = eventDate - todayDate;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) {
-      let displayTime = 'All Day';
-      if (ann.event_time) {
-        const [h, m] = ann.event_time.split(':');
-        let hour = parseInt(h, 10);
-        const ampm = hour >= 12 ? 'PM' : 'AM';
-        hour = hour % 12 || 12;
-        displayTime = `${hour}:${m} ${ampm}`;
-      }
-      return `Today @ ${displayTime}`;
-    }
-
-    const plural = diffDays === 1 ? 'day' : 'days';
-    return `${diffDays} ${plural} left`;
+    if (diffDays < 0) return "Expired";
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Tomorrow";
+    return `${diffDays} days left`;
   };
 
   // ── Absences ──────────────────────────────────────────────────────────────

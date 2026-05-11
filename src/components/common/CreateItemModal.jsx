@@ -34,7 +34,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
 
   // Notification form
   const [notifType, setNotifType] = useState('Text');
-  const [notifForm, setNotifForm] = useState({ message: '', event_date: '', event_time: '', staff_group: 'Both' });
+  const [notifForm, setNotifForm] = useState({ message: '', event_date: '', event_time: '', staff_group: 'Both', is_pinned: false });
 
   const safeProfiles = profiles || [];
   const assigneeList = (() => {
@@ -141,10 +141,11 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
     setLoading(true);
     await addAnnouncement({
       title: notifType === 'Program' ? notifForm.message : 'Text',
-      message: notifType === 'Text' ? notifForm.message : null,
+      message: notifType === 'Text' ? notifForm.message : '',
       event_date: notifForm.event_date,
       event_time: notifType === 'Program' ? (notifForm.event_time || null) : null,
       type: notifType,
+      is_pinned: notifForm.is_pinned,
       staff_group: notifForm.staff_group
     });
     setLoading(false);
@@ -501,6 +502,13 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                   <option value="Institution">Institution</option>
                 </select>
               </div>
+
+              {currentUser?.role === 'Admin' && (
+                <label className="flex items-center gap-2 mt-1 cursor-pointer">
+                  <input type="checkbox" checked={notifForm.is_pinned} onChange={e => setNotifForm(f => ({...f, is_pinned: e.target.checked}))} className="rounded text-primary" />
+                  <span className="text-sm font-bold text-on-surface">Pin this announcement</span>
+                </label>
+              )}
             </div>
             <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
               <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>

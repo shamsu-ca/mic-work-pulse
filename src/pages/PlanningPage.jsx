@@ -148,166 +148,180 @@ function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, sear
   );
 }
 
-// ─── NOTIFICATIONS TAB (ADMIN ONLY) ──────────────────────────────────────────
+// ─── NOTIFICATIONS TAB ───────────────────────────────────────────────────────
 
-function NotificationsTab({ currentUser, profiles }) {
-  const { announcements, addAnnouncement, deleteAnnouncement, getActiveAnnouncements, getDynamicNotificationText } = useDataContext();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [type, setType] = useState('Text'); // 'Text' or 'Program'
-  const [form, setForm] = useState({ message: '', event_date: '', event_time: '', staff_group: 'Both' });
+function EditNoticeModal({ notice, onClose, onSave, isAdmin }) {
+  const isText = notice.type === 'Text';
+  const [form, setForm] = useState({
+    message: isText ? notice.message : notice.title,
+    event_date: notice.event_date || '',
+    event_time: notice.event_time || '',
+    is_pinned: notice.is_pinned || false,
+    staff_group: notice.staff_group || 'Both'
+  });
+  const [saving, setSaving] = useState(false);
 
-  const activeNotices = getActiveAnnouncements();
-
-  const handleSave = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.message.trim() || !form.event_date) return;
-    
-    await addAnnouncement({
-      title: type === 'Program' ? form.message : 'Text', // Reuse message field for Subject if Program
-      message: type === 'Text' ? form.message : null,
+    setSaving(true);
+    await onSave(notice.id, {
+      title: isText ? 'Text' : form.message.trim(),
+      message: isText ? form.message.trim() : '',
       event_date: form.event_date,
-      event_time: type === 'Program' ? form.event_time : null,
-      type: type,
+      event_time: isText ? null : (form.event_time || null),
+      is_pinned: form.is_pinned,
       staff_group: form.staff_group
     });
-    
-    setIsModalOpen(false);
-    setForm({ message: '', event_date: '', event_time: '', staff_group: 'Both' });
+    setSaving(false);
+    onClose();
   };
 
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <h2 className="font-bold text-base font-headline text-on-surface mb-4">Edit Announcement</h2>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-outline">{isText ? 'Message' : 'Subject'} *</label>
+            <textarea required className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none" rows={2} value={form.message} onChange={e => setForm({...form, message: e.target.value})} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Date *</label>
+              <input type="date" required className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none" value={form.event_date} onChange={e => setForm({...form, event_date: e.target.value})} />
+            </div>
+            {!isText && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Time</label>
+                <input type="time" className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none" value={form.event_time} onChange={e => setForm({...form, event_time: e.target.value})} />
+              </div>
+            )}
+          </div>
+          {isAdmin && (
+            <label className="flex items-center gap-2 mt-2 cursor-pointer">
+              <input type="checkbox" checked={form.is_pinned} onChange={e => setForm({...form, is_pinned: e.target.checked})} className="rounded text-primary" />
+              <span className="text-sm font-bold text-on-surface">Pin this announcement</span>
+            </label>
+          )}
+          <div className="flex gap-3 mt-4">
+            <button type="button" onClick={onClose} className="flex-1 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl">Cancel</button>
+            <button type="submit" disabled={saving || !form.message || !form.event_date} className="flex-1 py-2 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function NotificationsTab({ currentUser, profiles }) {
+  const { announcements, addAnnouncement, updateAnnouncement, deleteAnnouncement, getDynamicNotificationText } = useDataContext();
+  const [subTab, setSubTab] = useState('Active'); // Active | Expired
+  const [editingAnn, setEditingAnn] = useState(null);
+  
   const isAdmin = currentUser?.role === 'Admin';
+
+  const today = new Date().toISOString().split('T')[0];
+  const todayDate = new Date(today + 'T00:00:00');
+
+  let activeNotices = [];
+  let expiredNotices = [];
+
+  announcements.forEach(a => {
+    const eventDate = new Date(a.event_date + 'T00:00:00');
+    if (todayDate <= eventDate) activeNotices.push(a);
+    else expiredNotices.push(a);
+  });
+
+  // Sorting Active Notices: Admin Pinned > Admin Unpinned > Assignees
+  activeNotices.sort((a, b) => {
+    const cA = profiles?.find(p => p.id === a.created_by);
+    const cB = profiles?.find(p => p.id === b.created_by);
+    const isAdminA = cA?.role === 'Admin';
+    const isAdminB = cB?.role === 'Admin';
+
+    if (isAdminA && !isAdminB) return -1;
+    if (!isAdminA && isAdminB) return 1;
+    if (isAdminA && isAdminB) {
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
+    }
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+  
+  expiredNotices.sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+
+  const noticesToRender = subTab === 'Active' ? activeNotices : expiredNotices;
 
   return (
     <>
       <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
         <div className="px-5 py-4 border-b border-surface-container-high bg-surface-container-lowest flex items-center justify-between">
-          <h2 className="font-bold text-base font-headline text-on-surface flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>campaign</span>
-            Notifications
-          </h2>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="text-xs font-bold bg-primary text-white px-3 py-1.5 rounded-lg shadow-sm hover:opacity-90 flex items-center gap-1"
-          >
-            <span className="material-symbols-outlined text-[16px]">add</span> Add
-          </button>
+          <div className="flex items-center gap-4">
+            <h2 className="font-bold text-base font-headline text-on-surface flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>campaign</span>
+              Announcements
+            </h2>
+            {isAdmin && (
+              <div className="flex bg-surface-container rounded-lg p-0.5">
+                <button onClick={() => setSubTab('Active')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${subTab === 'Active' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>Active</button>
+                <button onClick={() => setSubTab('Expired')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${subTab === 'Expired' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>Expired</button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="divide-y divide-surface-container-low">
-          {activeNotices.length === 0 ? (
-            <p className="px-5 py-10 text-center text-on-surface-variant text-sm">No active notifications.</p>
+          {noticesToRender.length === 0 ? (
+            <p className="px-5 py-10 text-center text-on-surface-variant text-sm">No {subTab.toLowerCase()} announcements.</p>
           ) : (
-            <>
-              {isAdmin && (
-                <>
-                  <div className="bg-surface-container-lowest border-b border-surface-container-low px-5 py-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-primary">Admin Announcements</h3>
-                  </div>
-                  {activeNotices.filter(n => profiles?.find(p => p.id === n.created_by)?.role === 'Admin').map(notice => renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement, getDynamicNotificationText))}
-                  
-                  <div className="bg-surface-container-lowest border-b border-surface-container-low border-t border-surface-container-high px-5 py-2 mt-4">
-                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Assignee Announcements</h3>
-                  </div>
-                  {activeNotices.filter(n => profiles?.find(p => p.id === n.created_by)?.role !== 'Admin').map(notice => renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement, getDynamicNotificationText))}
-                </>
-              )}
-              {!isAdmin && (
-                activeNotices.map(notice => renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement, getDynamicNotificationText))
-              )}
-            </>
+            noticesToRender.map(notice => (
+              <NoticeCard 
+                key={notice.id} 
+                notice={notice} 
+                isAdmin={isAdmin} 
+                currentUser={currentUser} 
+                profiles={profiles} 
+                getDynamicNotificationText={getDynamicNotificationText}
+                onEdit={() => setEditingAnn(notice)}
+                onDelete={() => deleteAnnouncement(notice.id)}
+                onTogglePin={async () => updateAnnouncement(notice.id, { is_pinned: !notice.is_pinned })}
+              />
+            ))
           )}
         </div>
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4" onClick={() => setIsModalOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-surface-container bg-surface-container-lowest">
-              <h2 className="font-bold text-base font-headline text-on-surface">Add Notification</h2>
-              <button onClick={() => setIsModalOpen(false)}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
-            </div>
-            
-            <form onSubmit={handleSave} className="p-6 flex flex-col gap-4">
-              {/* Type Selection */}
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2 block">Step 1: Select Type</label>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setType('Text')} className={`flex-1 py-2 text-sm font-bold border rounded-lg transition-all flex items-center justify-center gap-2 ${type === 'Text' ? 'bg-primary/10 border-primary text-primary' : 'border-outline-variant/40 text-on-surface-variant'}`}>
-                    <span className="material-symbols-outlined text-[18px]">campaign</span> Text
-                  </button>
-                  <button type="button" onClick={() => setType('Program')} className={`flex-1 py-2 text-sm font-bold border rounded-lg transition-all flex items-center justify-center gap-2 ${type === 'Program' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-outline-variant/40 text-on-surface-variant'}`}>
-                    <span className="material-symbols-outlined text-[18px]">event</span> Program
-                  </button>
-                </div>
-              </div>
-
-              {type === 'Text' && (
-                <>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Message (Text Only) *</label>
-                    <textarea required className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50" rows={3} value={form.message} onChange={e => setForm(f => ({...f, message: e.target.value}))} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Show Until *</label>
-                    <input type="date" required className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={form.event_date} onChange={e => setForm(f => ({...f, event_date: e.target.value}))} />
-                  </div>
-                </>
-              )}
-
-              {type === 'Program' && (
-                <>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Subject *</label>
-                    <input required className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={form.message} onChange={e => setForm(f => ({...f, message: e.target.value}))} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Date *</label>
-                      <input type="date" required className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={form.event_date} onChange={e => setForm(f => ({...f, event_date: e.target.value}))} />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Time (Optional)</label>
-                      <input type="time" className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={form.event_time} onChange={e => setForm(f => ({...f, event_time: e.target.value}))} />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Target Audience</label>
-                <select className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={form.staff_group} onChange={e => setForm(f => ({...f, staff_group: e.target.value}))}>
-                  <option value="Both">Both (All Staff)</option>
-                  <option value="Office Staff">Office Staff</option>
-                  <option value="Institution">Institution</option>
-                </select>
-              </div>
-
-              <div className="pt-2">
-                <button type="submit" disabled={!form.message || !form.event_date} className="w-full py-2.5 bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
-                  Save Notification
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {editingAnn && (
+        <EditNoticeModal 
+          notice={editingAnn} 
+          onClose={() => setEditingAnn(null)} 
+          onSave={updateAnnouncement}
+          isAdmin={isAdmin}
+        />
       )}
     </>
   );
 }
 
-// Helper to render individual notices
-function renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement, getDynamicNotificationText) {
+function NoticeCard({ notice, isAdmin, currentUser, profiles, getDynamicNotificationText, onEdit, onDelete, onTogglePin }) {
   const isText = notice.type === 'Text';
   const displayStr = getDynamicNotificationText(notice);
   const mainText = isText ? notice.message : notice.title;
-  const creatorName = profiles?.find(p => p.id === notice.created_by)?.name || 'Unknown';
-  const canDelete = isAdmin || currentUser?.id === notice.created_by;
   
+  const creatorProfile = profiles?.find(p => p.id === notice.created_by);
+  const creatorIsAdmin = creatorProfile?.role === 'Admin';
+  const creatorName = creatorProfile?.name || 'Unknown';
+  
+  const canEdit = isAdmin || currentUser?.id === notice.created_by;
+
   return (
-    <div key={notice.id} className="flex items-start justify-between px-5 py-4 hover:bg-surface-container-low/30 transition-colors group">
+    <div className={`flex items-start justify-between px-5 py-4 hover:bg-surface-container-low/30 transition-colors group ${notice.is_pinned ? 'bg-amber-50/30' : ''}`}>
       <div className="flex items-start gap-3">
-        <span className={`material-symbols-outlined text-[20px] pt-0.5 ${isText ? 'text-blue-500' : 'text-indigo-500'}`}>
-          {isText ? 'campaign' : 'event'}
+        <span className={`material-symbols-outlined text-[20px] pt-0.5 ${notice.is_pinned ? 'text-amber-500' : isText ? 'text-blue-500' : 'text-indigo-500'}`} style={{ fontVariationSettings: notice.is_pinned ? "'FILL' 1" : "'FILL' 0" }}>
+          {notice.is_pinned ? 'keep' : isText ? 'campaign' : 'event'}
         </span>
         <div>
           <h3 className="font-semibold text-sm text-on-surface">{mainText}</h3>
@@ -316,20 +330,31 @@ function renderNotice(notice, isAdmin, currentUser, profiles, deleteAnnouncement
             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded inline-block ${notice.staff_group === 'Both' ? 'bg-purple-100 text-purple-700' : notice.staff_group === 'Institution' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
               {notice.staff_group === 'Both' ? 'All Staff' : notice.staff_group}
             </span>
-            <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
-              Tagged by {creatorName.split(' ')[0]}
-            </span>
+            {!creatorIsAdmin && (
+              <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
+                Posted by {creatorName}
+              </span>
+            )}
+            {notice.is_pinned && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded inline-block bg-amber-100 text-amber-700">Pinned</span>
+            )}
           </div>
         </div>
       </div>
-      {canDelete && (
-        <button
-          onClick={() => deleteAnnouncement(notice.id)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-error px-2 py-1"
-          title="Delete"
-        >
-          <span className="material-symbols-outlined text-[18px]">delete</span>
-        </button>
+      {canEdit && (
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+          {isAdmin && (
+            <button onClick={onTogglePin} className="text-on-surface-variant hover:text-amber-500 p-1" title={notice.is_pinned ? "Unpin" : "Pin"}>
+              <span className="material-symbols-outlined text-[18px]">keep</span>
+            </button>
+          )}
+          <button onClick={onEdit} className="text-on-surface-variant hover:text-primary p-1" title="Edit">
+            <span className="material-symbols-outlined text-[18px]">edit</span>
+          </button>
+          <button onClick={onDelete} className="text-on-surface-variant hover:text-error p-1" title="Delete">
+            <span className="material-symbols-outlined text-[18px]">delete</span>
+          </button>
+        </div>
       )}
     </div>
   );
