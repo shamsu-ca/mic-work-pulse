@@ -4,6 +4,7 @@ import { useDataContext } from '../../context/SupabaseDataContext';
 import { supabase } from '../../lib/supabaseClient';
 import ProfileModal from '../common/ProfileModal';
 import CreateItemModal from '../common/CreateItemModal';
+import NotificationManager from '../common/NotificationManager';
 
 export default function AppLayout({ userRole, currentUser }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -50,6 +51,7 @@ export default function AppLayout({ userRole, currentUser }) {
 
   return (
     <div className="bg-background text-on-surface min-h-screen selection:bg-primary/10">
+      <NotificationManager />
       {/* Top Header — padding-top accounts for PWA/standalone status bar safe area */}
       <header
         className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-outline-variant/50"

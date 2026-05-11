@@ -7,6 +7,10 @@ export default function ProfileModal({ onClose, currentUser }) {
 
   const [name, setName] = useState(currentUser?.name || '');
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url || '');
+  const [notifSettings, setNotifSettings] = useState(currentUser?.notification_settings || {
+    popup_enabled: false, sound_enabled: true, notify_tasks: true, notify_overdue: true, notify_announcements: true, notify_programs: true
+  });
+  
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,6 +21,8 @@ export default function ProfileModal({ onClose, currentUser }) {
   const [pwError, setPwError] = useState(null);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const fileRef = useRef();
+
+  const [permStatus, setPermStatus] = useState('Notification' in window ? Notification.permission : 'Not Supported');
 
   // Capture PWA install event
   React.useEffect(() => {
@@ -33,12 +39,28 @@ export default function ProfileModal({ onClose, currentUser }) {
     }
   };
 
+  const handleTogglePopup = async () => {
+    if (!('Notification' in window)) return;
+    if (!notifSettings.popup_enabled) {
+      // Prompt for permission if enabling
+      const perm = await Notification.requestPermission();
+      setPermStatus(perm);
+      if (perm === 'granted') {
+        setNotifSettings({ ...notifSettings, popup_enabled: true });
+      } else {
+        alert('Notifications were denied by your browser. Please allow them in your site settings.');
+      }
+    } else {
+      setNotifSettings({ ...notifSettings, popup_enabled: false });
+    }
+  };
+
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage(null);
     setError(null);
-    const { error } = await updateProfile(currentUser.id, { name, avatar_url: avatarUrl });
+    const { error } = await updateProfile(currentUser.id, { name, avatar_url: avatarUrl, notification_settings: notifSettings });
     if (error) setError(error.message);
     else setMessage('Profile updated successfully!');
     setLoading(false);
@@ -137,6 +159,63 @@ export default function ProfileModal({ onClose, currentUser }) {
               {loading ? 'Saving...' : 'Save Changes'}
             </button>
           </form>
+
+          {/* Notification Settings */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between border-b border-surface-container pb-2">
+              <p className="text-xs font-black text-on-surface-variant uppercase tracking-wider">Notification Settings</p>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${permStatus === 'granted' ? 'bg-green-100 text-green-700' : permStatus === 'denied' ? 'bg-red-100 text-red-700' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                {permStatus === 'granted' ? 'Allowed' : permStatus === 'denied' ? 'Blocked' : permStatus}
+              </span>
+            </div>
+            
+            <div className="flex flex-col gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/30 shadow-sm">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <span className={`material-symbols-outlined text-[20px] ${notifSettings.popup_enabled ? 'text-primary' : 'text-on-surface-variant'}`}>{notifSettings.popup_enabled ? 'notifications_active' : 'notifications_off'}</span>
+                  <span className="text-sm font-bold text-on-surface">Enable Popups</span>
+                </div>
+                <div className={`w-10 h-6 rounded-full p-1 transition-colors ${notifSettings.popup_enabled ? 'bg-primary' : 'bg-surface-container-high'}`} onClick={handleTogglePopup}>
+                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${notifSettings.popup_enabled ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                </div>
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <span className={`material-symbols-outlined text-[20px] ${notifSettings.sound_enabled ? 'text-primary' : 'text-on-surface-variant'}`}>{notifSettings.sound_enabled ? 'volume_up' : 'volume_off'}</span>
+                  <span className="text-sm font-bold text-on-surface">Enable Sound</span>
+                </div>
+                <div className={`w-10 h-6 rounded-full p-1 transition-colors ${notifSettings.sound_enabled ? 'bg-primary' : 'bg-surface-container-high'}`} onClick={() => setNotifSettings({...notifSettings, sound_enabled: !notifSettings.sound_enabled})}>
+                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${notifSettings.sound_enabled ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                </div>
+              </label>
+
+              <div className="h-px bg-surface-container w-full"></div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" className="rounded text-primary focus:ring-primary" checked={notifSettings.notify_tasks} onChange={e => setNotifSettings({...notifSettings, notify_tasks: e.target.checked})} />
+                  <span className="text-xs font-semibold text-on-surface">Tasks</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" className="rounded text-primary focus:ring-primary" checked={notifSettings.notify_overdue} onChange={e => setNotifSettings({...notifSettings, notify_overdue: e.target.checked})} />
+                  <span className="text-xs font-semibold text-on-surface">Overdue Alerts</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" className="rounded text-primary focus:ring-primary" checked={notifSettings.notify_announcements} onChange={e => setNotifSettings({...notifSettings, notify_announcements: e.target.checked})} />
+                  <span className="text-xs font-semibold text-on-surface">Announcements</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" className="rounded text-primary focus:ring-primary" checked={notifSettings.notify_programs} onChange={e => setNotifSettings({...notifSettings, notify_programs: e.target.checked})} />
+                  <span className="text-xs font-semibold text-on-surface">Programs/Events</span>
+                </label>
+              </div>
+            </div>
+            <button onClick={handleSaveProfile} disabled={loading} className="bg-surface-container-low text-primary border border-primary/20 font-bold py-2 rounded-xl text-sm hover:bg-primary/5 transition-colors flex items-center justify-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">save</span>
+              Save Notification Settings
+            </button>
+          </div>
 
           {/* Password Form */}
           <form onSubmit={handleChangePassword} className="flex flex-col gap-3">
