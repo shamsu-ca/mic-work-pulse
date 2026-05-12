@@ -210,7 +210,7 @@ export default function ProjectsEventsPage() {
   const activeContainers = safeContainers.filter(c => {
     if (c.type !== containerType)  return false;
     if (c.is_active === false)     return false;
-    if (currentUser?.role === 'Assignee') {
+    if (currentUser?.role !== 'Admin') {
       return c.created_by === currentUser.id ||
         safeWorkItems.some(w => w.container_id === c.id && w.assignee_id === currentUser.id);
     }
@@ -218,7 +218,7 @@ export default function ProjectsEventsPage() {
   });
   const templateContainers = safeSavedContainers.filter(c => {
     if (c.type !== containerType) return false;
-    if (currentUser?.role === 'Assignee') {
+    if (currentUser?.role !== 'Admin') {
       return c.created_by === currentUser.id;
     }
     return true;
@@ -238,13 +238,13 @@ export default function ProjectsEventsPage() {
   // Standalone tasks (no container)
   const standaloneTasks = safeWorkItems.filter(w =>
     !w.container_id && !w.in_planning_pool && w.type === 'Task' &&
-    !w.parent_id && (currentUser?.role === 'Assignee' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
+    !w.parent_id && (currentUser?.role !== 'Admin' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
   );
   const getSubItems = (pid) => safeWorkItems.filter(w => w.parent_id === pid);
 
   // Recurring templates (live in saved_tasks)
   const recurringTemplates = safeSavedTasks.filter(w => w.is_recurring &&
-    (currentUser?.role === 'Assignee' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
+    (currentUser?.role !== 'Admin' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
   );
 
   // ── Container actions ──────────────────────────────────────────────────────
@@ -1551,7 +1551,7 @@ export default function ProjectsEventsPage() {
 
       {/* FAB: Projects (all roles) + Events Saved templates (admin only) */}
       {(typeTab === 'Projects' || (typeTab === 'Events' && modeTab === 'Saved' && isAdmin)) && (
-        <div className="fixed bottom-6 right-6 z-40">
+        <div className="fixed bottom-20 md:bottom-6 right-6 z-40">
           <button onClick={() => setIsCreateOpen(true)}
             className="w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center hover:opacity-90 transition-all">
             <span className="material-symbols-outlined text-[28px]">add</span>

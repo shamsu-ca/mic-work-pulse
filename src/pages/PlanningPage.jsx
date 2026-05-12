@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDataContext } from '../context/SupabaseDataContext';
 import CreateItemModal from '../components/common/CreateItemModal';
+import ClockTimePicker from '../components/common/ClockTimePicker';
 
 // ─── PLANNING POOL TAB ────────────────────────────────────────────────────────
 
@@ -194,7 +195,11 @@ function EditNoticeModal({ notice, onClose, onSave, isAdmin }) {
             {!isText && (
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Time</label>
-                <input type="time" className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none" value={form.event_time} onChange={e => setForm({...form, event_time: e.target.value})} />
+                <ClockTimePicker 
+                  className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-3 py-2 text-sm focus:outline-none" 
+                  value={form.event_time} 
+                  onChange={val => setForm({...form, event_time: val})} 
+                />
               </div>
             )}
           </div>

@@ -1,8 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../context/SupabaseDataContext';
-import AdminDashboard from '../components/dashboard/AdminDashboard';
-import AssigneeDashboard from '../components/dashboard/AssigneeDashboard';
+import MainDashboard from '../components/dashboard/MainDashboard';
 
 export default function DashboardPage() {
   const { currentUser, getActiveAnnouncements, getDynamicNotificationText, profiles } = useDataContext();
@@ -63,7 +62,7 @@ export default function DashboardPage() {
         </div>
       )}
       
-      {currentUser.role === 'Assignee' ? <AssigneeDashboard /> : <AdminDashboard />}
+      <MainDashboard />
     </div>
   );
 }

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
+import ClockTimePicker from './ClockTimePicker';
 
-export default function CreateItemModal({ onClose, initialData, onSuccessConvert }) {
+export default function CreateItemModal({ onClose, initialData, onSuccessConvert, defaultTab = 'Plan', defaultSelfOnly = false, predefinedAssignee = null }) {
   const { addWorkItem, addSavedTask, profiles, currentUser, addAnnouncement } = useDataContext();
   const navigate = useNavigate();
-  const [step, setStep] = useState(initialData ? 'task' : 'choose'); // 'choose' | 'task' | 'plan' | 'notification'
+  const [step, setStep] = useState(initialData ? 'task' : (defaultTab === 'Plan' ? 'plan' : 'choose')); // 'choose' | 'task' | 'plan' | 'notification'
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -488,7 +489,11 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Time (Optional)</label>
-                      <input type="time" className={inputCls} value={notifForm.event_time} onChange={e => setNotifForm(f => ({...f, event_time: e.target.value}))} />
+                      <ClockTimePicker 
+                        className="bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all w-full" 
+                        value={notifForm.event_time} 
+                        onChange={val => setNotifForm(f => ({...f, event_time: val}))} 
+                      />
                     </div>
                   </div>
                 </>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
+import ClockTimePicker from '../components/common/ClockTimePicker';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
@@ -76,7 +77,11 @@ function EditAnnouncementModal({ ann, onClose, onSave }) {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Event Time</label>
-              <input type="time" className={INPUT_CLS} value={time} onChange={e => setTime(e.target.value)} />
+              <ClockTimePicker 
+                className={INPUT_CLS} 
+                value={time} 
+                onChange={val => setTime(val)} 
+              />
             </div>
           </div>
         </form>
@@ -147,10 +152,10 @@ export default function NotificationsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <h3 className="font-bold text-on-surface leading-tight">{ann.title}</h3>
+                        <h3 className="font-bold text-on-surface leading-tight">{ann.type === 'Text' ? ann.message : ann.title}</h3>
                         <UrgencyBadge days={days} />
                       </div>
-                      <p className="text-sm text-on-surface-variant leading-relaxed">{ann.message}</p>
+                      {ann.type !== 'Text' && <p className="text-sm text-on-surface-variant leading-relaxed">{ann.message}</p>}
                     </div>
                   </div>
 

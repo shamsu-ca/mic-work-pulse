@@ -51,19 +51,20 @@ export default function NotificationManager() {
       playSound();
     };
 
-    const checkNotifications = () => {
+      const checkNotifications = () => {
       const now = new Date();
       const currentHour = now.getHours();
       const isPast10AM = currentHour >= 10;
       const todayStr = now.toISOString().split('T')[0];
+      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
 
       // 1. Task Assigned (active polling for new tasks)
       if (settings.notify_tasks && workItems) {
         workItems.forEach(task => {
           if (task.assignee_id === currentUser.id && task.status === 'Assigned') {
             const taskTime = new Date(task.created_at).getTime();
-            // If created recently or not notified
-            if (taskTime > lastChecked.current || !localStorage.getItem('notified_ids')?.includes(`task-${task.id}`)) {
+            // Only notify for tasks created in the last 24 hours to prevent spam on new logins
+            if (taskTime > oneDayAgo && !localStorage.getItem('notified_ids')?.includes(`task-${task.id}`)) {
               showPopup('New Task Assigned', task.title, `task-${task.id}`);
             }
           }
@@ -85,7 +86,6 @@ export default function NotificationManager() {
         if (settings.notify_overdue && overdueCount > 0) {
           showPopup('Overdue Tasks', `You have ${overdueCount} overdue task(s).`, `overdue-${todayStr}`);
         }
-        // Assuming Not Started is grouped under overdue/tasks
         if (settings.notify_tasks && notStartedCount > 0) {
           showPopup('Pending Tasks', `You have ${notStartedCount} task(s) not started.`, `pending-${todayStr}`);
         }
@@ -94,25 +94,23 @@ export default function NotificationManager() {
       // 3. Announcements & Programs
       if (announcements) {
         announcements.forEach(ann => {
-          // Verify staff group
           if (ann.staff_group !== 'Both' && ann.staff_group !== currentUser.category && currentUser.role !== 'Admin') return;
 
+          const annTime = new Date(ann.created_at).getTime();
+
           if (ann.type === 'Text' && settings.notify_announcements) {
-            const annTime = new Date(ann.created_at).getTime();
-            if (annTime > lastChecked.current || !localStorage.getItem('notified_ids')?.includes(`ann-${ann.id}`)) {
+            if (annTime > oneDayAgo && !localStorage.getItem('notified_ids')?.includes(`ann-${ann.id}`)) {
               showPopup('New Announcement', ann.message, `ann-${ann.id}`);
             }
           }
 
           if (ann.type === 'Program' && settings.notify_programs) {
             const dynText = getDynamicNotificationText(ann);
-            // Notify if created recently
-            const annTime = new Date(ann.created_at).getTime();
-            if (annTime > lastChecked.current && !localStorage.getItem('notified_ids')?.includes(`prog-new-${ann.id}`)) {
+            
+            if (annTime > oneDayAgo && !localStorage.getItem('notified_ids')?.includes(`prog-new-${ann.id}`)) {
               showPopup('New Program/Event', ann.title, `prog-new-${ann.id}`);
             }
 
-            // Daily count notification
             if (dynText === 'Today' || dynText === 'Tomorrow' || dynText.includes('left')) {
                showPopup(`Program: ${dynText}`, ann.title, `prog-${ann.id}-${dynText.replace(/ /g,'-')}`);
             }
