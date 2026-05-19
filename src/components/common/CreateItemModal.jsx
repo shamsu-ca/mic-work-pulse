@@ -21,9 +21,10 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   const [taskEstMins, setTaskEstMins] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState('daily');
-  const [recurrenceDay, setRecurrenceDay] = useState('1');
-  const [recurrenceDate, setRecurrenceDate] = useState('1');
-  const [recurrenceInterval, setRecurrenceInterval] = useState('7');
+  const [weeklyDays, setWeeklyDays] = useState(new Set([1]));
+  const [monthlyDay, setMonthlyDay] = useState('1');
+  const [xMonthInterval, setXMonthInterval] = useState('2');
+  const [recurrenceMode, setRecurrenceMode] = useState('strict');
   const [subtasks, setSubtasks] = useState([]);
 
   // Plan form
@@ -49,21 +50,20 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   })();
 
   const buildRecurrenceRule = () => {
-    if (recurrenceType === 'daily') return { type: 'daily' };
-    if (recurrenceType === 'weekly') return { type: 'weekly', day: Number(recurrenceDay) };
-    if (recurrenceType === 'monthly') return { type: 'monthly', date: Number(recurrenceDate) };
-    if (recurrenceType === 'every_x_days') return { type: 'every_x_days', interval: Number(recurrenceInterval) };
-    if (recurrenceType === 'every_x_months') return { type: 'every_x_months', interval: Number(recurrenceInterval) };
-    return { type: 'daily' };
+    const mode = recurrenceMode;
+    if (recurrenceType === 'daily')      return { type: 'daily', recurrence_mode: mode };
+    if (recurrenceType === 'weekly')     return { type: 'weekly', weekly_days: [...weeklyDays].sort((a, b) => a - b), recurrence_mode: mode };
+    if (recurrenceType === 'monthly')    return { type: 'monthly', monthly_day: Number(monthlyDay), recurrence_mode: mode };
+    if (recurrenceType === 'x_monthly') return { type: 'x_monthly', x_month_interval: Number(xMonthInterval), monthly_day: Number(monthlyDay), recurrence_mode: mode };
+    return { type: 'daily', recurrence_mode: mode };
   };
 
   const buildSubtaskSpawnRule = (spawnDay) => {
     if (!spawnDay) return null;
     const n = Number(spawnDay);
-    if (recurrenceType === 'weekly')         return { type: 'weekly',        day:    n };
-    if (recurrenceType === 'every_x_days')   return { type: 'every_x_days',  offset: n };
-    if (recurrenceType === 'monthly')        return { type: 'monthly',        date:   n };
-    if (recurrenceType === 'every_x_months') return { type: 'every_x_months', date:   n };
+    if (recurrenceType === 'weekly')    return { type: 'weekly', day: n };
+    if (recurrenceType === 'monthly')   return { type: 'monthly', date: n };
+    if (recurrenceType === 'x_monthly') return { type: 'x_monthly', monthly_day: n };
     return null;
   };
 
@@ -279,20 +279,40 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
-                    <option value="every_x_days">Every X Days</option>
-                    <option value="every_x_months">Every X Months</option>
+                    <option value="x_monthly">Every X Months</option>
                   </select>
                   {recurrenceType === 'weekly' && (
-                    <select className={inputCls} value={recurrenceDay} onChange={e => setRecurrenceDay(e.target.value)}>
-                      {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) => <option key={i} value={i}>{d}</option>)}
-                    </select>
+                    <div className="flex gap-1 flex-wrap">
+                      {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) => (
+                        <button key={i} type="button"
+                          onClick={() => setWeeklyDays(prev => { const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next; })}
+                          className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-colors ${
+                            weeklyDays.has(i)
+                              ? 'bg-primary text-white border-primary'
+                              : 'bg-white text-on-surface-variant border-outline-variant/40 hover:border-primary hover:text-primary'
+                          }`}
+                        >{d}</button>
+                      ))}
+                    </div>
                   )}
-                  {recurrenceType === 'monthly' && (
-                    <input type="number" min="1" max="31" placeholder="Day of month (1-31)" className={inputCls} value={recurrenceDate} onChange={e => setRecurrenceDate(e.target.value)} />
+                  {(recurrenceType === 'monthly' || recurrenceType === 'x_monthly') && (
+                    <input type="number" min="1" max="31" placeholder="Day of month (1-31)" className={inputCls} value={monthlyDay} onChange={e => setMonthlyDay(e.target.value)} />
                   )}
-                  {(recurrenceType === 'every_x_days' || recurrenceType === 'every_x_months') && (
-                    <input type="number" min="1" placeholder={recurrenceType === 'every_x_days' ? 'Every X days' : 'Every X months'} className={inputCls} value={recurrenceInterval} onChange={e => setRecurrenceInterval(e.target.value)} />
+                  {recurrenceType === 'x_monthly' && (
+                    <input type="number" min="1" placeholder="Repeat every X months" className={inputCls} value={xMonthInterval} onChange={e => setXMonthInterval(e.target.value)} />
                   )}
+                  <div className="flex gap-2">
+                    {['strict', 'flexible'].map(m => (
+                      <button key={m} type="button"
+                        onClick={() => setRecurrenceMode(m)}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-colors capitalize ${
+                          recurrenceMode === m
+                            ? 'bg-primary text-white border-primary'
+                            : 'bg-white text-on-surface-variant border-outline-variant/40 hover:border-primary'
+                        }`}
+                      >{m}</button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
@@ -350,12 +370,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                               <option key={i} value={String(i)}>{d}</option>
                             )
                           }
-                          {recurrenceType === 'every_x_days' && Number(recurrenceInterval) > 1 &&
-                            Array.from({ length: Number(recurrenceInterval) - 1 }, (_, i) =>
-                              <option key={i + 1} value={String(i + 1)}>+{i + 1} day{i > 0 ? 's' : ''} after</option>
-                            )
-                          }
-                          {(recurrenceType === 'monthly' || recurrenceType === 'every_x_months') &&
+                          {(recurrenceType === 'monthly' || recurrenceType === 'x_monthly') &&
                             Array.from({ length: 31 }, (_, i) =>
                               <option key={i + 1} value={String(i + 1)}>{i + 1}{i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}</option>
                             )

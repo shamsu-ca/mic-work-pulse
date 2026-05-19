@@ -211,6 +211,15 @@ export function SupabaseDataProvider({ children, session }) {
         + (currentDate.getMonth() - last.getMonth());
       return monthDiff >= interval;
     }
+    if (rule.type === 'x_monthly' && rule.monthly_day !== undefined) {
+      if (currentDate.getDate() !== rule.monthly_day) return false;
+      if (!sub.last_generated_at) return true;
+      const last = new Date(sub.last_generated_at);
+      const interval = parentTemplate.recurrence_rule?.x_month_interval ?? 1;
+      const monthDiff = (currentDate.getFullYear() - last.getFullYear()) * 12
+        + (currentDate.getMonth() - last.getMonth());
+      return monthDiff >= interval;
+    }
     return false;
   }
 
@@ -264,6 +273,17 @@ export function SupabaseDataProvider({ children, session }) {
         } else if (rule.type === 'every_x_months' && rule.interval) {
           const monthDiff = (currentDate.getFullYear() - lastDate.getFullYear()) * 12 + (currentDate.getMonth() - lastDate.getMonth());
           if (monthDiff >= rule.interval) shouldGenerate = true;
+        } else if (rule.type === 'weekly' && Array.isArray(rule.weekly_days)) {
+          if (rule.weekly_days.includes(currentDate.getDay())) shouldGenerate = true;
+        } else if (rule.type === 'monthly' && rule.monthly_day) {
+          if (currentDate.getDate() === rule.monthly_day &&
+              (currentDate.getFullYear() !== lastDate.getFullYear() ||
+               currentDate.getMonth() !== lastDate.getMonth())) shouldGenerate = true;
+        } else if (rule.type === 'x_monthly' && rule.x_month_interval && rule.monthly_day) {
+          const monthDiff = (currentDate.getFullYear() - lastDate.getFullYear()) * 12
+                          + (currentDate.getMonth() - lastDate.getMonth());
+          if (currentDate.getDate() === rule.monthly_day && monthDiff >= rule.x_month_interval)
+            shouldGenerate = true;
         }
       }
 

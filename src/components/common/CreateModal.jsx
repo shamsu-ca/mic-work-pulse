@@ -16,9 +16,10 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
   
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringType, setRecurringType] = useState('daily');
-  const [recurringInterval, setRecurringInterval] = useState(1);
-  const [recurringDay, setRecurringDay] = useState(0); // 0=Sun, 1=Mon...
-  const [recurringDate, setRecurringDate] = useState(1); // 1-31
+  const [weeklyDays, setWeeklyDays] = useState(new Set([1]));
+  const [monthlyDay, setMonthlyDay] = useState(1);
+  const [xMonthInterval, setXMonthInterval] = useState(2);
+  const [recurrenceMode, setRecurrenceMode] = useState('strict');
 
   const [loading, setLoading] = useState(false);
   const safeProfiles = profiles || [];
@@ -42,11 +43,10 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
       
       let recurrenceRule = null;
       if (isRecurring) {
-         if (recurringType === 'daily') recurrenceRule = { type: 'daily' };
-         else if (recurringType === 'every_x_days') recurrenceRule = { type: 'every_x_days', interval: recurringInterval };
-         else if (recurringType === 'weekly') recurrenceRule = { type: 'weekly', day: recurringDay };
-         else if (recurringType === 'monthly') recurrenceRule = { type: 'monthly', date: recurringDate };
-         else if (recurringType === 'every_x_months') recurrenceRule = { type: 'every_x_months', interval: recurringInterval, date: recurringDate };
+        if (recurringType === 'daily')       recurrenceRule = { type: 'daily', recurrence_mode: recurrenceMode };
+        else if (recurringType === 'weekly') recurrenceRule = { type: 'weekly', weekly_days: [...weeklyDays].sort((a, b) => a - b), recurrence_mode: recurrenceMode };
+        else if (recurringType === 'monthly') recurrenceRule = { type: 'monthly', monthly_day: monthlyDay, recurrence_mode: recurrenceMode };
+        else if (recurringType === 'x_monthly') recurrenceRule = { type: 'x_monthly', x_month_interval: xMonthInterval, monthly_day: monthlyDay, recurrence_mode: recurrenceMode };
       }
 
       const itemData = {
@@ -150,32 +150,51 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
                  </label>
                  
                  {isRecurring && (
-                    <div className="flex-row gap-2 mt-2" style={{ flexWrap: 'wrap' }}>
-                       <select className="filter-select" value={recurringType} onChange={e => setRecurringType(e.target.value)} style={{ flex: 1 }}>
+                    <div className="flex-column gap-2 mt-2">
+                       <select className="filter-select" value={recurringType} onChange={e => setRecurringType(e.target.value)}>
                          <option value="daily">Daily</option>
-                         <option value="every_x_days">Every X Days</option>
                          <option value="weekly">Weekly</option>
                          <option value="monthly">Monthly</option>
-                         <option value="every_x_months">Every X Months</option>
+                         <option value="x_monthly">Every X Months</option>
                        </select>
 
-                       {(recurringType === 'every_x_days' || recurringType === 'every_x_months') && (
-                         <input type="number" min="1" className="input-base" style={{width: '80px'}} value={recurringInterval} onChange={e => setRecurringInterval(e.target.value)} placeholder="Intvl" />
-                       )}
                        {recurringType === 'weekly' && (
-                         <select className="filter-select" value={recurringDay} onChange={e => setRecurringDay(parseInt(e.target.value))}>
-                           <option value={0}>Sunday</option>
-                           <option value={1}>Monday</option>
-                           <option value={2}>Tuesday</option>
-                           <option value={3}>Wednesday</option>
-                           <option value={4}>Thursday</option>
-                           <option value={5}>Friday</option>
-                           <option value={6}>Saturday</option>
-                         </select>
+                         <div className="flex-row gap-1" style={{ flexWrap: 'wrap' }}>
+                           {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) => (
+                             <button key={i} type="button"
+                               onClick={() => setWeeklyDays(prev => { const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next; })}
+                               style={{
+                                 padding: '4px 8px', fontSize: '12px', fontWeight: 'bold', borderRadius: '6px',
+                                 border: '1px solid', cursor: 'pointer',
+                                 background: weeklyDays.has(i) ? 'var(--primary)' : 'transparent',
+                                 color: weeklyDays.has(i) ? 'white' : 'var(--text-color)',
+                                 borderColor: weeklyDays.has(i) ? 'var(--primary)' : 'var(--outline-variant)',
+                               }}
+                             >{d}</button>
+                           ))}
+                         </div>
                        )}
-                       {(recurringType === 'monthly' || recurringType === 'every_x_months') && (
-                         <input type="number" min="1" max="31" className="input-base" style={{width: '100px'}} value={recurringDate} onChange={e => setRecurringDate(parseInt(e.target.value))} placeholder="Date (1-31)" title="Date of the month" />
+                       {(recurringType === 'monthly' || recurringType === 'x_monthly') && (
+                         <input type="number" min="1" max="31" className="input-base" value={monthlyDay} onChange={e => setMonthlyDay(parseInt(e.target.value) || 1)} placeholder="Day of month (1-31)" />
                        )}
+                       {recurringType === 'x_monthly' && (
+                         <input type="number" min="1" className="input-base" value={xMonthInterval} onChange={e => setXMonthInterval(parseInt(e.target.value) || 1)} placeholder="Repeat every X months" />
+                       )}
+                       <div className="flex-row gap-1" style={{ marginTop: '2px' }}>
+                         {['strict', 'flexible'].map(m => (
+                           <button key={m} type="button"
+                             onClick={() => setRecurrenceMode(m)}
+                             style={{
+                               flex: 1, padding: '4px 0', fontSize: '11px', fontWeight: 'bold',
+                               borderRadius: '6px', border: '1px solid', cursor: 'pointer',
+                               textTransform: 'capitalize',
+                               background: recurrenceMode === m ? 'var(--primary)' : 'transparent',
+                               color: recurrenceMode === m ? 'white' : 'var(--text-muted)',
+                               borderColor: recurrenceMode === m ? 'var(--primary)' : 'var(--outline-variant)',
+                             }}
+                           >{m}</button>
+                         ))}
+                       </div>
                     </div>
                  )}
               </div>

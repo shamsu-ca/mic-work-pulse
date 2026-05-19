@@ -6,7 +6,9 @@
       "Bash(grep -E \"\\\\.jsx$\")",
       "Bash(cat .env)",
       "Bash(cat .env.local)",
-      "Bash(npx supabase *)"
+      "Bash(npx supabase *)",
+      "Bash(ls -la \"b:\\\\\\\\anitgra ca\\\\\\\\WORKPULSE\")",
+      "Bash(find \"b:\\\\\\\\anitgra ca\\\\\\\\WORKPULSE/src\" -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\" \\\\\\))"
     ]
   }
 }

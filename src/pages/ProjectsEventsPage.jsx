@@ -60,8 +60,13 @@ const getRecurrenceLabel = (rule) => {
   if (!rule) return 'Custom';
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   if (rule.type === 'daily')          return 'Daily';
+  if (rule.type === 'weekly' && Array.isArray(rule.weekly_days))
+                                      return `Weekly (${rule.weekly_days.map(d => days[d]).join(', ')})`;
   if (rule.type === 'weekly')         return `Weekly (${days[rule.day] ?? 'Mon'})`;
+  if (rule.type === 'monthly' && rule.monthly_day)
+                                      return `Monthly (day ${rule.monthly_day})`;
   if (rule.type === 'monthly')        return `Monthly (day ${rule.date})`;
+  if (rule.type === 'x_monthly')      return `Every ${rule.x_month_interval} months (day ${rule.monthly_day})`;
   if (rule.type === 'every_x_days')   return `Every ${rule.interval} days`;
   if (rule.type === 'every_x_months') return `Every ${rule.interval} months`;
   return 'Custom';
