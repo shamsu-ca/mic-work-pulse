@@ -144,14 +144,16 @@ export function isLowestLevelActionableUnit(item, allItems = []) {
  * True if an item's due date falls within the assignee's absence period.
  * Used to exclude items from overdue/not-started counts.
  * @param {object} item - work item with assignee_id and expected_date
- * @param {Array}  absences - array of absence records from context
+ * @param {Array}  leaveRequests - array of leave request records from context
  */
-export function isItemExcludedByAbsence(item, absences) {
-  if (!absences?.length || !item.expected_date || item.status === 'Completed') return false;
-  return absences.some(a =>
-    a.user_id === item.assignee_id &&
-    item.expected_date >= a.from_date &&
-    item.expected_date <= a.to_date
+export function isItemExcludedByAbsence(item, leaveRequests) {
+  if (!leaveRequests?.length || !item.expected_date || item.status === 'Completed') return false;
+  return leaveRequests.some(l =>
+    l.user_id === item.assignee_id &&
+    l.status === 'Approved' &&
+    l.leave_type === 'Full Day' &&
+    item.expected_date >= l.from_date &&
+    item.expected_date <= l.to_date
   );
 }
 

@@ -1,6 +1,9 @@
 import { useState } from 'react';
 
-const TAGS = ['Done Smoothly', 'Delayed', 'Blocked Earlier', 'Needs Follow-up'];
+function tomorrow() {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 function getResolutionInfo(item) {
   if (!item?.expected_date) return null;
@@ -14,13 +17,14 @@ function getResolutionInfo(item) {
 
 export default function CompletionPanel({ item, profiles = [], currentUser, onConfirm, onCancel }) {
   const [note, setNote] = useState('');
-  const [selectedTag, setSelectedTag] = useState(null);
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpForm, setFollowUpForm] = useState({
-    title: `Follow-up: ${item?.title ?? ''}`,
-    dueDate: '',
+    title: '',
+    description: `Follow-up: ${item?.title ?? ''}`,
+    dueDate: tomorrow(),
     assigneeId: item?.assignee_id ?? '',
   });
+  const [followUpError, setFollowUpError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const resolution = getResolutionInfo(item);
@@ -32,11 +36,22 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
   })();
 
   const handleConfirm = async () => {
+    if (followUpEnabled) {
+      if (!followUpForm.title.trim()) {
+        setFollowUpError('Title is required');
+        return;
+      }
+      if (!followUpForm.dueDate) {
+        setFollowUpError('Due date is required');
+        return;
+      }
+    }
+    setFollowUpError('');
     setSaving(true);
     await onConfirm({
       note: note.trim() || null,
-      tag: selectedTag,
-      followUp: followUpEnabled && followUpForm.title && followUpForm.dueDate ? followUpForm : null,
+      tag: null,
+      followUp: followUpEnabled ? followUpForm : null,
     });
     setSaving(false);
   };
@@ -60,25 +75,6 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
           </div>
 
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Quick Tag</p>
-            <div className="flex flex-wrap gap-2">
-              {TAGS.map(tag => (
-                <button
-                  key={tag}
-                  onClick={() => setSelectedTag(prev => prev === tag ? null : tag)}
-                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                    selectedTag === tag
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
-                  }`}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
             <label className="text-xs font-medium text-gray-500 block mb-1">Completion Note (optional)</label>
             <textarea
               value={note}
@@ -94,20 +90,32 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
               <input
                 type="checkbox"
                 checked={followUpEnabled}
-                onChange={e => setFollowUpEnabled(e.target.checked)}
+                onChange={e => { setFollowUpEnabled(e.target.checked); setFollowUpError(''); }}
                 className="rounded"
               />
-              <span className="text-sm text-gray-700">Create a follow-up task</span>
+              <span className="text-sm text-gray-700">Create a follow-up {item?.type === 'Milestone' ? 'milestone' : 'task'}</span>
             </label>
 
             {followUpEnabled && (
               <div className="mt-3 space-y-2 pl-6">
-                <input
-                  type="text"
-                  value={followUpForm.title}
-                  onChange={e => setFollowUpForm(p => ({ ...p, title: e.target.value }))}
-                  placeholder="Follow-up title"
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                <div>
+                  <input
+                    type="text"
+                    value={followUpForm.title}
+                    onChange={e => setFollowUpForm(p => ({ ...p, title: e.target.value }))}
+                    placeholder="Title *"
+                    className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${followUpError && !followUpForm.title.trim() ? 'border-red-400' : 'border-gray-300'}`}
+                  />
+                  {followUpError && !followUpForm.title.trim() && (
+                    <p className="text-xs text-red-500 mt-1">{followUpError}</p>
+                  )}
+                </div>
+                <textarea
+                  value={followUpForm.description}
+                  onChange={e => setFollowUpForm(p => ({ ...p, description: e.target.value }))}
+                  rows={2}
+                  placeholder="Description"
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
                 />
                 <input
                   type="date"

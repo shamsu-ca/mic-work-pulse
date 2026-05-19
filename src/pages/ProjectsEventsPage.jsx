@@ -94,7 +94,7 @@ function DeleteBtn({ onDelete, size = 'sm' }) {
 }
 
 // Edit checklist/milestone item modal
-function EditItemModal({ item, profiles, onClose, onSave }) {
+function EditItemModal({ item, profiles, currentUser, onClose, onSave }) {
   const [title, setTitle] = useState(item.title || '');
   const [assigneeId, setAssigneeId] = useState(item.assignee_id || '');
   const [date, setDate] = useState(item.expected_date || '');
@@ -113,7 +113,7 @@ function EditItemModal({ item, profiles, onClose, onSave }) {
         <input className={cls} value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" />
         <select className={cls} value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
           <option value="">— Unassigned —</option>
-          {(profiles || []).filter(p => p.role !== 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          {(profiles || []).filter(p => p.role !== 'Admin' || p.id === currentUser?.id).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <input type="date" className={cls} value={date} onChange={e => setDate(e.target.value)} />
         <div className="flex gap-2 justify-end">
@@ -170,8 +170,13 @@ export default function ProjectsEventsPage() {
   const handleProjectComplete = async ({ note, tag, followUp }) => {
     if (!pendingCompleteItem) return;
     await completeWorkItem(pendingCompleteItem.id, { note, tag });
-    if (followUp?.title && followUp?.dueDate) {
-      await createFollowUpTask(pendingCompleteItem.id, { ...followUp, linkType: 'Continuation' });
+    if (followUp?.title?.trim() && followUp?.dueDate) {
+      await createFollowUpTask(pendingCompleteItem.id, {
+        ...followUp,
+        linkType: 'Continuation',
+        type: pendingCompleteItem.type || 'Task',
+        project_id: pendingCompleteItem.project_id || null,
+      });
     }
     setPendingCompleteItem(null);
   };
@@ -197,7 +202,7 @@ export default function ProjectsEventsPage() {
   const deleteAnyItem = (id) =>
     savedTaskIdSet.has(id) ? deleteSavedTask(id) : deleteWorkItem(id);
   const filteredProfiles = safeProfiles.filter(p =>
-    p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup
+    (p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup) || p.id === currentUser?.id
   );
   const milestoneAssigneeOptions = isAdmin
     ? filteredProfiles
@@ -216,6 +221,17 @@ export default function ProjectsEventsPage() {
     }
     return true;
   });
+
+  const historyContainers = safeContainers.filter(c => {
+    if (c.type !== containerType)  return false;
+    if (c.is_active !== false)     return false;
+    if (currentUser?.role !== 'Admin') {
+      return c.created_by === currentUser.id ||
+        safeWorkItems.some(w => w.container_id === c.id && w.assignee_id === currentUser.id);
+    }
+    return true;
+  });
+
   const templateContainers = safeSavedContainers.filter(c => {
     if (c.type !== containerType) return false;
     if (currentUser?.role !== 'Admin') {
@@ -669,7 +685,7 @@ export default function ProjectsEventsPage() {
               </div>
             )}
 
-            {isAdmin && (
+            {isAdmin && c.is_active !== false && (
               <div className="px-5 py-3 border-t border-surface-container-low flex items-center gap-2 flex-wrap">
                 {isProject && !isFromTemplate && (
                   <button onClick={() => saveAsTemplate(c)} className="flex items-center gap-1.5 text-xs font-bold border border-outline-variant/40 bg-white text-on-surface px-3 py-1.5 rounded-xl hover:bg-surface-container">
@@ -677,7 +693,7 @@ export default function ProjectsEventsPage() {
                   </button>
                 )}
                 <button onClick={() => setDeactivateTarget(c)} className="flex items-center gap-1.5 text-xs font-bold text-error border border-error/20 bg-error/5 px-3 py-1.5 rounded-xl hover:bg-error/10 ml-auto">
-                  <span className="material-symbols-outlined text-[14px]">pause_circle</span> Deactivate
+                  <span className="material-symbols-outlined text-[14px]">pause_circle</span> Close {isProject ? 'Project' : 'Event'}
                 </button>
               </div>
             )}
@@ -1328,11 +1344,12 @@ export default function ProjectsEventsPage() {
         {typeTab !== 'Tasks' && currentUser?.role !== 'Assignee' && (
           <div className="flex items-center gap-3">
             <div className="flex bg-surface-container p-1 rounded-xl gap-0.5">
-              {['Active', 'Saved'].map(m => (
+              {['Active', 'Saved', 'History'].map(m => (
                 <button key={m} onClick={() => { setModeTab(m); setExpandedId(null); }}
                   className={`px-4 py-1.5 text-sm font-bold rounded-lg flex items-center gap-2 transition-all whitespace-nowrap ${modeTab === m ? (m === 'Active' ? 'bg-primary text-white shadow-sm' : 'bg-white text-on-surface shadow-sm') : 'text-on-surface-variant hover:text-on-surface'}`}>
                   {m === 'Active'
                     ? <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${modeTab === 'Active' ? 'bg-green-300' : 'bg-outline-variant'}`} />
+                    : m === 'History' ? <span className="material-symbols-outlined text-[14px]">history</span>
                     : <span className="material-symbols-outlined text-[14px]">bookmark</span>}
                   {m}
                 </button>
@@ -1386,6 +1403,18 @@ export default function ProjectsEventsPage() {
               <button className="mt-3 text-sm text-primary font-bold hover:underline" onClick={() => setModeTab('Saved')}>Deploy from Saved Templates →</button>
             </div>
           ) : activeContainers.map(c => <ActiveCard key={c.id} c={c} />)}
+        </div>
+      )}
+
+      {/* ── Projects/Events History ── */}
+      {typeTab !== 'Tasks' && modeTab === 'History' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {historyContainers.length === 0 ? (
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-outline-variant/30 px-6 py-16 text-center">
+              <span className="material-symbols-outlined text-5xl text-outline mb-3 block" style={{ fontVariationSettings: "'FILL' 1" }}>history</span>
+              <p className="font-bold text-on-surface-variant">No closed items in history.</p>
+            </div>
+          ) : historyContainers.map(c => <ActiveCard key={c.id} c={c} />)}
         </div>
       )}
 
@@ -1451,21 +1480,21 @@ export default function ProjectsEventsPage() {
         </Modal>
       )}
       {deactivateTarget && (
-        <Modal title="Deactivate Project?" onClose={() => setDeactivateTarget(null)}>
-          <p className="text-sm text-on-surface-variant">"{cName(deactivateTarget)}" will be removed from active views.</p>
+        <Modal title={`Close ${deactivateTarget.type}?`} onClose={() => setDeactivateTarget(null)}>
+          <p className="text-sm text-on-surface-variant">"{cName(deactivateTarget)}" will be moved to History.</p>
           <div className="flex flex-col gap-2">
             {deactivateTarget.type === 'Project' && !deactivateTarget.source_template_id && (
               <button onClick={() => doDeactivate(deactivateTarget, true)} className={btnPrimary}>
-                <span className="flex items-center gap-1.5 justify-center"><span className="material-symbols-outlined text-[16px]">bookmark_add</span> Save as Template & Deactivate</span>
+                <span className="flex items-center gap-1.5 justify-center"><span className="material-symbols-outlined text-[16px]">bookmark_add</span> Save as Template & Close</span>
               </button>
             )}
-            <button onClick={() => doDeactivate(deactivateTarget, false)} className="w-full bg-error/10 text-error border border-error/20 px-4 py-2 rounded-xl text-sm font-bold hover:bg-error/20">Deactivate Without Saving</button>
+            <button onClick={() => doDeactivate(deactivateTarget, false)} className="w-full bg-error/10 text-error border border-error/20 px-4 py-2 rounded-xl text-sm font-bold hover:bg-error/20">Close Without Saving</button>
             <button onClick={() => setDeactivateTarget(null)} className={btnSecondary}>Cancel</button>
           </div>
         </Modal>
       )}
       {editingItem && (
-        <EditItemModal item={editingItem} profiles={safeProfiles} onClose={() => setEditingItem(null)} onSave={updateAnyItem} />
+        <EditItemModal item={editingItem} profiles={safeProfiles} currentUser={currentUser} onClose={() => setEditingItem(null)} onSave={updateAnyItem} />
       )}
 
       {/* ── Deploy Modal ── */}

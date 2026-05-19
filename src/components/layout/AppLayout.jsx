@@ -29,6 +29,7 @@ export default function AppLayout({ userRole, currentUser }) {
     { label: 'Planning',      path: '/planning',icon: 'account_tree' },
     { label: 'Works Hub',     path: '/projects-events', icon: 'hub' },
     { label: 'Reports',       path: '/reports', icon: 'analytics' },
+    { label: 'My Leave',      path: '/leave',   icon: 'event_busy' },
   ];
 
   const managerNav = [
@@ -37,6 +38,7 @@ export default function AppLayout({ userRole, currentUser }) {
     { label: 'Planning',      path: '/planning', icon: 'account_tree' },
     { label: 'Reports',       path: '/reports',  icon: 'analytics' },
     { label: 'My Team',       path: '/my-team',  icon: 'supervised_user_circle' },
+    { label: 'My Leave',      path: '/leave',    icon: 'event_busy' },
   ];
 
   const navItems = userRole === 'Admin' ? adminNav

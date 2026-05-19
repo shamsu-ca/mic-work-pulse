@@ -723,10 +723,15 @@ export default function AllTasksPage() {
   const handleCompleteConfirm = async ({ note, tag, followUp }) => {
     if (!pendingCompleteId) return;
     await completeWorkItem(pendingCompleteId, { note, tag });
-    if (followUp?.title && followUp?.dueDate) {
+    if (followUp?.title?.trim() && followUp?.dueDate) {
+      const completedItem = safeWorkItems.find(w => w.id === pendingCompleteId);
       await createFollowUpTask(pendingCompleteId, {
-        title: followUp.title, dueDate: followUp.dueDate,
-        assigneeId: followUp.assigneeId, linkType: 'Continuation',
+        title: followUp.title,
+        description: followUp.description,
+        dueDate: followUp.dueDate,
+        assigneeId: followUp.assigneeId,
+        linkType: 'Continuation',
+        type: completedItem?.type || 'Task',
       });
     }
     setPendingCompleteId(null);

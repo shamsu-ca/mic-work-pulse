@@ -13,6 +13,7 @@ export function SupabaseDataProvider({ children, session }) {
   const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [absences, setAbsences] = useState([]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [dateFilter, setDateFilter] = useState('today');
   const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
@@ -72,10 +73,14 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: allAbsences } = await supabase.from('absences').select('*');
         if (allAbsences) setAbsences(allAbsences);
 
+        // 5.6 Fetch leave_requests
+        const { data: allLeaves } = await supabase.from('leave_requests').select('*');
+        if (allLeaves) setLeaveRequests(allLeaves);
+
         // 6. Fetch work items, then spawn any due recurring tasks
         let { data: allWorkItems } = await supabase.from('work_items').select('*');
         if (allWorkItems) {
-          const newItems = await checkAndSpawnRecurringTasks(allSavedTasks ?? [], allAbsences ?? []);
+          const newItems = await checkAndSpawnRecurringTasks(allSavedTasks ?? [], allLeaves ?? []);
           if (newItems && newItems.length > 0) {
             const { data: latestWorkItems } = await supabase.from('work_items').select('*');
             if (latestWorkItems) allWorkItems = latestWorkItems;
@@ -154,6 +159,11 @@ export function SupabaseDataProvider({ children, session }) {
         supabase.from('absences').select('*').then(({ data }) => { if (data) setAbsences(data); });
       }).subscribe();
 
+    const leavesSub = supabase.channel('public:leave_requests')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+        supabase.from('leave_requests').select('*').then(({ data }) => { if (data) setLeaveRequests(data); });
+      }).subscribe();
+
     return () => {
       supabase.removeChannel(profilesSub);
       supabase.removeChannel(containersSub);
@@ -163,6 +173,7 @@ export function SupabaseDataProvider({ children, session }) {
       supabase.removeChannel(notifSub);
       supabase.removeChannel(annSub);
       supabase.removeChannel(absencesSub);
+      supabase.removeChannel(leavesSub);
     };
   }, [session?.user?.id]);
 
@@ -204,12 +215,17 @@ export function SupabaseDataProvider({ children, session }) {
   }
 
   // Reads from saved_tasks, spawns actual task entries into work_items
-  const checkAndSpawnRecurringTasks = async (savedTasksList, currentAbsences = []) => {
+  const checkAndSpawnRecurringTasks = async (savedTasksList, currentLeaves = []) => {
     const today = new Date().toISOString().split('T')[0];
 
     const isAbsentToday = (userId) => {
-      if (!userId || !currentAbsences.length) return false;
-      return currentAbsences.some(a => a.user_id === userId && today >= a.from_date && today <= a.to_date);
+      if (!userId || !currentLeaves.length) return false;
+      return currentLeaves.some(l => 
+        l.user_id === userId && 
+        l.status === 'Approved' && 
+        l.leave_type === 'Full Day' && 
+        today >= l.from_date && today <= l.to_date
+      );
     };
 
     // ── Phase A: parent templates ──────────────────────────────────────────
@@ -367,11 +383,13 @@ export function SupabaseDataProvider({ children, session }) {
     await supabase.from('work_items').update(updates).eq('id', itemId);
   };
 
-  const createFollowUpTask = async (completedItemId, { title, description, assigneeId, dueDate, priority, linkType }) => {
+  const createFollowUpTask = async (completedItemId, { title, description, assigneeId, dueDate, priority, linkType, type, project_id }) => {
     const { data, error } = await supabase.from('work_items').insert([{
       title, description: description || null,
       assignee_id: assigneeId || null, expected_date: dueDate || null,
-      priority: priority || 'Medium', status: 'Assigned', type: 'Task',
+      priority: priority || 'Medium', status: 'Assigned',
+      type: type || 'Task',
+      project_id: project_id || null,
       linked_to: completedItemId, link_type: linkType || null,
       created_by: currentUser?.id || null, is_recurring: false,
     }]).select();
@@ -640,10 +658,49 @@ export function SupabaseDataProvider({ children, session }) {
     return { error };
   };
 
+  // ── Leave Requests ────────────────────────────────────────────────────────
+  const applyLeave = async (leaveData) => {
+    const payload = {
+      ...leaveData,
+      user_id: currentUser?.id,
+      status: 'Pending'
+    };
+    const { data, error } = await supabase.from('leave_requests').insert([payload]).select();
+    if (error) console.error('Error applying leave:', error);
+    else if (data) setLeaveRequests(prev => [...prev, ...data]);
+    return { data, error };
+  };
+
+  const updateLeaveRequest = async (id, updates) => {
+    setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+    const { data, error } = await supabase.from('leave_requests').update(updates).eq('id', id).select();
+    if (error) {
+      console.error('Error updating leave:', error);
+      supabase.from('leave_requests').select('*').then(({ data: d }) => { if (d) setLeaveRequests(d); });
+    }
+    return { data, error };
+  };
+
+  const deleteLeaveRequest = async (id) => {
+    if (!window.confirm("Are you sure you want to cancel this leave request?")) return { error: null };
+    setLeaveRequests(prev => prev.filter(l => l.id !== id));
+    const { error } = await supabase.from('leave_requests').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting leave:', error);
+      supabase.from('leave_requests').select('*').then(({ data: d }) => { if (d) setLeaveRequests(d); });
+    }
+    return { error };
+  };
+
   /** Returns true if userId is absent on the given YYYY-MM-DD date string. */
   const isUserAbsentOn = (userId, dateStr) => {
     if (!userId || !dateStr) return false;
-    return absences.some(a => a.user_id === userId && dateStr >= a.from_date && dateStr <= a.to_date);
+    return leaveRequests.some(l => 
+      l.user_id === userId && 
+      l.status === 'Approved' && 
+      l.leave_type === 'Full Day' && 
+      dateStr >= l.from_date && dateStr <= l.to_date
+    );
   };
 
   const addAnnouncement = async (announcementData) => {
@@ -688,6 +745,10 @@ export function SupabaseDataProvider({ children, session }) {
       addAbsence,
       updateAbsence,
       deleteAbsence,
+      leaveRequests,
+      applyLeave,
+      updateLeaveRequest,
+      deleteLeaveRequest,
       isUserAbsentOn,
       dateFilter,
       setDateFilter,

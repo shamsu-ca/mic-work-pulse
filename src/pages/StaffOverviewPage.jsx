@@ -201,35 +201,37 @@ function CredentialsModal({ name, loginId, password, onClose }) {
   );
 }
 
-function LeaveManagementTab({ absences, profiles, deleteAbsence }) {
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todayLeaves = absences.filter(a => a.from_date <= todayStr && a.to_date >= todayStr);
-  const upcomingLeaves = absences.filter(a => a.from_date > todayStr);
+function LeaveManagementTab({ leaveRequests, profiles, updateLeaveRequest, deleteLeaveRequest }) {
+  const pendingLeaves = leaveRequests.filter(l => l.status === 'Pending');
+  const approvedLeaves = leaveRequests.filter(l => l.status === 'Approved');
 
   const getProfile = (id) => profiles.find(p => p.id === id);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
-        <div className="px-6 py-4 bg-amber-50 border-b border-amber-100 flex items-center gap-3">
-           <span className="material-symbols-outlined text-amber-600">today</span>
-           <h2 className="font-bold text-lg text-amber-900">Today's Leaves</h2>
+        <div className="px-6 py-4 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+           <div className="flex items-center gap-3">
+             <span className="material-symbols-outlined text-amber-600">pending_actions</span>
+             <h2 className="font-bold text-lg text-amber-900">Pending Requests</h2>
+           </div>
         </div>
         <div className="p-0">
-          {todayLeaves.length === 0 ? (
-            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No one is on leave today.</p>
+          {pendingLeaves.length === 0 ? (
+            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No pending requests.</p>
           ) : (
              <ul className="divide-y divide-surface-container-low">
-                {todayLeaves.map(leave => (
+                {pendingLeaves.map(leave => (
                    <li key={leave.id} className="p-4 flex items-center justify-between hover:bg-surface-container-low/30">
                       <div>
-                         <p className="font-bold text-sm">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
-                         <p className="text-xs text-on-surface-variant mt-0.5">{leave.reason || 'No reason provided'}</p>
-                         <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mt-1">UNTIL {leave.to_date}</p>
+                         <p className="font-bold text-sm text-on-surface">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
+                         <p className="text-[11px] font-bold text-amber-700 uppercase mt-0.5">{leave.leave_type} | {leave.from_date} to {leave.to_date}</p>
+                         <p className="text-xs text-on-surface-variant mt-1">"{leave.reason || 'No reason provided'}"</p>
                       </div>
-                      <button onClick={() => deleteAbsence(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
-                         <span className="material-symbols-outlined text-[18px]">delete</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => updateLeaveRequest(leave.id, { status: 'Approved' })} className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-xl hover:bg-green-200 transition-colors">Approve</button>
+                        <button onClick={() => updateLeaveRequest(leave.id, { status: 'Rejected' })} className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-bold rounded-xl hover:bg-red-200 transition-colors">Reject</button>
+                      </div>
                    </li>
                 ))}
              </ul>
@@ -238,23 +240,28 @@ function LeaveManagementTab({ absences, profiles, deleteAbsence }) {
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
-        <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex items-center gap-3">
-           <span className="material-symbols-outlined text-blue-600">event_upcoming</span>
-           <h2 className="font-bold text-lg text-blue-900">Upcoming Leaves</h2>
+        <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+           <div className="flex items-center gap-3">
+             <span className="material-symbols-outlined text-blue-600">event_available</span>
+             <h2 className="font-bold text-lg text-blue-900">Approved Leaves</h2>
+           </div>
+           <button onClick={() => window.print()} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 hover:bg-blue-700 transition-colors">
+             <span className="material-symbols-outlined text-[14px]">print</span> Print Report
+           </button>
         </div>
         <div className="p-0">
-          {upcomingLeaves.length === 0 ? (
-            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No upcoming leaves scheduled.</p>
+          {approvedLeaves.length === 0 ? (
+            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No approved leaves.</p>
           ) : (
              <ul className="divide-y divide-surface-container-low">
-                {upcomingLeaves.map(leave => (
+                {approvedLeaves.map(leave => (
                    <li key={leave.id} className="p-4 flex items-center justify-between hover:bg-surface-container-low/30">
                       <div>
-                         <p className="font-bold text-sm">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
-                         <p className="text-xs text-on-surface-variant mt-0.5">{leave.reason || 'No reason provided'}</p>
-                         <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1">{leave.from_date} — {leave.to_date}</p>
+                         <p className="font-bold text-sm text-on-surface">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
+                         <p className="text-[11px] font-bold text-blue-700 uppercase mt-0.5">{leave.leave_type} | {leave.from_date} to {leave.to_date}</p>
+                         <p className="text-xs text-on-surface-variant mt-1">"{leave.reason || 'No reason provided'}"</p>
                       </div>
-                      <button onClick={() => deleteAbsence(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
+                      <button onClick={() => deleteLeaveRequest(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
                          <span className="material-symbols-outlined text-[18px]">delete</span>
                       </button>
                    </li>
@@ -267,7 +274,8 @@ function LeaveManagementTab({ absences, profiles, deleteAbsence }) {
   );
 }
 
-function MarkAbsentModal({ profile, onClose, onSave }) {
+function LeaveRequestModal({ profile, onClose, onSave }) {
+  const [leaveType, setLeaveType] = useState('Full Day');
   const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
   const [reason, setReason] = useState('');
@@ -276,7 +284,7 @@ function MarkAbsentModal({ profile, onClose, onSave }) {
   const handleSave = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await onSave({ user_id: profile.id, from_date: fromDate, to_date: toDate, reason });
+    await onSave({ user_id: profile.id, leave_type: leaveType, from_date: fromDate, to_date: toDate, reason, status: 'Approved' });
     setLoading(false);
     onClose();
   };
@@ -289,12 +297,20 @@ function MarkAbsentModal({ profile, onClose, onSave }) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-container">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-amber-500">event_busy</span>
-            <h2 className="font-bold text-lg font-headline">Mark Absent</h2>
+            <h2 className="font-bold text-lg font-headline">Add Leave</h2>
           </div>
           <button onClick={onClose}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
         </div>
         <form onSubmit={handleSave} className="p-6 flex flex-col gap-4">
-          <p className="text-sm text-on-surface-variant">Marking <span className="font-bold text-on-surface">{profile.name}</span> as absent.</p>
+          <p className="text-sm text-on-surface-variant">Adding approved leave for <span className="font-bold text-on-surface">{profile.name}</span>.</p>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Leave Type</label>
+            <select className={cls} value={leaveType} onChange={e => setLeaveType(e.target.value)}>
+              <option value="Full Day">Full Day</option>
+              <option value="Half Day AM">Half Day AM</option>
+              <option value="Half Day PM">Half Day PM</option>
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">From Date *</label>
@@ -311,8 +327,8 @@ function MarkAbsentModal({ profile, onClose, onSave }) {
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
-            <button type="submit" className="px-5 py-2 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl flex items-center gap-2" disabled={loading}>
-              {loading ? 'Saving...' : 'Confirm'}
+            <button type="submit" className="px-5 py-2 text-sm font-bold bg-primary text-white rounded-xl flex items-center gap-2" disabled={loading}>
+              {loading ? 'Saving...' : 'Add Leave'}
             </button>
           </div>
         </form>
@@ -405,7 +421,8 @@ function TaskDetailModal({ task, workItems, containers, profiles, onClose }) {
 
 export default function StaffOverviewPage() {
   const {
-    profiles, workItems, containers, staffGroup, currentUser, absences, addAbsence, deleteAbsence,
+    profiles, workItems, containers, staffGroup, currentUser,
+    leaveRequests, applyLeave, updateLeaveRequest, deleteLeaveRequest,
     createUser, adminUpdateProfile, adminResetUserPassword,
   } = useDataContext();
   const safeProfiles = profiles || [];
@@ -456,24 +473,50 @@ export default function StaffOverviewPage() {
     const tasks = getActionableUnits(allTasks); // live view — no date filter
 
     let assigned = 0, notStarted = 0, ongoing = 0, completed = 0, overdue = 0;
+    let earlyCount = 0, onTimeCount = 0, lateCount = 0;
+    let latePenaltyReduction = 0; // for half-day leaves
+
     tasks.forEach(t => {
       const ds = getDisplayStatus(t);
-      if (ds === 'Completed')    completed++;
+      if (ds === 'Completed') {
+        completed++;
+        if (t.expected_date && t.completed_at) {
+          const expected = new Date(t.expected_date).toISOString().split('T')[0];
+          const completedDate = new Date(t.completed_at).toISOString().split('T')[0];
+          if (completedDate < expected) earlyCount++;
+          else if (completedDate === expected) onTimeCount++;
+          else {
+            const hasHalfDay = leaveRequests?.some(l => 
+              l.user_id === staffId && l.status === 'Approved' && 
+              l.leave_type.startsWith('Half Day') &&
+              expected >= l.from_date && expected <= l.to_date
+            );
+            if (hasHalfDay) latePenaltyReduction += 0.25;
+            lateCount++;
+          }
+        } else {
+           onTimeCount++;
+        }
+      }
       else if (ds === 'Overdue') overdue++;
       else if (ds === 'Ongoing') ongoing++;
       else if (ds === 'Not Started') notStarted++;
       else assigned++; // 'Assigned' — not yet at trigger date
     });
 
-    const total = tasks.length;
-    const efficiency = total === 0 ? 0 : Math.round((completed / total) * 100);
+    const totalDueWork = tasks.length;
+    let efficiency = 0;
+    if (totalDueWork > 0) {
+       let score = (earlyCount * 1.0) + (onTimeCount * 1.0) + (lateCount * 0.5) + latePenaltyReduction;
+       efficiency = Math.round((score / totalDueWork) * 100);
+    }
     return {
       overdue,
       notStarted,
       assigned,
       ongoing,
       completed,
-      total,
+      total: totalDueWork,
       active: assigned + ongoing + notStarted,
       efficiency,
       tasks
@@ -656,7 +699,7 @@ export default function StaffOverviewPage() {
                 </div>
                 <div className="px-5 pb-3 flex items-center gap-2">
                    <button onClick={(e) => { e.stopPropagation(); setAbsentProfile(staff); }} className="text-[10px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded transition-colors flex items-center gap-1">
-                     <span className="material-symbols-outlined text-[13px]">event_busy</span> Mark Absent
+                     <span className="material-symbols-outlined text-[13px]">event_busy</span> Add Leave
                    </button>
                 </div>
 
@@ -948,13 +991,13 @@ export default function StaffOverviewPage() {
       )}
 
       {pageTab === 'Leave' && (
-        <LeaveManagementTab absences={absences} profiles={safeProfiles} deleteAbsence={deleteAbsence} />
+        <LeaveManagementTab leaveRequests={leaveRequests || []} profiles={safeProfiles} updateLeaveRequest={updateLeaveRequest} deleteLeaveRequest={deleteLeaveRequest} />
       )}
 
       {/* ── Modals ── */}
       {editingProfile && <EditUserModal profile={editingProfile} profiles={safeProfiles} onClose={() => setEditingProfile(null)} onSave={handleSaveEdit} />}
       {resettingProfile && <ResetPasswordModal profile={resettingProfile} onClose={() => setResettingProfile(null)} onReset={adminResetUserPassword} />}
-      {absentProfile && <MarkAbsentModal profile={absentProfile} onClose={() => setAbsentProfile(null)} onSave={addAbsence} />}
+      {absentProfile && <LeaveRequestModal profile={absentProfile} onClose={() => setAbsentProfile(null)} onSave={applyLeave} />}
       {createdCreds && <CredentialsModal name={createdCreds.name} loginId={createdCreds.loginId} password={createdCreds.password} onClose={() => setCreatedCreds(null)} />}
       {selectedTaskDetail && (
         <TaskDetailModal

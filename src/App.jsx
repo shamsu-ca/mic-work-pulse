@@ -13,6 +13,7 @@ import PlanningPage from './pages/PlanningPage';
 import ProjectsEventsPage from './pages/ProjectsEventsPage';
 import ReportsPage from './pages/ReportsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import MyLeavePage from './pages/MyLeavePage';
 
 function AppContent() {
   const { currentUser, loadingInitial } = useDataContext();
@@ -36,7 +37,10 @@ function AppContent() {
               <Route path="/staff" element={<StaffOverviewPage />} />
             )}
             {role !== 'Admin' && (
-              <Route path="/staff" element={<Navigate to="/" replace />} />
+              <>
+                <Route path="/staff" element={<Navigate to="/" replace />} />
+                <Route path="/leave" element={<MyLeavePage />} />
+              </>
             )}
 
             <Route path="*" element={<Navigate to="/" replace />} />
