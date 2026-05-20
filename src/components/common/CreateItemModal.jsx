@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import ClockTimePicker from './ClockTimePicker';
 
-export default function CreateItemModal({ onClose, initialData, onSuccessConvert, defaultTab = 'Plan', defaultSelfOnly = false, predefinedAssignee = null }) {
+export default function CreateItemModal({ onClose, initialData, onSuccessConvert, defaultTab = 'choose', defaultSelfOnly = false, predefinedAssignee = null }) {
   const { addWorkItem, addSavedTask, profiles, currentUser, addAnnouncement } = useDataContext();
   const navigate = useNavigate();
   const [step, setStep] = useState(initialData ? 'task' : (defaultTab === 'Plan' ? 'plan' : 'choose')); // 'choose' | 'task' | 'plan' | 'notification'
@@ -134,7 +134,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
     });
     setLoading(false);
     setSuccess(true);
-    setTimeout(() => onClose(), 1200);
+    setTimeout(() => { onClose(); navigate('/planning'); }, 1200);
   };
 
   const handleCreateNotification = async (e) => {
