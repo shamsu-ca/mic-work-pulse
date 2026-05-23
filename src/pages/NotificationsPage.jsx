@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../context/SupabaseDataContext';
 import ClockTimePicker from '../components/common/ClockTimePicker';
 
@@ -106,13 +107,15 @@ function DeleteConfirm({ onConfirm, onCancel }) {
 }
 
 export default function NotificationsPage() {
-  const { getActiveAnnouncements, updateAnnouncement, deleteAnnouncement, currentUser } = useDataContext();
+  const { getActiveAnnouncements, updateAnnouncement, deleteAnnouncement, currentUser, leaveRequests } = useDataContext();
+  const navigate = useNavigate();
   const isAdmin = currentUser?.role === 'Admin';
 
   const [editingAnn, setEditingAnn]   = useState(null);
   const [deletingId, setDeletingId]   = useState(null);
 
   const active = getActiveAnnouncements?.() ?? [];
+  const pendingLeaves = (leaveRequests || []).filter(l => l.status === 'Pending');
 
   const handleDelete = async (id) => {
     await deleteAnnouncement(id);
@@ -127,6 +130,25 @@ export default function NotificationsPage() {
           {active.length > 0 ? `${active.length} active notice${active.length !== 1 ? 's' : ''} for you` : 'No active notices right now'}
         </p>
       </div>
+
+      {isAdmin && pendingLeaves.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col gap-3 shadow-sm relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-500"></div>
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-amber-600 text-2xl">pending_actions</span>
+            <div className="flex-1">
+              <h3 className="font-bold text-sm text-amber-900">Pending Leave Requests</h3>
+              <p className="text-xs text-amber-700">You have {pendingLeaves.length} pending leave request{pendingLeaves.length > 1 ? 's' : ''} requiring approval.</p>
+            </div>
+            <button 
+              onClick={() => navigate('/leave')} 
+              className="bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors whitespace-nowrap"
+            >
+              Manage Leaves
+            </button>
+          </div>
+        </div>
+      )}
 
       {active.length === 0 ? (
         <div className="bg-white rounded-2xl border border-outline-variant/30 px-6 py-20 text-center">

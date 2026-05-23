@@ -4,11 +4,14 @@ import { useDataContext } from '../../context/SupabaseDataContext';
 import ClockTimePicker from './ClockTimePicker';
 
 export default function CreateItemModal({ onClose, initialData, onSuccessConvert, defaultTab = 'choose', defaultSelfOnly = false, predefinedAssignee = null }) {
-  const { addWorkItem, addSavedTask, profiles, currentUser, addAnnouncement } = useDataContext();
+  const { addWorkItem, addSavedTask, profiles, currentUser, addAnnouncement, containers, leaveRequests } = useDataContext();
   const navigate = useNavigate();
   const [step, setStep] = useState(initialData ? 'task' : (defaultTab === 'Plan' ? 'plan' : 'choose')); // 'choose' | 'task' | 'plan' | 'notification'
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  const [convertType, setConvertType] = useState('Task'); // 'Task' | 'Milestone'
+  const [selectedProjectId, setSelectedProjectId] = useState('');
 
   const selfOnly = currentUser?.role === 'Assignee';
 
@@ -25,7 +28,12 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   const [monthlyDay, setMonthlyDay] = useState('1');
   const [xMonthInterval, setXMonthInterval] = useState('2');
   const [recurrenceMode, setRecurrenceMode] = useState('strict');
-  const [subtasks, setSubtasks] = useState([]);
+
+  const hasLeaveOnDate = leaveRequests?.some(l =>
+    l.user_id === taskAssignee &&
+    l.status === 'Approved' &&
+    taskDate >= l.from_date && taskDate <= l.to_date
+  );
 
   // Plan form
   const [planTitle, setPlanTitle] = useState('');
@@ -58,14 +66,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
     return { type: 'daily', recurrence_mode: mode };
   };
 
-  const buildSubtaskSpawnRule = (spawnDay) => {
-    if (!spawnDay) return null;
-    const n = Number(spawnDay);
-    if (recurrenceType === 'weekly')    return { type: 'weekly', day: n };
-    if (recurrenceType === 'monthly')   return { type: 'monthly', date: n };
-    if (recurrenceType === 'x_monthly') return { type: 'x_monthly', monthly_day: n };
-    return null;
-  };
+
 
   const [confirmDateOpen, setConfirmDateOpen] = useState(false);
 
@@ -76,8 +77,13 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
       return;
     }
 
+    if (initialData && convertType === 'Milestone' && !selectedProjectId) {
+      alert("Please select an active project for the milestone.");
+      return;
+    }
+
     const todayStr = new Date().toISOString().split('T')[0];
-    if (taskDate === todayStr && !isRecurring && !forceConfirm) {
+    if (taskDate === todayStr && !isRecurring && !forceConfirm && convertType === 'Task') {
        setConfirmDateOpen(true);
        return;
     }
@@ -90,24 +96,14 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
       assignee_id: taskAssignee || null,
       priority: taskPriority,
       status: 'Assigned',
-      type: 'Task',
+      type: initialData && convertType === 'Milestone' ? 'Milestone' : 'Task',
+      container_id: initialData && convertType === 'Milestone' ? selectedProjectId : null,
       ...(taskEstMins ? { estimated_hours: Number(taskEstMins) } : {}),
     };
-    const validSubs = subtasks.filter(s => s.title.trim());
-    if (isRecurring) {
-      const { data: savedData } = await addSavedTask({ ...taskBase, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
-      if (savedData?.[0] && validSubs.length > 0) {
-        for (const sub of validSubs) {
-          await addSavedTask({ title: sub.title.trim(), type: 'Subtask', parent_id: savedData[0].id, priority: taskPriority, status: 'Assigned', assignee_id: taskAssignee || null, is_recurring: false, is_active: true, recurrence_rule: buildSubtaskSpawnRule(sub.spawnDay), last_generated_at: null });
-        }
-      }
+    if (isRecurring && (!initialData || convertType === 'Task')) {
+      await addSavedTask({ ...taskBase, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
     } else {
-      const { data: taskData } = await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
-      if (taskData?.[0] && validSubs.length > 0) {
-        for (const sub of validSubs) {
-          await addWorkItem({ title: sub.title.trim(), type: 'Subtask', parent_id: taskData[0].id, assignee_id: taskAssignee || null, status: 'Assigned', expected_date: taskDate || null, is_recurring: false });
-        }
-      }
+      await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
     }
     setLoading(false);
     setSuccess(true);
@@ -240,6 +236,24 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
               </div>
             </div>
             <div className="p-6 flex flex-col gap-3 max-h-[60vh] overflow-y-auto">
+              {initialData && (
+                <div className="flex flex-col gap-3 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30">
+                  <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">Convert to</span>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setConvertType('Task')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-colors ${convertType === 'Task' ? 'bg-primary text-white border-primary' : 'bg-white text-on-surface-variant border-outline-variant/40 hover:border-primary'}`}>Task</button>
+                    <button type="button" onClick={() => setConvertType('Milestone')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-colors ${convertType === 'Milestone' ? 'bg-primary text-white border-primary' : 'bg-white text-on-surface-variant border-outline-variant/40 hover:border-primary'}`}>Milestone</button>
+                  </div>
+                  {convertType === 'Milestone' && (
+                    <div className="flex flex-col gap-1.5 mt-1.5">
+                      <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Active Project *</label>
+                      <select required className={inputCls} value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)}>
+                        <option value="">— Select Project —</option>
+                        {containers.filter(c => c.type === 'Project').map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Title *</label>
                 <input required className={inputCls} placeholder="Task title" value={taskTitle} onChange={e => setTaskTitle(e.target.value)} />
@@ -263,19 +277,21 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                   </select>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30">
-                <label className="flex items-center gap-2 cursor-pointer flex-1">
-                  <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isRecurring ? 'bg-primary' : 'bg-outline-variant'}`}
-                    onClick={() => setIsRecurring(v => !v)}>
-                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isRecurring ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                  </div>
-                  <span className="text-xs font-bold text-on-surface">Recurring Task</span>
-                </label>
-              </div>
-              {isRecurring ? (
+              {(!initialData || convertType === 'Task') && (
+                <div className="flex items-center gap-3 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30">
+                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                    <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isRecurring ? 'bg-primary' : 'bg-outline-variant'}`}
+                      onClick={() => setIsRecurring(v => !v)}>
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isRecurring ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </div>
+                    <span className="text-xs font-bold text-on-surface">Recurring Task</span>
+                  </label>
+                </div>
+              )}
+              {isRecurring && (!initialData || convertType === 'Task') ? (
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Recurrence</label>
-                  <select className={inputCls} value={recurrenceType} onChange={e => { setRecurrenceType(e.target.value); setSubtasks(v => v.map(s => ({ ...s, spawnDay: '' }))); }}>
+                  <select className={inputCls} value={recurrenceType} onChange={e => { setRecurrenceType(e.target.value); }}>
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
@@ -332,55 +348,13 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                   <input type="number" min="0" placeholder="e.g. 90" className={inputCls} value={taskEstMins} onChange={e => setTaskEstMins(e.target.value)} />
                 </div>
               )}
-              {/* Subtasks */}
-              <div className="flex flex-col gap-2 pt-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Subtasks</label>
-                  <button type="button" onClick={() => setSubtasks(v => [...v, { title: '', spawnDay: '' }])} className="text-xs font-bold text-primary flex items-center gap-1 hover:underline">
-                    <span className="material-symbols-outlined text-[14px]">add_circle</span> Add
-                  </button>
+
+              {hasLeaveOnDate && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-xl text-xs font-semibold my-2">
+                  <span className="material-symbols-outlined text-[16px] text-amber-600">warning</span>
+                  Note: Assignee is on approved leave on this date.
                 </div>
-                {subtasks.length === 0 && (
-                  <p className="text-[10px] text-on-surface-variant italic">Optional — click Add to include subtasks.</p>
-                )}
-                {subtasks.map((sub, idx) => (
-                  <div key={idx} className="flex flex-col gap-1.5 bg-surface-container-low rounded-xl p-2 border border-outline-variant/20">
-                    <div className="flex items-center gap-2">
-                      <input
-                        className={inputCls}
-                        placeholder={`Subtask ${idx + 1}`}
-                        value={sub.title}
-                        onChange={e => setSubtasks(v => v.map((s, i) => i === idx ? { ...s, title: e.target.value } : s))}
-                      />
-                      <button type="button" onClick={() => setSubtasks(v => v.filter((_, i) => i !== idx))} className="text-on-surface-variant hover:text-error flex-shrink-0">
-                        <span className="material-symbols-outlined text-[18px]">close</span>
-                      </button>
-                    </div>
-                    {isRecurring && recurrenceType !== 'daily' && (
-                      <div className="flex items-center gap-2 pl-1">
-                        <span className="material-symbols-outlined text-[14px] text-on-surface-variant flex-shrink-0">schedule_send</span>
-                        <select
-                          className="text-xs bg-white border border-outline-variant/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/30 flex-1"
-                          value={sub.spawnDay}
-                          onChange={e => setSubtasks(v => v.map((s, i) => i === idx ? { ...s, spawnDay: e.target.value } : s))}
-                        >
-                          <option value="">With parent</option>
-                          {recurrenceType === 'weekly' &&
-                            ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) =>
-                              <option key={i} value={String(i)}>{d}</option>
-                            )
-                          }
-                          {(recurrenceType === 'monthly' || recurrenceType === 'x_monthly') &&
-                            Array.from({ length: 31 }, (_, i) =>
-                              <option key={i + 1} value={String(i + 1)}>{i + 1}{i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}</option>
-                            )
-                          }
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              )}
             </div>
             <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4 relative">
               {confirmDateOpen && (

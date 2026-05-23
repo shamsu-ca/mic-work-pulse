@@ -15,12 +15,14 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
     ? new Date(completedItem.completed_at).toLocaleDateString()
     : '—';
 
+  const isMilestone = completedItem?.type === 'Milestone';
+
   const [form, setForm] = useState({
     title: `Follow-up: ${completedItem?.title ?? ''}`,
-    description: '',
+    description: completedItem ? `Follow-up for: ${completedItem.title}` : '',
     assigneeId: completedItem?.assignee_id ?? '',
     dueDate: '',
-    priority: 'Medium',
+    priority: completedItem?.priority || 'Medium',
     linkType: 'Continuation',
   });
   const [saving, setSaving] = useState(false);
@@ -37,6 +39,8 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
       dueDate: form.dueDate,
       priority: form.priority,
       linkType: form.linkType,
+      type: isMilestone ? 'Milestone' : 'Task',
+      container_id: completedItem?.container_id || null,
     });
     setSaving(false);
   };
@@ -45,15 +49,24 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
         <div className="px-5 py-4 border-b">
-          <h2 className="text-base font-semibold text-gray-800">Create Follow-up Task</h2>
+          <h2 className="text-base font-semibold text-gray-800">
+            Create Follow-up {isMilestone ? 'Milestone' : 'Task'}
+          </h2>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 space-y-0.5">
             <p><span className="font-medium text-gray-700">Source:</span> {completedItem?.title}</p>
+            <p><span className="font-medium text-gray-700">Type:</span> {completedItem?.type || 'Task'}</p>
             <p><span className="font-medium text-gray-700">Completed by:</span> {assigneeName}</p>
-            <p><span className="font-medium text-gray-700">On:</span> {completedDate}</p>
+            {completedItem?.status === 'Completed' && <p><span className="font-medium text-gray-700">On:</span> {completedDate}</p>}
           </div>
+
+          {isMilestone && (
+            <div className="bg-purple-50 border border-purple-200 text-purple-800 p-3 rounded-lg text-xs font-semibold">
+              Note: This follow-up is locked to a **Milestone** inside the same project. Standalone tasks cannot be created.
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-medium text-gray-500 block mb-1">Title</label>
@@ -71,7 +84,7 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
               value={form.description}
               onChange={e => set('description', e.target.value)}
               rows={2}
-              placeholder={`Follow-up of: ${completedItem?.title}`}
+              placeholder={`Follow-up for: ${completedItem?.title}`}
               className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
             />
           </div>

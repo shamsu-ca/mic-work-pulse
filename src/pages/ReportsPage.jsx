@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
-import { getDisplayStatus, isOverdue, getActionableUnits } from '../lib/statusUtils';
+import { getDisplayStatus, isOverdue, getActionableUnits, calculateUserEfficiency } from '../lib/statusUtils';
 import { isItemInDateRange, fmtDate } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 
 export default function ReportsPage() {
   const {
-    workItems, profiles, currentUser, dateFilter, customDateRange,
+    workItems, profiles, currentUser, dateFilter, customDateRange, leaveRequests,
   } = useDataContext();
+
+  const todayStr = new Date().toISOString().split('T')[0];
 
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -29,10 +31,22 @@ export default function ReportsPage() {
     myItemsAll = myItemsAll.filter(w => isItemInDateRange(w, dateFilter, customDateRange));
     const myItems = getActionableUnits(myItemsAll);
     const completed = myItems.filter(w => w.status === 'Completed');
+    const completedOnTime = completed.filter(t => {
+      if (!t.expected_date || !t.completed_at) return true;
+      const expected = t.expected_date;
+      const completedDate = new Date(t.completed_at).toISOString().split('T')[0];
+      return completedDate <= expected;
+    });
+    const completedLate = completed.filter(t => {
+      if (!t.expected_date || !t.completed_at) return false;
+      const expected = t.expected_date;
+      const completedDate = new Date(t.completed_at).toISOString().split('T')[0];
+      return completedDate > expected;
+    });
     const overdue = myItems.filter(w => isOverdue(w) && w.status !== 'Completed');
-    const notStarted = myItems.filter(w => w.status === 'Assigned');
-    const effDenom = completed.length + overdue.length + notStarted.length;
-    const productivityScore = effDenom === 0 ? 100 : Math.round((completed.length / effDenom) * 100);
+    const notStarted = myItems.filter(w => getDisplayStatus(w) === 'Not Started');
+    
+    const productivityScore = calculateUserEfficiency(myItems, leaveRequests, todayStr);
     const reportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
     const handleAssigneePdfExport = () => {
@@ -59,7 +73,7 @@ export default function ReportsPage() {
           h1{font-size:22px;font-weight:900;margin-bottom:4px}
           h2{font-size:15px;font-weight:700;margin:24px 0 10px}
           .meta{color:#666;font-size:12px;margin-bottom:24px}
-          .score-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:8px}
+          .score-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:8px}
           .score-box{background:#f4f4f5;border-radius:12px;padding:16px 20px}
           .score-box .n{font-size:28px;font-weight:900}
           .score-box .l{font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
@@ -73,9 +87,10 @@ export default function ReportsPage() {
         <h1>${currentUser.name} — Performance Report</h1>
         <div class="meta">Generated: ${reportDate} &nbsp;·&nbsp; Period: ${dateFilter?.replace(/_/g, ' ') ?? 'All Time'}</div>
         <div class="score-grid">
-          <div class="score-box"><div class="n">${productivityScore}%</div><div class="l">Productivity Score</div></div>
-          <div class="score-box"><div class="n">${completed.length} / ${myItems.length}</div><div class="l">Tasks Completed</div></div>
-          <div class="score-box"><div class="n" style="color:#dc2626">${overdue.length}</div><div class="l">Overdue</div></div>
+          <div class="score-box"><div class="n">${productivityScore}%</div><div class="l">Work Efficiency</div></div>
+          <div class="score-box"><div class="n">${myItems.length}</div><div class="l">Total Assigned</div></div>
+          <div class="score-box"><div class="n" style="color:#16a34a">${completedOnTime.length} / ${completedLate.length}</div><div class="l">On-Time / Late</div></div>
+          <div class="score-box"><div class="n" style="color:#dc2626">${overdue.length} / ${notStarted.length}</div><div class="l">Overdue / Not Started</div></div>
         </div>
         <h2>Task History</h2>
         <table>
@@ -101,41 +116,63 @@ export default function ReportsPage() {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-gradient-to-br from-primary to-secondary rounded-xl shadow-sm text-white p-6 relative overflow-hidden">
             <div className="absolute -right-6 -top-6 text-white/10">
               <span className="material-symbols-outlined text-[120px]">military_tech</span>
             </div>
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/80 mb-2">Productivity Score</h3>
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/80 mb-2">Work Efficiency</h3>
             <p className="text-5xl font-black font-headline">{productivityScore}%</p>
-            <p className="text-xs text-white/90 font-medium mt-4">Keep overdue below 5% to stay on top.</p>
+            <p className="text-xs text-white/90 font-medium mt-4">Simplified formula calculation</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 flex flex-col justify-between">
             <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Task Volume</h3>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Total Assigned</h3>
               <div className="flex items-baseline gap-2">
-                <p className="text-4xl font-extrabold font-headline text-on-surface">{completed.length}</p>
-                <span className="text-sm font-bold text-on-surface-variant">/ {myItems.length}</span>
+                <p className="text-4xl font-extrabold font-headline text-on-surface">{myItems.length}</p>
+                <span className="text-sm font-bold text-on-surface-variant">Tasks</span>
               </div>
             </div>
             <div className="mt-4">
               <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-                <span>Progress</span><span className="text-primary">{productivityScore}%</span>
+                <span>Completed</span><span className="text-primary">{completed.length}</span>
               </div>
               <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-                <div className="h-full bg-primary" style={{ width: `${productivityScore}%` }} />
+                <div className="h-full bg-primary" style={{ width: `${myItems.length === 0 ? 0 : Math.round((completed.length / myItems.length) * 100)}%` }} />
               </div>
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 flex flex-col justify-between">
             <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Quality & Exceptions</h3>
-              <div className="flex items-baseline gap-2">
-                <p className="text-4xl font-extrabold font-headline text-error">{overdue.length}</p>
-                <span className="text-sm font-bold text-error">Overdue</span>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Completion Details</h3>
+              <div className="flex items-center gap-6 mt-1">
+                <div>
+                  <p className="text-3xl font-black font-headline text-green-600">{completedOnTime.length}</p>
+                  <p className="text-[9px] font-bold text-green-700 uppercase">On-Time</p>
+                </div>
+                <div>
+                  <p className="text-3xl font-black font-headline text-amber-500">{completedLate.length}</p>
+                  <p className="text-[9px] font-bold text-amber-600 uppercase">Late</p>
+                </div>
               </div>
             </div>
-            <p className="text-xs text-on-surface-variant font-medium mt-4">Keep delays under 5% to maintain score.</p>
+            <p className="text-xs text-on-surface-variant font-medium mt-4">Late items receive 50% penalty</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 p-6 flex flex-col justify-between">
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Exceptions</h3>
+              <div className="flex items-center gap-6 mt-1">
+                <div>
+                  <p className="text-3xl font-black font-headline text-error">{overdue.length}</p>
+                  <p className="text-[9px] font-bold text-error uppercase">Overdue</p>
+                </div>
+                <div>
+                  <p className="text-3xl font-black font-headline text-purple-600">{notStarted.length}</p>
+                  <p className="text-[9px] font-bold text-purple-600 uppercase">Not Started</p>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-on-surface-variant font-medium mt-4">Both count as 0 score in efficiency</p>
           </div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
@@ -190,8 +227,7 @@ export default function ReportsPage() {
   const allOverdue   = actionable.filter(w => isOverdue(w) && w.status !== 'Completed').length;
   const allNotStart  = actionable.filter(w => getDisplayStatus(w) === 'Not Started').length;
 
-  const overallEffD = allCompleted + allOverdue + allNotStart;
-  const overallEff = overallEffD === 0 ? 100 : Math.round((allCompleted / overallEffD) * 100);
+  const overallEff = calculateUserEfficiency(actionable, leaveRequests, todayStr);
   const effLabel = overallEff >= 90 ? 'High Precision' : overallEff >= 70 ? 'Good' : overallEff >= 50 ? 'Moderate' : 'Needs Attention';
   const effLabelColor = overallEff >= 90 ? 'text-blue-600' : overallEff >= 70 ? 'text-green-600' : overallEff >= 50 ? 'text-amber-600' : 'text-red-600';
 
@@ -201,24 +237,32 @@ export default function ReportsPage() {
     const tasks = actionable.filter(w => w.assignee_id === p.id);
     const assigned  = tasks.filter(w => w.status === 'Assigned').length;
     const ongoing   = tasks.filter(w => w.status === 'Ongoing').length;
-    const completed = tasks.filter(w => w.status === 'Completed').length;
-    // Historical overdue: currently overdue OR completed but delivered late
-    const overdueNow = tasks.filter(w => isOverdue(w) && w.status !== 'Completed');
-    const completedLate = tasks.filter(w =>
-      w.status === 'Completed' && w.expected_date &&
-      new Date(w.expected_date) < new Date(w.updated_at ?? w.created_at ?? '9999')
-    );
-    const overdueSet = new Set([...overdueNow.map(w => w.id), ...completedLate.map(w => w.id)]);
-    const overdue = overdueSet.size;
-    // Historical not-started: currently not started OR tasks that sat long as Assigned before being acted on
+    const completedItems = tasks.filter(w => w.status === 'Completed');
+    const completed = completedItems.length;
+    const completedOnTime = completedItems.filter(t => {
+      if (!t.expected_date || !t.completed_at) return true;
+      const expected = t.expected_date;
+      const completedDate = new Date(t.completed_at).toISOString().split('T')[0];
+      return completedDate <= expected;
+    }).length;
+    const completedLate = completedItems.filter(t => {
+      if (!t.expected_date || !t.completed_at) return false;
+      const expected = t.expected_date;
+      const completedDate = new Date(t.completed_at).toISOString().split('T')[0];
+      return completedDate > expected;
+    }).length;
+
+    const overdue = tasks.filter(w => isOverdue(w) && w.status !== 'Completed').length;
     const notStart  = tasks.filter(w => getDisplayStatus(w) === 'Not Started').length;
     const load = tasks.length;
-    const effD = completed + overdue + notStart;
-    const score = effD === 0 ? 100 : Math.round((completed / effD) * 100);
+    
+    const score = calculateUserEfficiency(tasks, leaveRequests, todayStr);
+    
     const activeTasks = tasks.filter(w => w.status !== 'Completed');
     const totalEstMins = activeTasks.reduce((s, w) => s + (w.estimated_hours ?? 60), 0);
     const loadPct = Math.min(100, Math.round(totalEstMins / 2400 * 100));
-    return { ...p, assigned, ongoing, completed, overdue, notStart, load, score, loadPct };
+    
+    return { ...p, assigned, ongoing, completed, completedOnTime, completedLate, overdue, notStart, load, score, loadPct };
   }).sort((a, b) => b.score - a.score);
 
   const avgLoadPct = staffStats.length === 0 ? 0 : Math.round(staffStats.reduce((s, x) => s + x.loadPct, 0) / staffStats.length);
@@ -238,7 +282,7 @@ export default function ReportsPage() {
         <td>${s.name}</td><td>${s.role}</td><td>${s.department ?? '—'}</td>
         <td style="text-align:center">${s.assigned}</td>
         <td style="text-align:center">${s.ongoing}</td>
-        <td style="text-align:center">${s.completed}</td>
+        <td style="text-align:center">${s.completed} (On-Time: ${s.completedOnTime}, Late: ${s.completedLate})</td>
         <td style="color:${s.overdue > 0 ? '#dc2626' : '#888'};text-align:center;font-weight:bold">${s.overdue}</td>
         <td style="color:${s.notStart > 0 ? '#d97706' : '#888'};text-align:center;font-weight:bold">${s.notStart}</td>
         <td style="text-align:center;font-weight:bold;color:${s.score >= 80 ? '#1d4ed8' : s.score >= 65 ? '#d97706' : '#dc2626'}">${s.score}%</td>
@@ -262,7 +306,7 @@ export default function ReportsPage() {
         @media print{body{padding:16px}.footer{position:fixed;bottom:16px;right:16px}}
       </style></head><body>
       <h1>Staff Performance Report</h1>
-      <div class="meta">Generated: ${today} &nbsp;·&nbsp; Period: ${dateFilter?.replace(/_/g, ' ')}</div>
+      <div class="meta">Generated: ${today} &nbsp;·&nbsp; Period: ${dateFilter?.replace(/_/g, ' ') ?? 'All Time'}</div>
       <div class="stats">
         <div class="stat"><div class="n">${allCompleted}</div><div class="l">Completed</div></div>
         <div class="stat"><div class="n" style="color:#dc2626">${allOverdue}</div><div class="l">Overdue</div></div>
@@ -273,7 +317,7 @@ export default function ReportsPage() {
         <thead><tr>
           <th>Name</th><th>Role</th><th>Department</th>
           <th style="text-align:center">Assigned</th><th style="text-align:center">Ongoing</th>
-          <th style="text-align:center">Done</th><th style="text-align:center">Overdue</th>
+          <th style="text-align:center">Completed (On-Time / Late)</th><th style="text-align:center">Overdue</th>
           <th style="text-align:center">Not Started</th><th style="text-align:center">Efficiency</th>
           <th style="text-align:center">Load</th>
         </tr></thead>
@@ -442,7 +486,12 @@ export default function ReportsPage() {
                     </td>
                     <td className="px-3 py-4 text-center text-on-surface">{s.assigned}</td>
                     <td className="px-3 py-4 text-center text-blue-600 font-semibold">{s.ongoing}</td>
-                    <td className="px-3 py-4 text-center text-green-600 font-semibold">{s.completed}</td>
+                    <td className="px-3 py-4 text-center text-green-600 font-semibold">
+                      {s.completed}
+                      <span className="text-[10px] text-on-surface-variant font-medium block">
+                        (On-Time: {s.completedOnTime} / Late: {s.completedLate})
+                      </span>
+                    </td>
                     <td className="px-3 py-4 text-center text-error font-bold">{s.overdue > 0 ? s.overdue : <span className="text-outline">0</span>}</td>
                     <td className="px-3 py-4 text-center text-amber-600 font-bold">{s.notStart > 0 ? s.notStart : <span className="text-outline">0</span>}</td>
                     <td className="px-3 py-4 text-center">
@@ -499,6 +548,7 @@ export default function ReportsPage() {
               <div className="bg-surface-container-low rounded-xl p-3">
                 <p className="text-2xl font-black text-green-600">{selectedStaff.completed}</p>
                 <p className="text-[10px] font-bold text-on-surface-variant uppercase mt-0.5">Completed</p>
+                <p className="text-[9px] text-green-700/80 font-bold mt-1">On-Time: {selectedStaff.completedOnTime} | Late: {selectedStaff.completedLate}</p>
               </div>
               <div className="bg-red-50 rounded-xl p-3">
                 <p className="text-2xl font-black text-error">{selectedStaff.overdue}</p>

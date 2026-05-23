@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
-import { getDisplayStatus, isOverdue, getActionableUnits, getStatusBadgeClass, isItemExcludedByAbsence } from '../../lib/statusUtils';
+import { getDisplayStatus, isOverdue, getActionableUnits, getStatusBadgeClass, isNotStarted } from '../../lib/statusUtils';
 import { fmtDate } from '../../lib/dateUtils';
 import CompletionPanel from '../common/CompletionPanel';
 import AbsenceModal from '../common/AbsenceModal';
 import FilterBar from '../common/FilterBar';
+import FollowUpModal from '../common/FollowUpModal';
 
 // ─── Item detail modal ────────────────────────────
 function ItemDetailModal({ item, containers, workItems, profiles, onClose, onStart, onComplete }) {
@@ -101,35 +102,13 @@ function ItemDetailModal({ item, containers, workItems, profiles, onClose, onSta
 
 // ─── Expandable work item card ───────────────────────────────────
 function WorkItemCard({ item, containers, workItems, onStart, onComplete, onViewDetail, readOnly }) {
-  const { addWorkItem, updateWorkItem } = useDataContext();
   const [expanded, setExpanded] = useState(false);
-  const [addingSubtask, setAddingSubtask] = useState(false);
-  const [stTitle, setStTitle] = useState('');
-  const [stDate, setStDate]   = useState('');
-  const [stSaving, setStSaving] = useState(false);
 
   const container = item.container_id ? (containers || []).find(c => c.id === item.container_id) : null;
   const parent    = item.parent_id    ? (workItems  || []).find(w => w.id === item.parent_id)    : null;
   const parentContainer = parent?.container_id ? (containers || []).find(c => c.id === parent.container_id) : null;
   const contextContainer = parentContainer || (parent ? null : container);
-
-  const handleAddSubtask = async (e) => {
-    e.preventDefault();
-    if (!stTitle.trim() || readOnly) return;
-    setStSaving(true);
-    await addWorkItem({
-      title: stTitle.trim(),
-      expected_date: stDate || null,
-      assignee_id: item.assignee_id || null,
-      status: 'Assigned',
-      type: 'Subtask',
-      parent_id: item.id,
-    });
-    if (stDate && !item.expected_date) {
-      await updateWorkItem(item.id, { expected_date: stDate });
-    }
-    setStTitle(''); setStDate(''); setStSaving(false); setAddingSubtask(false);
-  };
+  const followUps = (workItems || []).filter(w => w.linked_to === item.id);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-outline-variant/40 overflow-hidden">
@@ -188,6 +167,23 @@ function WorkItemCard({ item, containers, workItems, onStart, onComplete, onView
           {item.description && (
             <p className="text-xs text-on-surface-variant leading-relaxed">{item.description}</p>
           )}
+
+          {/* Linked Follow-up tasks/milestones list */}
+          {followUps.length > 0 && (
+            <div className="mt-1 pt-1 border-t border-surface-container-high">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-outline block mb-1">Follow-ups</span>
+              <div className="flex flex-col gap-1">
+                {followUps.map(f => (
+                  <div key={f.id} className="text-xs font-medium text-on-surface flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[12px] text-primary">subdirectory_arrow_right</span>
+                    <span className="flex-1 truncate">{f.title}</span>
+                    <span className="text-[10px] text-outline">({f.type})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!readOnly && (
             <div className="flex gap-2 pt-1">
               {item.status === 'Assigned' && onStart && (
@@ -205,40 +201,6 @@ function WorkItemCard({ item, containers, workItems, onStart, onComplete, onView
                 >
                   COMPLETE
                 </button>
-              )}
-            </div>
-          )}
-          {!readOnly && item.type === 'Task' && item.status !== 'Completed' && (
-            <div className="border-t border-surface-container-high pt-2 mt-1" onClick={e => e.stopPropagation()}>
-              {!addingSubtask ? (
-                <button
-                  className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline"
-                  onClick={() => setAddingSubtask(true)}
-                >
-                  <span className="material-symbols-outlined text-[13px]">add_circle</span> Add Subtask
-                </button>
-              ) : (
-                <form onSubmit={handleAddSubtask} className="flex flex-col gap-1.5">
-                  <input
-                    autoFocus required
-                    className="border border-outline-variant/50 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full"
-                    placeholder="Subtask title…"
-                    value={stTitle} onChange={e => setStTitle(e.target.value)}
-                  />
-                  <input
-                    type="date"
-                    className="border border-outline-variant/50 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full"
-                    value={stDate} onChange={e => setStDate(e.target.value)}
-                  />
-                  <div className="flex gap-1.5">
-                    <button type="submit" disabled={stSaving || !stTitle.trim()} className="flex-1 py-1 text-[11px] font-bold bg-primary text-white rounded-lg hover:opacity-90 disabled:opacity-50">
-                      {stSaving ? '…' : 'Add'}
-                    </button>
-                    <button type="button" onClick={() => { setAddingSubtask(false); setStTitle(''); setStDate(''); }} className="flex-1 py-1 text-[11px] font-bold border border-outline-variant/40 text-on-surface-variant rounded-lg hover:bg-surface-container">
-                      Cancel
-                    </button>
-                  </div>
-                </form>
               )}
             </div>
           )}
@@ -276,22 +238,81 @@ function WorkItemCard({ item, containers, workItems, onStart, onComplete, onView
   );
 }
 
+function DashboardDetailModal({ data, containers, workItems, profiles, currentUser, onClose, onStart, onComplete, onFollowUp, onViewDetail }) {
+  if (!data) return null;
+  const isOverdue = data.type === 'Overdue';
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[950] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+        <div className={`flex items-center justify-between px-6 py-4 border-b border-surface-container ${isOverdue ? 'bg-red-50/50' : 'bg-orange-50/50'}`}>
+          <div className="flex items-center gap-2">
+            <span className={`material-symbols-outlined ${isOverdue ? 'text-error' : 'text-orange-755'}`}>
+              {isOverdue ? 'crisis_alert' : 'pending_actions'}
+            </span>
+            <h2 className="font-bold text-base text-on-surface">{data.title}</h2>
+            <span className={`px-2 py-0.5 text-xs font-extrabold rounded-full ${isOverdue ? 'bg-error/10 text-error' : 'bg-orange-700/10 text-orange-700'}`}>
+              {data.items.length}
+            </span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-surface-container transition-colors">
+            <span className="material-symbols-outlined text-on-surface-variant">close</span>
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex flex-col gap-4 flex-1">
+          {data.items.map(item => {
+            const isAdmin = currentUser?.role === 'Admin';
+            return (
+              <div key={item.id} className="relative group border border-outline-variant/20 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+                <WorkItemCard
+                  item={item}
+                  containers={containers}
+                  workItems={workItems}
+                  onStart={onStart}
+                  onComplete={onComplete}
+                  onViewDetail={onViewDetail}
+                  readOnly={!isAdmin && item.assignee_id !== currentUser?.id}
+                />
+                {isAdmin && (
+                  <div className="px-4 pb-3 pt-1 border-t border-slate-50 bg-slate-50/30 flex justify-end">
+                    <button
+                      onClick={() => onFollowUp(item)}
+                      className="flex items-center gap-1 text-[10px] font-bold text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-600 hover:text-white px-2 py-1 rounded transition-all"
+                    >
+                      <span className="material-symbols-outlined text-[12px]">reply</span>Create Follow-up
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="px-6 py-3 border-t border-surface-container flex justify-end">
+          <button onClick={onClose} className="px-5 py-2 text-sm font-bold bg-surface-container text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MainDashboard() {
   const { 
-    currentUser, profiles, workItems, containers, absences, 
+    currentUser, profiles, workItems, containers, leaveRequests, 
     staffGroup, getUnreadNotifications, markNotificationRead, getActiveAnnouncements,
-    startWorkItem, completeWorkItem 
+    startWorkItem, completeWorkItem, createFollowUpTask
   } = useDataContext();
 
   const [pendingCompleteItem, setPendingCompleteItem] = useState(null);
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
   const [selectedItemDetail, setSelectedItemDetail] = useState(null);
   const [viewMode, setViewMode] = useState('mine'); // 'mine' | 'assistants'
+  const [detailModalData, setDetailModalData] = useState(null);
+  const [followUpTarget, setFollowUpTarget] = useState(null);
 
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
   const safeContainers = containers || [];
-  const safeAbsences = absences || [];
   const unreadNotifs = getUnreadNotifications() || [];
   const activeAnnouncements = (getActiveAnnouncements?.() || []).filter(a => a.staff_group === 'Both' || a.staff_group === currentUser?.category);
 
@@ -316,11 +337,8 @@ export default function MainDashboard() {
 
   const today = new Date().toISOString().split('T')[0];
 
-  const isAbsentToday = safeAbsences.some(
-    a => a.user_id === currentUser?.id && today >= a.from_date && today <= a.to_date
-  );
-  const todayAbsence = safeAbsences.find(
-    a => a.user_id === currentUser?.id && today >= a.from_date && today <= a.to_date
+  const isAbsentToday = leaveRequests?.some(
+    l => l.user_id === currentUser?.id && l.status === 'Approved' && l.leave_type === 'Full Day' && today >= l.from_date && today <= l.to_date
   );
 
   const getTargetUserIds = () => {
@@ -335,38 +353,22 @@ export default function MainDashboard() {
 
   const targetUserIds = getTargetUserIds();
   const readOnly = isAdmin || (isManager && viewMode === 'assistants');
+  const showCountOnlyMode = !isAdmin && viewMode === 'mine';
 
-  // All actionable items for the targeted users
+  // All actionable items for the targeted users (Tasks, Milestones, Active Checklists)
   const actionableItems = getActionableUnits(safeWorkItems).filter(w => !w.assignee_id || targetUserIds.has(w.assignee_id));
-
-  // If viewing my own dashboard and marked absent, typically we clear Overdue/Not Started.
-  // But if Admin or viewing assistants, we still show them.
-  const shouldHideAlertsDueToAbsence = !readOnly && isAbsentToday;
 
   const getAssigneeName = (id) => safeProfiles.find(p => p.id === id)?.name || 'Unassigned';
 
   // 1. OVERDUE ALERT
-  const overdueItems = shouldHideAlertsDueToAbsence ? [] : actionableItems.filter(w => 
-    isOverdue(w) && w.status !== 'Completed' && !isItemExcludedByAbsence(w, safeAbsences)
+  const overdueItems = actionableItems.filter(w => 
+    isOverdue(w, today, leaveRequests) && w.status !== 'Completed'
   );
 
   // 2. NOT STARTED ALERT
-  const notStartedItems = shouldHideAlertsDueToAbsence ? [] : actionableItems.filter(w => {
-    if (getDisplayStatus(w) !== 'Not Started') return false;
-    if (isItemExcludedByAbsence(w, safeAbsences)) return false;
-    if (isOverdue(w)) return false; 
-    if (!w.expected_date) return false; 
-
-    const expectedDate = new Date(w.expected_date + 'T00:00:00');
-    const todayDate = new Date(today + 'T00:00:00');
-    const diffDays = Math.ceil((expectedDate - todayDate) / (1000 * 60 * 60 * 24));
-    
-    if (w.type === 'Checklist') {
-      return diffDays === 0;
-    } else {
-      return diffDays === 0 || diffDays === 1;
-    }
-  });
+  const notStartedItems = actionableItems.filter(w => 
+    isNotStarted(w, today)
+  );
 
   const groupByAssignee = (items) => {
     const map = {};
@@ -384,20 +386,13 @@ export default function MainDashboard() {
 
   // 3. TODAY FOCUS
   const todayFocusItems = actionableItems.filter(w => {
-    if (w.status === 'Completed') return false;
-    if (isOverdue(w)) return false;
-    if (!w.expected_date) return false;
-    const expectedDate = new Date(w.expected_date + 'T00:00:00');
-    const todayDate = new Date(today + 'T00:00:00');
-    const diffDays = Math.ceil((expectedDate - todayDate) / (1000 * 60 * 60 * 24));
-    return diffDays === 0;
+    return w.expected_date === today && w.status !== 'Completed';
   });
 
   const priorityOrder = { 'Critical': 4, 'High': 3, 'Medium': 2, 'Low': 1, undefined: 0, null: 0 };
   const sortItems = (items) => [...items].sort((a, b) => {
     const pDiff = (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
     if (pDiff !== 0) return pDiff;
-    // Recently assigned sorting fallback
     return (b.created_at || 'z').localeCompare(a.created_at || 'z');
   });
 
@@ -417,9 +412,39 @@ export default function MainDashboard() {
       time: w.updated_at ? new Date(w.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—',
     }));
 
-  const handleDashComplete = async ({ note, tag }) => {
+  // 5. EVENT CHECKLIST ALERTS
+  // Identify incomplete checklists under phases whose expected dates have passed.
+  const passedPhases = safeWorkItems.filter(w => 
+    w.type === 'Phase' && 
+    w.expected_date && 
+    today > w.expected_date && 
+    w.status !== 'Completed'
+  );
+  const passedPhaseIds = new Set(passedPhases.map(p => p.id));
+
+  const passedPhaseChecklists = actionableItems.filter(w => 
+    w.type === 'Checklist' && 
+    w.status !== 'Completed' && 
+    w.parent_id && 
+    passedPhaseIds.has(w.parent_id)
+  );
+
+  const handleDashComplete = async ({ note, tag, followUp }) => {
     if (!pendingCompleteItem) return;
     await completeWorkItem(pendingCompleteItem.id, { note, tag });
+    if (followUp?.title?.trim() && followUp?.dueDate) {
+      const sameContainerId = pendingCompleteItem.container_id || null;
+      await createFollowUpTask(pendingCompleteItem.id, {
+        title: followUp.title,
+        description: followUp.description,
+        dueDate: followUp.dueDate,
+        assigneeId: followUp.assigneeId,
+        priority: followUp.priority || 'Medium',
+        linkType: 'Continuation',
+        type: pendingCompleteItem.type || 'Task',
+        container_id: sameContainerId,
+      });
+    }
     setPendingCompleteItem(null);
   };
 
@@ -464,6 +489,48 @@ export default function MainDashboard() {
         </div>
       </div>
 
+      {/* Passed Phase Checklist Alerts */}
+      {passedPhaseChecklists.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden shadow-sm">
+          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-600 rounded-l-xl"></div>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 ml-2">
+              <span className="material-symbols-outlined text-red-600 font-bold" style={{fontVariationSettings:"'FILL' 1"}}>warning</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-red-800">Event Checklist Alert</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                There {passedPhaseChecklists.length === 1 ? 'is 1 checklist item' : `are ${passedPhaseChecklists.length} checklist items`} whose phase dates have passed but remain incomplete!
+              </p>
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-red-700 bg-red-100 px-2.5 py-1 rounded-full ml-2">
+              {passedPhaseChecklists.length} Overdue
+            </span>
+          </div>
+          <div className="ml-11 flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+            {passedPhaseChecklists.map(item => {
+              const parentPhase = safeWorkItems.find(p => p.id === item.parent_id);
+              const parentEvent = parentPhase?.container_id ? safeContainers.find(c => c.id === parentPhase.container_id) : null;
+              return (
+                <div key={item.id} className="flex items-center justify-between bg-white/60 hover:bg-white/80 p-2.5 rounded-lg border border-red-100 transition-colors">
+                  <div className="flex-1 min-w-0 mr-3">
+                    <p className="text-xs font-bold text-red-950 truncate">{item.title}</p>
+                    <p className="text-[10px] text-red-700/80 truncate">
+                      {parentEvent ? `${parentEvent.title} > ` : ''}{parentPhase?.title || 'Phase'} (Due: {item.expected_date ? fmtDate(item.expected_date) : 'N/A'})
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">
+                      Incomplete
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Absent Banner (For Assignee) */}
       {!isAdmin && viewMode === 'mine' && isAbsentToday && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-center gap-3 relative overflow-hidden">
@@ -473,12 +540,6 @@ export default function MainDashboard() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-purple-800">You are marked absent today</p>
-            {todayAbsence?.reason && (
-              <p className="text-xs text-purple-600 mt-0.5">{todayAbsence.reason}</p>
-            )}
-            {todayAbsence?.to_date && todayAbsence.to_date !== todayAbsence.from_date && (
-              <p className="text-xs text-purple-500 mt-0.5">Until {fmtDate(todayAbsence.to_date)}</p>
-            )}
           </div>
           <span className="text-[10px] font-black uppercase tracking-widest text-purple-500 bg-purple-100 px-2.5 py-1 rounded-full ml-2">Absent</span>
         </div>
@@ -538,64 +599,132 @@ export default function MainDashboard() {
         </div>
       )}
 
-      {/* 1. & 2. ALERTS */}
+      {/* Alerts columns */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         
         {/* Overdue Alert */}
-        <div className="bg-white rounded-xl shadow-sm border border-error/20 p-5 flex flex-col relative overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-error"></div>
-          <div className="flex items-center justify-between mb-4 ml-2">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-error" style={{fontVariationSettings: "'FILL' 1"}}>crisis_alert</span>
-              <h3 className="font-bold uppercase text-xs tracking-widest text-error">Overdue Alert</h3>
-            </div>
-            <span className="px-2 py-0.5 font-extrabold text-xs rounded bg-error/10 text-error">{overdueItems.length}</span>
-          </div>
-          <div className="ml-2 flex flex-col gap-3 flex-1 overflow-y-auto max-h-80 pr-1">
-            {overdueByAssignee.map(([assignee, group]) => (
-              <div key={assignee} className="flex flex-col gap-2 mb-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[14px]">person</span>{assignee}
-                  </span>
-                  <span className="text-[10px] font-black text-error bg-red-50 px-2 py-0.5 rounded-full">{group.count} items</span>
-                </div>
-                {group.items.map(w => (
-                  <WorkItemCard key={w.id} item={w} {...cardProps} onStart={!readOnly ? startWorkItem : undefined} onComplete={!readOnly ? setPendingCompleteItem : undefined} />
-                ))}
+        {showCountOnlyMode ? (
+          <div 
+            onClick={() => overdueItems.length > 0 && setDetailModalData({ title: 'My Overdue Tasks', items: overdueItems, type: 'Overdue' })}
+            className={`bg-white rounded-xl shadow-sm border border-error/20 p-5 flex flex-col relative overflow-hidden transition-all duration-200 select-none ${overdueItems.length > 0 ? 'cursor-pointer hover:shadow-md hover:border-error/45 group' : ''}`}
+          >
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-error animate-pulse"></div>
+            <div className="flex items-center justify-between mb-2 ml-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-error" style={{fontVariationSettings: "'FILL' 1"}}>crisis_alert</span>
+                <h3 className="font-bold uppercase text-xs tracking-widest text-error">Overdue Alert</h3>
               </div>
-            ))}
-            {overdueItems.length === 0 && <span className="text-sm font-medium text-slate-400 mt-2">Zero overdue items. Great work!</span>}
+              <span className="px-2 py-0.5 font-extrabold text-xs rounded bg-error/10 text-error">{overdueItems.length}</span>
+            </div>
+            <div className="ml-2 mt-4 flex items-center justify-between">
+              <div className="flex flex-col">
+                <p className="text-sm font-semibold text-on-surface">
+                  {overdueItems.length === 0 ? 'You have no overdue tasks' : `You have ${overdueItems.length} overdue task${overdueItems.length !== 1 ? 's' : ''}`}
+                </p>
+                {overdueItems.length > 0 && (
+                  <p className="text-xs text-error/85 mt-1.5 flex items-center gap-1 group-hover:underline">
+                    Click to view and complete them <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                  </p>
+                )}
+              </div>
+              {overdueItems.length > 0 && (
+                <span className="material-symbols-outlined text-error text-3xl opacity-20 group-hover:opacity-40 transition-opacity">error</span>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-error/20 p-5 flex flex-col relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-error"></div>
+            <div className="flex items-center justify-between mb-4 ml-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-error" style={{fontVariationSettings: "'FILL' 1"}}>crisis_alert</span>
+                <h3 className="font-bold uppercase text-xs tracking-widest text-error">Overdue Alert</h3>
+              </div>
+              <span className="px-2 py-0.5 font-extrabold text-xs rounded bg-error/10 text-error">{overdueItems.length}</span>
+            </div>
+            <div className="ml-2 flex flex-col gap-1 flex-1 overflow-y-auto max-h-80 pr-1">
+              {overdueByAssignee.map(([assignee, group]) => (
+                <button
+                  key={assignee}
+                  onClick={() => setDetailModalData({ title: `${assignee}'s Overdue Tasks`, items: group.items, type: 'Overdue' })}
+                  className="flex items-center justify-between p-2.5 rounded-xl hover:bg-red-50/50 border border-transparent hover:border-red-100 transition-all text-left w-full group"
+                >
+                  <span className="text-xs font-semibold text-on-surface flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:text-error">person</span>
+                    {assignee}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-black text-error bg-red-50 px-2 py-0.5 rounded-full">{group.count} Overdue</span>
+                    <span className="material-symbols-outlined text-[14px] text-error opacity-0 group-hover:opacity-100 transition-opacity">chevron_right</span>
+                  </div>
+                </button>
+              ))}
+              {overdueItems.length === 0 && <span className="text-sm font-medium text-slate-400 mt-2">Zero overdue items.</span>}
+            </div>
+          </div>
+        )}
 
         {/* Not Started Alert */}
-        <div className="bg-white rounded-xl shadow-sm border border-orange-700/20 p-5 flex flex-col relative overflow-hidden">
-          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-700"></div>
-          <div className="flex items-center justify-between mb-4 ml-2">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-orange-700" style={{fontVariationSettings: "'FILL' 1"}}>schedule</span>
-              <h3 className="font-bold uppercase text-xs tracking-widest text-orange-700">Not Started Alert</h3>
-            </div>
-            <span className="px-2 py-0.5 font-extrabold text-xs rounded bg-orange-700/10 text-orange-700">{notStartedItems.length}</span>
-          </div>
-          <div className="ml-2 flex flex-col gap-3 flex-1 overflow-y-auto max-h-80 pr-1">
-            {notStartedByAssignee.map(([assignee, group]) => (
-              <div key={assignee} className="flex flex-col gap-2 mb-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[14px]">person</span>{assignee}
-                  </span>
-                  <span className="text-[10px] font-black text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">{group.count} items</span>
-                </div>
-                {group.items.map(w => (
-                  <WorkItemCard key={w.id} item={w} {...cardProps} onStart={!readOnly ? startWorkItem : undefined} onComplete={!readOnly ? setPendingCompleteItem : undefined} />
-                ))}
+        {showCountOnlyMode ? (
+          <div 
+            onClick={() => notStartedItems.length > 0 && setDetailModalData({ title: 'My Not Started Tasks', items: notStartedItems, type: 'Not Started' })}
+            className={`bg-white rounded-xl shadow-sm border border-orange-700/20 p-5 flex flex-col relative overflow-hidden transition-all duration-200 select-none ${notStartedItems.length > 0 ? 'cursor-pointer hover:shadow-md hover:border-orange-700/40 group' : ''}`}
+          >
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-700"></div>
+            <div className="flex items-center justify-between mb-2 ml-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-orange-700" style={{fontVariationSettings: "'FILL' 1"}}>schedule</span>
+                <h3 className="font-bold uppercase text-xs tracking-widest text-orange-700">Not Started Alert</h3>
               </div>
-            ))}
-            {notStartedItems.length === 0 && <span className="text-sm font-medium text-slate-400 mt-2">All actionable items are ongoing.</span>}
+              <span className="px-2 py-0.5 font-extrabold text-xs rounded bg-orange-700/10 text-orange-700">{notStartedItems.length}</span>
+            </div>
+            <div className="ml-2 mt-4 flex items-center justify-between">
+              <div className="flex flex-col">
+                <p className="text-sm font-semibold text-on-surface">
+                  {notStartedItems.length === 0 ? 'All tasks are started' : `You have ${notStartedItems.length} task${notStartedItems.length !== 1 ? 's' : ''} not started`}
+                </p>
+                {notStartedItems.length > 0 && (
+                  <p className="text-xs text-orange-700/80 mt-1.5 flex items-center gap-1 group-hover:underline">
+                    Click to view and start them <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                  </p>
+                )}
+              </div>
+              {notStartedItems.length > 0 && (
+                <span className="material-symbols-outlined text-orange-700 text-3xl opacity-20 group-hover:opacity-40 transition-opacity">pending_actions</span>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-orange-700/20 p-5 flex flex-col relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-700"></div>
+            <div className="flex items-center justify-between mb-4 ml-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-orange-700" style={{fontVariationSettings: "'FILL' 1"}}>schedule</span>
+                <h3 className="font-bold uppercase text-xs tracking-widest text-orange-700">Not Started Alert</h3>
+              </div>
+              <span className="px-2 py-0.5 font-extrabold text-xs rounded bg-orange-700/10 text-orange-700">{notStartedItems.length}</span>
+            </div>
+            <div className="ml-2 flex flex-col gap-1 flex-1 overflow-y-auto max-h-80 pr-1">
+              {notStartedByAssignee.map(([assignee, group]) => (
+                <button
+                  key={assignee}
+                  onClick={() => setDetailModalData({ title: `${assignee}'s Not Started Tasks`, items: group.items, type: 'Not Started' })}
+                  className="flex items-center justify-between p-2.5 rounded-xl hover:bg-orange-50/50 border border-transparent hover:border-orange-100 transition-all text-left w-full group"
+                >
+                  <span className="text-xs font-semibold text-on-surface flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:text-orange-700">person</span>
+                    {assignee}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-black text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">{group.count} items</span>
+                    <span className="material-symbols-outlined text-[14px] text-orange-700 opacity-0 group-hover:opacity-100 transition-opacity">chevron_right</span>
+                  </div>
+                </button>
+              ))}
+              {notStartedItems.length === 0 && <span className="text-sm font-medium text-slate-400 mt-2">All items have started.</span>}
+            </div>
+          </div>
+        )}
 
       </div>
 
@@ -696,6 +825,35 @@ export default function MainDashboard() {
 
       {showAbsenceModal && (
         <AbsenceModal onClose={() => setShowAbsenceModal(false)} />
+      )}
+
+      {detailModalData && (
+        <DashboardDetailModal
+          data={detailModalData}
+          containers={safeContainers}
+          workItems={safeWorkItems}
+          profiles={safeProfiles}
+          currentUser={currentUser}
+          onClose={() => setDetailModalData(null)}
+          onStart={!readOnly ? startWorkItem : undefined}
+          onComplete={item => { if (!readOnly) { setPendingCompleteItem(item); setDetailModalData(null); } }}
+          onFollowUp={item => setFollowUpTarget(item)}
+          onViewDetail={setSelectedItemDetail}
+        />
+      )}
+
+      {followUpTarget && (
+        <FollowUpModal
+          completedItem={followUpTarget}
+          profiles={safeProfiles}
+          currentUser={currentUser}
+          onCancel={() => setFollowUpTarget(null)}
+          onConfirm={async (data) => {
+            await createFollowUpTask(followUpTarget.id, data);
+            setFollowUpTarget(null);
+            setDetailModalData(null);
+          }}
+        />
       )}
     </div>
   );

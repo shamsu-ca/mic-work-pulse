@@ -15,13 +15,37 @@ export default function LoginPage() {
     }
     setLoading(true);
     setError(null);
+    
     const rawId = loginId.trim().toLowerCase();
+    const cleanId = rawId.includes('@') ? rawId.split('@')[0] : rawId;
     const email = rawId.includes('@') ? rawId : `${rawId}@erp.mic`;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError("Invalid Login ID or password. Please try again.");
+
+    try {
+      const { data: userRecords, error: dbError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', cleanId);
+
+      if (dbError) {
+        console.error("Database lookup error:", dbError);
+      }
+
+      if (!userRecords || userRecords.length === 0) {
+        setError("Login ID not found");
+        setLoading(false);
+        return;
+      }
+
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) {
+        setError("Password incorrect");
+      }
+    } catch (err) {
+      console.error("Login process error:", err);
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

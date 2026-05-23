@@ -177,57 +177,11 @@ export function SupabaseDataProvider({ children, session }) {
     };
   }, [session?.user?.id]);
 
-  function shouldSubtaskSpawnToday(sub, parentTemplate, today) {
-    const rule = sub.recurrence_rule;
-    if (!rule || sub.last_generated_at === today) return false;
-    const currentDate = new Date(today);
-
-    if (rule.type === 'weekly' && rule.day !== undefined) {
-      if (currentDate.getDay() !== rule.day) return false;
-      if (!sub.last_generated_at) return true;
-      const diffDays = Math.ceil(Math.abs(currentDate - new Date(sub.last_generated_at)) / 86400000);
-      return diffDays >= 7;
-    }
-    if (rule.type === 'every_x_days' && rule.offset !== undefined) {
-      const parentLastGen = parentTemplate.last_generated_at;
-      if (!parentLastGen) return false;
-      const daysSinceParent = Math.ceil(Math.abs(currentDate - new Date(parentLastGen)) / 86400000);
-      if (daysSinceParent < rule.offset) return false;
-      if (!sub.last_generated_at) return true;
-      return new Date(sub.last_generated_at) < new Date(parentLastGen);
-    }
-    if (rule.type === 'monthly' && rule.date !== undefined) {
-      if (currentDate.getDate() !== rule.date) return false;
-      if (!sub.last_generated_at) return true;
-      const last = new Date(sub.last_generated_at);
-      return currentDate.getMonth() !== last.getMonth() || currentDate.getFullYear() !== last.getFullYear();
-    }
-    if (rule.type === 'every_x_months' && rule.date !== undefined) {
-      if (currentDate.getDate() !== rule.date) return false;
-      if (!sub.last_generated_at) return true;
-      const last = new Date(sub.last_generated_at);
-      const interval = parentTemplate.recurrence_rule?.interval ?? 1;
-      const monthDiff = (currentDate.getFullYear() - last.getFullYear()) * 12
-        + (currentDate.getMonth() - last.getMonth());
-      return monthDiff >= interval;
-    }
-    if (rule.type === 'x_monthly' && rule.monthly_day !== undefined) {
-      if (currentDate.getDate() !== rule.monthly_day) return false;
-      if (!sub.last_generated_at) return true;
-      const last = new Date(sub.last_generated_at);
-      const interval = parentTemplate.recurrence_rule?.x_month_interval ?? 1;
-      const monthDiff = (currentDate.getFullYear() - last.getFullYear()) * 12
-        + (currentDate.getMonth() - last.getMonth());
-      return monthDiff >= interval;
-    }
-    return false;
-  }
-
   // Reads from saved_tasks, spawns actual task entries into work_items
   const checkAndSpawnRecurringTasks = async (savedTasksList, currentLeaves = []) => {
     const today = new Date().toISOString().split('T')[0];
 
-    const isAbsentToday = (userId) => {
+    const isAbsentFullDayToday = (userId) => {
       if (!userId || !currentLeaves.length) return false;
       return currentLeaves.some(l => 
         l.user_id === userId && 
@@ -237,23 +191,34 @@ export function SupabaseDataProvider({ children, session }) {
       );
     };
 
+    const isAbsentHalfDayToday = (userId) => {
+      if (!userId || !currentLeaves.length) return false;
+      return currentLeaves.some(l => 
+        l.user_id === userId && 
+        l.status === 'Approved' && 
+        l.leave_type.startsWith('Half Day') && 
+        today >= l.from_date && today <= l.to_date
+      );
+    };
+
     // ── Phase A: parent templates ──────────────────────────────────────────
     let spawnedParents = [];
-    const templateToSpawn = {};
-    const templateAssignee = {};
 
-    const templates = savedTasksList.filter(w => w.is_recurring && w.is_active && !w.parent_id);
+    const templates = savedTasksList.filter(w => w.is_recurring && w.is_active && w.type !== 'Group');
     const candidateTemplates = [];
 
     for (const template of templates) {
       if (!template.recurrence_rule) continue;
       const lastGenerated = template.last_generated_at;
       if (lastGenerated === today) continue;
-      // Skip spawn if assignee is absent today
-      if (isAbsentToday(template.assignee_id)) continue;
+      
+      // Skip spawn if assignee has Full-Day leave today
+      if (isAbsentFullDayToday(template.assignee_id)) continue;
 
-      let shouldGenerate = false;
       const rule = template.recurrence_rule;
+      
+      // Half Day Leave: generate all recurring tasks normally
+      let shouldGenerate = false;
 
       if (!lastGenerated) {
         shouldGenerate = true;
@@ -304,10 +269,11 @@ export function SupabaseDataProvider({ children, session }) {
         const claimedList = candidateTemplates.filter(t => claimedIds.has(t.id));
 
         const toInsert = claimedList.map(t => ({
-          title: t.title, description: t.description, type: t.type,
+          title: t.title, description: t.description, type: 'Task',
           assignee_id: t.assignee_id, container_id: null,
           estimated_hours: t.estimated_hours, priority: t.priority,
           status: 'Assigned', expected_date: today, is_recurring: false,
+          parent_id: null,
         }));
 
         const { data: insertedParents, error } = await supabase.from('work_items').insert(toInsert).select();
@@ -315,76 +281,7 @@ export function SupabaseDataProvider({ children, session }) {
           console.error('Failed to spawn recurring tasks:', error);
         } else if (insertedParents?.length) {
           spawnedParents = insertedParents;
-          claimedList.forEach((t, i) => {
-            templateToSpawn[t.id] = insertedParents[i].id;
-            templateAssignee[t.id] = t.assignee_id;
-          });
-
-          // Persist last_spawned_id into each parent template's recurrence_rule
-          await Promise.all(claimedList.map((t, i) =>
-            supabase.from('saved_tasks')
-              .update({ recurrence_rule: { ...t.recurrence_rule, last_spawned_id: insertedParents[i].id } })
-              .eq('id', t.id)
-          ));
-
-          // Spawn "with parent" subtasks (recurrence_rule IS NULL)
-          const { data: withParentSubs } = await supabase
-            .from('saved_tasks').select('*')
-            .in('parent_id', claimedList.map(t => t.id))
-            .eq('type', 'Subtask')
-            .is('recurrence_rule', null);
-
-          if (withParentSubs?.length) {
-            await supabase.from('work_items').insert(withParentSubs.map(sub => ({
-              title: sub.title, description: sub.description, type: 'Subtask',
-              assignee_id: templateAssignee[sub.parent_id] ?? null,
-              priority: sub.priority, estimated_hours: sub.estimated_hours,
-              status: 'Assigned', expected_date: today, is_recurring: false,
-              parent_id: templateToSpawn[sub.parent_id],
-            })));
-          }
         }
-      }
-    }
-
-    // ── Phase B: day-specific subtask templates (always runs) ──────────────
-    const parentById = Object.fromEntries(
-      savedTasksList.filter(t => t.is_recurring && t.is_active).map(t => [t.id, t])
-    );
-    const candidateDaySubs = savedTasksList.filter(t =>
-      t.type === 'Subtask' && t.recurrence_rule !== null &&
-      t.is_active !== false && t.last_generated_at !== today
-    ).filter(sub => {
-      const p = parentById[sub.parent_id];
-      if (!p || isAbsentToday(p.assignee_id)) return false;
-      return shouldSubtaskSpawnToday(sub, p, today);
-    });
-
-    if (candidateDaySubs.length > 0) {
-      const { data: claimedDaySubs } = await supabase
-        .from('saved_tasks')
-        .update({ last_generated_at: today })
-        .in('id', candidateDaySubs.map(s => s.id))
-        .or(`last_generated_at.is.null,last_generated_at.neq.${today}`)
-        .select('id');
-
-      if (claimedDaySubs?.length) {
-        const claimedDayIds = new Set(claimedDaySubs.map(s => s.id));
-        const toInsertDay = candidateDaySubs.filter(s => claimedDayIds.has(s.id)).map(sub => {
-          const p = parentById[sub.parent_id];
-          const parentWorkItemId =
-            templateToSpawn[sub.parent_id] ??
-            p?.recurrence_rule?.last_spawned_id ?? null;
-          return {
-            title: sub.title, description: sub.description, type: 'Subtask',
-            assignee_id: p?.assignee_id ?? null,
-            priority: sub.priority, estimated_hours: sub.estimated_hours,
-            status: 'Assigned', expected_date: today, is_recurring: false,
-            parent_id: parentWorkItemId,
-          };
-        });
-        await supabase.from('work_items').insert(toInsertDay);
-        return [...spawnedParents, ...claimedDaySubs];
       }
     }
 
@@ -403,13 +300,13 @@ export function SupabaseDataProvider({ children, session }) {
     await supabase.from('work_items').update(updates).eq('id', itemId);
   };
 
-  const createFollowUpTask = async (completedItemId, { title, description, assigneeId, dueDate, priority, linkType, type, project_id }) => {
+  const createFollowUpTask = async (completedItemId, { title, description, assigneeId, dueDate, priority, linkType, type, container_id }) => {
     const { data, error } = await supabase.from('work_items').insert([{
       title, description: description || null,
       assignee_id: assigneeId || null, expected_date: dueDate || null,
       priority: priority || 'Medium', status: 'Assigned',
       type: type || 'Task',
-      project_id: project_id || null,
+      container_id: container_id || null,
       linked_to: completedItemId, link_type: linkType || null,
       created_by: currentUser?.id || null, is_recurring: false,
     }]).select();
@@ -678,33 +575,137 @@ export function SupabaseDataProvider({ children, session }) {
     return { error };
   };
 
+  const checkTodayStartedOrCompletedRecurringTasks = async (userId) => {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: templates } = await supabase
+      .from('saved_tasks')
+      .select('title')
+      .eq('assignee_id', userId)
+      .eq('is_recurring', true);
+      
+    if (!templates || templates.length === 0) return [];
+    const titles = templates.map(t => t.title);
+    
+    const { data: items } = await supabase
+      .from('work_items')
+      .select('title, status')
+      .eq('assignee_id', userId)
+      .eq('expected_date', today)
+      .eq('is_recurring', false)
+      .in('status', ['Ongoing', 'Completed'])
+      .in('title', titles);
+      
+    return items || [];
+  };
+
+  const deleteTodayGeneratedTasksForUser = async (userId, client = supabase) => {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: templates } = await client
+      .from('saved_tasks')
+      .select('title')
+      .eq('assignee_id', userId)
+      .eq('is_recurring', true);
+    
+    if (!templates || templates.length === 0) return;
+    const titles = templates.map(t => t.title);
+    
+    const { error } = await client
+      .from('work_items')
+      .delete()
+      .eq('assignee_id', userId)
+      .eq('expected_date', today)
+      .eq('is_recurring', false)
+      .eq('status', 'Assigned')
+      .in('title', titles);
+      
+    if (error) {
+      console.error("Error deleting auto-generated tasks on leave approval:", error);
+    } else {
+      setWorkItems(prev => prev.filter(w => 
+        !(w.assignee_id === userId && w.expected_date === today && !w.is_recurring && titles.includes(w.title) && w.status === 'Assigned')
+      ));
+    }
+  };
+
   // ── Leave Requests ────────────────────────────────────────────────────────
   const applyLeave = async (leaveData) => {
+    const isAdmin = currentUser?.role === 'Admin';
+    const targetUserId = leaveData.user_id || currentUser?.id;
     const payload = {
       ...leaveData,
-      user_id: currentUser?.id,
-      status: 'Pending'
+      user_id: targetUserId,
+      status: isAdmin ? 'Approved' : 'Pending',
+      approved_by: isAdmin ? currentUser?.id : null
     };
-    const { data, error } = await supabase.from('leave_requests').insert([payload]).select();
-    if (error) console.error('Error applying leave:', error);
-    else if (data) setLeaveRequests(prev => [...prev, ...data]);
+
+    if (payload.status === 'Approved') {
+      payload.approved_date = new Date().toISOString().split('T')[0];
+    }
+
+    const client = (isAdmin && supabaseAdmin) ? supabaseAdmin : supabase;
+    let result = await client.from('leave_requests').insert([payload]).select();
+    
+    // Graceful fallback if approved_date column does not exist
+    if (result.error && (result.error.message?.includes('approved_date') || result.error.code === 'PGRST204')) {
+      const { approved_date, ...cleanPayload } = payload;
+      result = await client.from('leave_requests').insert([cleanPayload]).select();
+    }
+    
+    const { data, error } = result;
+    if (error) {
+      console.error('Error applying leave:', error);
+    } else if (data) {
+      setLeaveRequests(prev => [...prev, ...data]);
+      if (payload.status === 'Approved' && payload.leave_type === 'Full Day') {
+        const today = new Date().toISOString().split('T')[0];
+        if (today >= payload.from_date && today <= payload.to_date) {
+          await deleteTodayGeneratedTasksForUser(targetUserId, client);
+        }
+      }
+    }
     return { data, error };
   };
 
   const updateLeaveRequest = async (id, updates) => {
+    const req = leaveRequests.find(l => l.id === id);
+    const isAdmin = currentUser?.role === 'Admin';
+
+    if (updates.status === 'Approved') {
+      updates.approved_date = new Date().toISOString().split('T')[0];
+      updates.approved_by = currentUser?.id;
+    }
+
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
-    const { data, error } = await supabase.from('leave_requests').update(updates).eq('id', id).select();
+    const client = (isAdmin && supabaseAdmin) ? supabaseAdmin : supabase;
+    let result = await client.from('leave_requests').update(updates).eq('id', id).select();
+    
+    // Graceful fallback if approved_date column does not exist
+    if (result.error && (result.error.message?.includes('approved_date') || result.error.code === 'PGRST204')) {
+      const { approved_date, ...cleanUpdates } = updates;
+      result = await client.from('leave_requests').update(cleanUpdates).eq('id', id).select();
+    }
+    
+    const { data, error } = result;
     if (error) {
       console.error('Error updating leave:', error);
       supabase.from('leave_requests').select('*').then(({ data: d }) => { if (d) setLeaveRequests(d); });
+    } else {
+      if (req && updates.status === 'Approved' && req.leave_type === 'Full Day') {
+        const today = new Date().toISOString().split('T')[0];
+        if (today >= req.from_date && today <= req.to_date) {
+          await deleteTodayGeneratedTasksForUser(req.user_id, client);
+        }
+      }
     }
     return { data, error };
   };
 
   const deleteLeaveRequest = async (id) => {
     if (!window.confirm("Are you sure you want to cancel this leave request?")) return { error: null };
+    const isAdmin = currentUser?.role === 'Admin';
     setLeaveRequests(prev => prev.filter(l => l.id !== id));
-    const { error } = await supabase.from('leave_requests').delete().eq('id', id);
+    const client = (isAdmin && supabaseAdmin) ? supabaseAdmin : supabase;
+    const { error } = await client.from('leave_requests').delete().eq('id', id);
     if (error) {
       console.error('Error deleting leave:', error);
       supabase.from('leave_requests').select('*').then(({ data: d }) => { if (d) setLeaveRequests(d); });
@@ -769,6 +770,7 @@ export function SupabaseDataProvider({ children, session }) {
       applyLeave,
       updateLeaveRequest,
       deleteLeaveRequest,
+      checkTodayStartedOrCompletedRecurringTasks,
       isUserAbsentOn,
       dateFilter,
       setDateFilter,

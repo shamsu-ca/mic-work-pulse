@@ -11,9 +11,10 @@ env.split('\n').forEach(line => {
 const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
 async function checkProfiles() {
-  const { data, error } = await supabaseAdmin.from('users').select('*').limit(1);
+  await supabaseAdmin.from('users').update({ username: 'superadmin' }).eq('id', '3be276e8-3837-43eb-b21e-3f7dbbbdbc05');
+  const { data, error } = await supabaseAdmin.from('users').select('*');
   if (error) console.error(error);
-  else console.log(data);
+  else console.log(JSON.stringify(data, null, 2));
 }
 
 checkProfiles();

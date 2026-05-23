@@ -1,9 +1,144 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isPhaseActive } from '../lib/statusUtils';
 import { fmtDate } from '../lib/dateUtils';
 import { StaffToggle } from '../components/common/FilterBar';
 import CompletionPanel from '../components/common/CompletionPanel';
+import FollowUpModal from '../components/common/FollowUpModal';
+
+function ActivityTimeline({ item, workItems }) {
+  const events = [];
+
+  events.push({
+    label: `${item.type || 'Task'} Created`,
+    date: item.created_at,
+    icon: 'add_circle',
+    color: 'text-blue-500 bg-blue-100',
+  });
+
+  if (item.status === 'Ongoing' || item.status === 'Completed') {
+    events.push({
+      label: `${item.type || 'Task'} Started`,
+      date: item.updated_at || item.created_at,
+      icon: 'play_circle',
+      color: 'text-indigo-500 bg-indigo-100',
+    });
+  }
+
+  if (item.status === 'Completed' && item.completed_at) {
+    events.push({
+      label: `${item.type || 'Task'} Completed`,
+      date: item.completed_at,
+      icon: 'check_circle',
+      color: 'text-green-500 bg-green-100',
+    });
+  }
+
+  const followUps = (workItems || []).filter(w => w.linked_to === item.id);
+  followUps.forEach(fu => {
+    events.push({
+      label: `Follow-up "${fu.title}" Created`,
+      date: fu.created_at,
+      icon: 'subdirectory_arrow_right',
+      color: 'text-purple-500 bg-purple-100',
+    });
+    if (fu.status === 'Completed' && fu.completed_at) {
+      events.push({
+        label: `Follow-up "${fu.title}" Completed`,
+        date: fu.completed_at,
+        icon: 'done_all',
+        color: 'text-emerald-500 bg-emerald-100',
+      });
+    }
+  });
+
+  events.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  return (
+    <div className="flex flex-col gap-3 mt-2 pl-1">
+      <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant flex items-center gap-1">
+        <span className="material-symbols-outlined text-[13px]">history</span>Activity Timeline
+      </span>
+      <div className="relative border-l-2 border-outline-variant/40 ml-2 pl-4 flex flex-col gap-3">
+        {events.map((ev, idx) => (
+          <div key={idx} className="relative flex items-start gap-3">
+            <div className={`absolute -left-[25px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white ${ev.color} flex-shrink-0 shadow-sm`}>
+              <span className="material-symbols-outlined text-[9px] font-bold">{ev.icon}</span>
+            </div>
+            <div className="flex-1 min-w-0 pt-0.5">
+              <p className="text-xs font-semibold text-on-surface leading-tight">{ev.label}</p>
+              <p className="text-[9px] text-on-surface-variant font-medium mt-0.5">
+                {new Date(ev.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExpandedItemDetails({ item, workItems, profiles, currentUser, onFollowUp, onViewDetail }) {
+  const sourceItem = item.linked_to ? (workItems || []).find(w => w.id === item.linked_to) : null;
+  const followUps = (workItems || []).filter(w => w.linked_to === item.id);
+
+  return (
+    <div className="px-5 py-4 flex flex-col gap-3 bg-slate-50/50 border-t border-b border-slate-100">
+      {sourceItem && (
+        <div className="flex items-center gap-2 bg-indigo-50/50 border border-indigo-150 rounded-xl px-4 py-2.5">
+          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Follow-up for:</span>
+          <button 
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onViewDetail && onViewDetail(sourceItem); }} 
+            className="text-xs font-bold text-indigo-950 hover:underline text-left"
+          >
+            {sourceItem.title}
+          </button>
+        </div>
+      )}
+
+      {item.description && <p className="text-sm text-on-surface-variant leading-relaxed">{item.description}</p>}
+
+      {followUps.length > 0 && (
+        <div className="flex flex-col gap-1.5 bg-indigo-50/20 border border-indigo-100/30 rounded-xl p-3.5 mt-1">
+          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1">
+            <span className="material-symbols-outlined text-[13px]">list_alt</span>Follow-up Items
+          </span>
+          <div className="flex flex-col gap-2 pl-1 border-l-2 border-indigo-200/50">
+            {followUps.map(fu => {
+              const fuDs = getDisplayStatus(fu);
+              const fuBadge = fuDs === 'Completed' ? 'bg-green-100 text-green-700' : fuDs === 'Overdue' ? 'bg-red-100 text-red-700' : 'bg-surface-container text-on-surface-variant';
+              const fuAssignee = (profiles || []).find(p => p.id === fu.assignee_id)?.name || 'Unassigned';
+              return (
+                <div key={fu.id} className="flex items-center justify-between text-xs gap-3 hover:bg-white/80 p-1.5 rounded transition-colors cursor-pointer" onClick={(e) => { e.stopPropagation(); onViewDetail && onViewDetail(fu); }}>
+                  <span className="font-semibold text-indigo-900 hover:underline flex-1 truncate">{fu.title}</span>
+                  <span className="text-[10px] text-on-surface-variant/80">{fuAssignee.split(' ')[0]}</span>
+                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${fuBadge}`}>{fuDs}</span>
+                  <span className="text-[10px] text-on-surface-variant/60">{fu.expected_date ? fmtDate(fu.expected_date) : '—'}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Activity Timeline */}
+      <ActivityTimeline item={item} workItems={workItems} />
+
+      {/* Create Follow-up Button */}
+      {currentUser?.role === 'Admin' && (
+        <button 
+          onClick={(e) => { e.stopPropagation(); onFollowUp(item); }} 
+          className="flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl self-start mt-2 shadow-sm transition-all active:scale-95"
+        >
+          <span className="material-symbols-outlined text-[16px]">add_circle</span> Create Follow-up
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Tiny helpers ─────────────────────────────────────────────────────────────
 
 // ─── Tiny helpers ─────────────────────────────────────────────────────────────
 const cName    = (c) => c?.title ?? 'Untitled';
@@ -171,16 +306,36 @@ export default function ProjectsEventsPage() {
   const [deployPhaseDates, setDeployPhaseDates] = useState({});
   const [editingItem, setEditingItem]         = useState(null);
   const [pendingCompleteItem, setPendingCompleteItem] = useState(null);
+  const [expandedItemId, setExpandedItemId] = useState(null);
+  const [followUpTarget, setFollowUpTarget] = useState(null);
+
+  const handleViewDetail = (item) => {
+    if (!item) return;
+    if (!item.container_id) {
+      // Standalone task, nothing to expand in ProjectsEventsPage
+      return;
+    }
+    const container = safeContainers.find(c => c.id === item.container_id);
+    if (!container) return;
+    setTypeTab(container.type === 'Project' ? 'Projects' : 'Events');
+    setModeTab(container.is_active === false ? 'History' : 'Active');
+    setExpandedId(container.id);
+    setExpandedItemId(item.id);
+  };
 
   const handleProjectComplete = async ({ note, tag, followUp }) => {
     if (!pendingCompleteItem) return;
     await completeWorkItem(pendingCompleteItem.id, { note, tag });
     if (followUp?.title?.trim() && followUp?.dueDate) {
       await createFollowUpTask(pendingCompleteItem.id, {
-        ...followUp,
+        title: followUp.title,
+        description: followUp.description,
+        dueDate: followUp.dueDate,
+        assigneeId: followUp.assigneeId,
+        priority: followUp.priority,
         linkType: 'Continuation',
         type: pendingCompleteItem.type || 'Task',
-        project_id: pendingCompleteItem.project_id || null,
+        container_id: pendingCompleteItem.container_id || null,
       });
     }
     setPendingCompleteItem(null);
@@ -270,7 +425,7 @@ export default function ProjectsEventsPage() {
 
   // ── Container actions ──────────────────────────────────────────────────────
   const mkContainer = (fields) => {
-    const p = { title: fields.title, type: fields.type, created_by: currentUser.id };
+    const p = { title: fields.title, type: fields.type, created_by: currentUser.id, is_active: true };
     if (fields.source_template_id) p.source_template_id = fields.source_template_id;
     return p;
   };
@@ -397,6 +552,7 @@ export default function ProjectsEventsPage() {
         <table className="w-full text-left text-sm">
           <thead className="text-[9px] uppercase font-bold tracking-widest text-on-surface-variant border-b border-surface-container-high">
             <tr>
+              <th className="w-8 px-2 py-2" />
               <th className="px-3 py-2">Milestone</th>
               <th className="px-3 py-2">Assignee</th>
               {showStatus && <th className="px-3 py-2">Status</th>}
@@ -406,56 +562,77 @@ export default function ProjectsEventsPage() {
           </thead>
           <tbody className="divide-y divide-surface-container-low">
             {milestones.length === 0 && (
-              <tr><td colSpan={showStatus ? 5 : 3} className="px-3 py-6 text-center text-on-surface-variant italic text-xs">No milestones yet.</td></tr>
+              <tr><td colSpan={showStatus ? 6 : 4} className="px-3 py-6 text-center text-on-surface-variant italic text-xs">No milestones yet.</td></tr>
             )}
             {milestones.map(m => {
               const ds = getDisplayStatus(m);
               const assignee = getProfile(m.assignee_id);
+              const isExpanded = expandedItemId === m.id;
               return (
-                <tr key={m.id} className="group hover:bg-surface-container-low/40 transition-colors">
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      {showStatus && <StatusDot ds={ds} />}
-                      <span className={`font-medium ${ds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{m.title}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {assignee ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary flex-shrink-0">{getInitials(assignee.name)}</div>
-                        <span className="text-xs text-on-surface-variant">{assignee.name.split(' ')[0]}</span>
+                <React.Fragment key={m.id}>
+                  <tr className="group hover:bg-surface-container-low/40 transition-colors cursor-pointer"
+                    onClick={() => setExpandedItemId(isExpanded ? null : m.id)}>
+                    <td className="w-8 px-2 py-2">
+                      <span className={`material-symbols-outlined text-[16px] text-on-surface-variant block transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        {showStatus && <StatusDot ds={ds} />}
+                        <span className={`font-medium ${ds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{m.title}</span>
                       </div>
-                    ) : <span className="text-xs text-on-surface-variant/50 italic">Unassigned</span>}
-                  </td>
-                  {showStatus && <td className="px-3 py-2.5">{statusBadge(ds)}</td>}
-                  {showStatus && <td className="px-3 py-2.5 text-xs text-on-surface-variant">{m.expected_date ? fmtDate(m.expected_date) : '—'}</td>}
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {showStatus && m.status === 'Assigned' && m.assignee_id === currentUser?.id && (
-                        <button onClick={() => updateAnyItem(m.id, { status: 'Ongoing' })}
-                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
-                          <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
-                        </button>
-                      )}
-                      {showStatus && m.status === 'Ongoing' && m.assignee_id === currentUser?.id && (
-                        <button onClick={() => setPendingCompleteItem(m)}
-                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
-                          <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
-                        </button>
-                      )}
-                      {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
-                        <button onClick={() => updateAnyItem(m.id, { expected_date: todayStr() })}
-                          className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">
-                          <span className="material-symbols-outlined text-[11px]">today</span>Set Today
-                        </button>
-                      )}
-                      {canManage && <button onClick={() => setEditingItem(m)} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
-                        <span className="material-symbols-outlined text-[15px]">edit</span>
-                      </button>}
-                      {canManage && <DeleteBtn onDelete={() => deleteAnyItem(m.id)} size="xs" />}
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {assignee ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary flex-shrink-0">{getInitials(assignee.name)}</div>
+                          <span className="text-xs text-on-surface-variant">{assignee.name.split(' ')[0]}</span>
+                        </div>
+                      ) : <span className="text-xs text-on-surface-variant/50 italic">Unassigned</span>}
+                    </td>
+                    {showStatus && <td className="px-3 py-2.5">{statusBadge(ds)}</td>}
+                    {showStatus && <td className="px-3 py-2.5 text-xs text-on-surface-variant">{m.expected_date ? fmtDate(m.expected_date) : '—'}</td>}
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                        {showStatus && m.status === 'Assigned' && m.assignee_id === currentUser?.id && (
+                          <button onClick={(e) => { e.stopPropagation(); updateAnyItem(m.id, { status: 'Ongoing' }); }}
+                            className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                            <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
+                          </button>
+                        )}
+                        {showStatus && m.status === 'Ongoing' && m.assignee_id === currentUser?.id && (
+                          <button onClick={(e) => { e.stopPropagation(); setPendingCompleteItem(m); }}
+                            className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                            <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
+                          </button>
+                        )}
+                        {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
+                          <button onClick={(e) => { e.stopPropagation(); updateAnyItem(m.id, { expected_date: todayStr() }); }}
+                            className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                            <span className="material-symbols-outlined text-[11px]">today</span>Set Today
+                          </button>
+                        )}
+                        {canManage && <button onClick={(e) => { e.stopPropagation(); setEditingItem(m); }} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+                          <span className="material-symbols-outlined text-[15px]">edit</span>
+                        </button>}
+                        {canManage && <DeleteBtn onDelete={() => deleteAnyItem(m.id)} size="xs" />}
+                      </div>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr key={`exp-${m.id}`}>
+                      <td colSpan={showStatus ? 6 : 4} className="bg-surface-container-low/10 border-b border-surface-container-high p-0">
+                        <ExpandedItemDetails
+                          item={m}
+                          workItems={safeWorkItems}
+                          profiles={safeProfiles}
+                          currentUser={currentUser}
+                          onFollowUp={(item) => setFollowUpTarget(item)}
+                          onViewDetail={handleViewDetail}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -478,6 +655,7 @@ export default function ProjectsEventsPage() {
         <table className="w-full text-left text-sm">
           <thead className="text-[9px] uppercase font-bold tracking-widest text-on-surface-variant border-b border-surface-container-high">
             <tr>
+              <th className="w-8 px-2 py-1.5" />
               <th className="px-3 py-1.5">Subject</th>
               <th className="px-3 py-1.5">Assignee</th>
               {showStatus && <th className="px-3 py-1.5">Status</th>}
@@ -486,57 +664,78 @@ export default function ProjectsEventsPage() {
           </thead>
           <tbody className="divide-y divide-surface-container-low">
             {items.length === 0 && (
-              <tr><td colSpan={showStatus ? 4 : 3} className="px-3 py-4 text-center text-on-surface-variant italic text-xs">No items.</td></tr>
+              <tr><td colSpan={showStatus ? 5 : 4} className="px-3 py-4 text-center text-on-surface-variant italic text-xs">No items.</td></tr>
             )}
             {(showStatus ? sortByStatus(items) : items).map(item => {
               const ds = getDisplayStatus(item);
               const assignee = getProfile(item.assignee_id);
+              const isExpanded = expandedItemId === item.id;
               return (
-                <tr key={item.id} className="group hover:bg-surface-container-low/40 transition-colors">
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
-                      {showStatus && <StatusDot ds={ds} />}
-                      <span className={`font-medium leading-tight ${ds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{item.title}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    {assignee ? (
-                      <div className="flex items-center gap-1">
-                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary flex-shrink-0">{getInitials(assignee.name)}</div>
-                        <span className="text-xs text-on-surface-variant">{assignee.name.split(' ')[0]}</span>
+                <React.Fragment key={item.id}>
+                  <tr className="group hover:bg-surface-container-low/40 transition-colors cursor-pointer"
+                    onClick={() => setExpandedItemId(isExpanded ? null : item.id)}>
+                    <td className="w-8 px-2 py-2">
+                      <span className={`material-symbols-outlined text-[16px] text-on-surface-variant block transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        {showStatus && <StatusDot ds={ds} />}
+                        <span className={`font-medium leading-tight ${ds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{item.title}</span>
                       </div>
-                    ) : <span className="text-xs text-on-surface-variant/50 italic">Unassigned</span>}
-                  </td>
-                  {showStatus && <td className="px-3 py-2">{statusBadge(ds)}</td>}
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {showStatus && item.status === 'Assigned' && item.assignee_id === currentUser?.id && (
-                        <button onClick={() => updateAnyItem(item.id, { status: 'Ongoing' })}
-                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
-                          <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
-                        </button>
-                      )}
-                      {showStatus && item.status === 'Ongoing' && item.assignee_id === currentUser?.id && (
-                        <button onClick={() => setPendingCompleteItem(item)}
-                          className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
-                          <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
-                        </button>
-                      )}
-                      {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
-                        <button onClick={() => updateAnyItem(item.id, { expected_date: todayStr() })}
-                          className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all opacity-0 group-hover:opacity-100">
-                          <span className="material-symbols-outlined text-[11px]">today</span>Set Today
-                        </button>
-                      )}
-                      {isAdmin && !showStatus && (
-                        <button onClick={() => setEditingItem(item)} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
-                          <span className="material-symbols-outlined text-[15px]">edit</span>
-                        </button>
-                      )}
-                      {isAdmin && <DeleteBtn onDelete={() => deleteAnyItem(item.id)} size="xs" />}
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-3 py-2">
+                      {assignee ? (
+                        <div className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-black text-primary flex-shrink-0">{getInitials(assignee.name)}</div>
+                          <span className="text-xs text-on-surface-variant">{assignee.name.split(' ')[0]}</span>
+                        </div>
+                      ) : <span className="text-xs text-on-surface-variant/50 italic">Unassigned</span>}
+                    </td>
+                    {showStatus && <td className="px-3 py-2">{statusBadge(ds)}</td>}
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                        {showStatus && item.status === 'Assigned' && item.assignee_id === currentUser?.id && (
+                          <button onClick={(e) => { e.stopPropagation(); updateAnyItem(item.id, { status: 'Ongoing' }); }}
+                            className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                            <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
+                          </button>
+                        )}
+                        {showStatus && item.status === 'Ongoing' && item.assignee_id === currentUser?.id && (
+                          <button onClick={(e) => { e.stopPropagation(); setPendingCompleteItem(item); }}
+                            className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
+                            <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
+                          </button>
+                        )}
+                        {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
+                          <button onClick={(e) => { e.stopPropagation(); updateAnyItem(item.id, { expected_date: todayStr() }); }}
+                            className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all opacity-0 group-hover:opacity-100">
+                            <span className="material-symbols-outlined text-[11px]">today</span>Set Today
+                          </button>
+                        )}
+                        {isAdmin && !showStatus && (
+                          <button onClick={(e) => { e.stopPropagation(); setEditingItem(item); }} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+                            <span className="material-symbols-outlined text-[15px]">edit</span>
+                          </button>
+                        )}
+                        {isAdmin && <DeleteBtn onDelete={() => deleteAnyItem(item.id)} size="xs" />}
+                      </div>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr key={`exp-${item.id}`}>
+                      <td colSpan={showStatus ? 5 : 4} className="bg-surface-container-low/10 border-b border-surface-container-high p-0">
+                        <ExpandedItemDetails
+                          item={item}
+                          workItems={safeWorkItems}
+                          profiles={safeProfiles}
+                          currentUser={currentUser}
+                          onFollowUp={(it) => setFollowUpTarget(it)}
+                          onViewDetail={handleViewDetail}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -892,33 +1091,53 @@ export default function ProjectsEventsPage() {
     const [editingRec, setEditingRec]     = useState(null);
     const [modalData, setModalData]       = useState({});
     const [saving, setSaving]             = useState(false);
-    const [expandedTplId, setExpandedTplId] = useState(null);
-    const [addingSubFor, setAddingSubFor] = useState(null);
-    const [subForm, setSubForm]           = useState({ title: '', assignee_id: '' });
-    const [subSaving, setSubSaving]       = useState(false);
-    const [editingSubItem, setEditingSubItem] = useState(null);
-    const [recStaffFilter, setRecStaffFilter] = useState('');
-    const [recTypeFilter, setRecTypeFilter]   = useState('');
+    const [expandedGroupId, setExpandedGroupId] = useState(null);
+    
+    // Group states
+    const [creatingGroup, setCreatingGroup] = useState(false);
+    const [groupTitle, setGroupTitle] = useState('');
+    const [editingGroup, setEditingGroup] = useState(null);
+    const [groupSaving, setGroupSaving] = useState(false);
+
+    // Task within Group states
+    const [addingTaskForGroup, setAddingTaskForGroup] = useState(null);
+    const [taskForm, setTaskForm] = useState({ title: '', assignee_id: '', recurrence_type: 'daily' });
+    const [taskSaving, setTaskSaving] = useState(false);
+    const [editingTask, setEditingTask] = useState(null);
 
     const canEdit = isAdmin || currentUser?.role === 'Manager';
-    const getTplSubtasks = (tplId) => safeSavedTasks.filter(w => w.parent_id === tplId && w.type === 'Subtask');
 
-    const displayedTemplates = recurringTemplates.filter(item => {
-      if (recStaffFilter && item.assignee_id !== recStaffFilter) return false;
-      if (recTypeFilter && item.recurrence_rule?.type !== recTypeFilter) return false;
-      return true;
-    });
+    const recurringGroups = safeSavedTasks.filter(w => w.type === 'Group');
+    const recurringTasks = safeSavedTasks.filter(w => w.is_recurring && w.type !== 'Group');
 
-    const handleAddSub = async (tplId) => {
-      if (!subForm.title.trim()) return;
-      setSubSaving(true);
+    const handleCreateGroup = async () => {
+      if (!groupTitle.trim()) return;
+      setGroupSaving(true);
       await addSavedTask({
-        title: subForm.title.trim(), type: 'Subtask',
-        parent_id: tplId, assignee_id: subForm.assignee_id || null,
-        status: 'Assigned', is_recurring: false,
+        title: groupTitle.trim(), type: 'Group',
+        is_recurring: false, is_active: true
       });
-      setSubForm({ title: '', assignee_id: '' });
-      setSubSaving(false); setAddingSubFor(null);
+      setGroupTitle(''); setCreatingGroup(false); setGroupSaving(false);
+    };
+
+    const handleEditGroup = async () => {
+      if (!editingGroup || !editingGroup.title.trim()) return;
+      setGroupSaving(true);
+      await updateSavedTask(editingGroup.id, { title: editingGroup.title.trim() });
+      setEditingGroup(null); setGroupSaving(false);
+    };
+
+    const handleAddTask = async (groupId) => {
+      if (!taskForm.title.trim()) return;
+      setTaskSaving(true);
+      await addSavedTask({
+        title: taskForm.title.trim(), type: 'Task',
+        parent_id: groupId, assignee_id: taskForm.assignee_id || null,
+        status: 'Assigned', is_recurring: true, is_active: true,
+        recurrence_rule: { type: taskForm.recurrence_type }
+      });
+      setTaskForm({ title: '', assignee_id: '', recurrence_type: 'daily' });
+      setTaskSaving(false); setAddingTaskForGroup(null);
     };
 
     const openEdit = (item) => {
@@ -1010,182 +1229,183 @@ export default function ProjectsEventsPage() {
             </div>
           </div>
         )}
-        {editingSubItem && (
-          <EditItemModal item={editingSubItem} profiles={safeProfiles}
-            onClose={() => setEditingSubItem(null)} onSave={updateSavedTask} />
-        )}
-        {(isAdmin || currentUser?.role === 'Manager') && (
-          <div className="flex items-center gap-3 flex-wrap">
-            <select value={recStaffFilter} onChange={e => setRecStaffFilter(e.target.value)}
-              className="border border-outline-variant/40 rounded-xl px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-primary/30">
-              <option value="">All Staff</option>
-              {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <select value={recTypeFilter} onChange={e => setRecTypeFilter(e.target.value)}
-              className="border border-outline-variant/40 rounded-xl px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-primary/30">
-              <option value="">All Recurrences</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="every_x_days">Every X Days</option>
-              <option value="every_x_months">Every X Months</option>
-            </select>
-            {(recStaffFilter || recTypeFilter) && (
-              <button onClick={() => { setRecStaffFilter(''); setRecTypeFilter(''); }}
-                className="flex items-center gap-1 text-xs font-bold text-on-surface-variant hover:text-error transition-colors">
-                <span className="material-symbols-outlined text-[13px]">close</span>Clear
-              </button>
-            )}
-          </div>
-        )}
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
-                <tr>
-                  <th className="w-8 px-3 py-3" />
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Recurrence</th>
-                  <th className="px-4 py-3">Last Generated</th>
-                  <th className="px-4 py-3">Assignee</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                  {canEdit && <th className="px-4 py-3 text-right">Actions</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-container-low">
-                {recurringTemplates.length === 0
-                  ? <tr><td colSpan={canEdit ? 7 : 6} className="px-6 py-16 text-center text-on-surface-variant font-bold text-sm">No recurring tasks configured.</td></tr>
-                  : displayedTemplates.length === 0
-                  ? <tr><td colSpan={canEdit ? 7 : 6} className="px-6 py-10 text-center text-on-surface-variant text-sm">No tasks match the selected filters.</td></tr>
-                  : displayedTemplates.map(item => {
-                    const aName    = safeProfiles.find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
-                    const initials = getInitials(aName);
-                    const isExpanded = expandedTplId === item.id;
-                    const subs = getTplSubtasks(item.id);
-                    const colSpan = canEdit ? 7 : 6;
-                    const canManageSubs = canEdit || item.assignee_id === currentUser?.id;
-                    return [
-                      <tr key={item.id} className={`transition-colors cursor-pointer ${isExpanded ? 'bg-surface-container-low/60' : 'hover:bg-surface-container-low/40'}`}
-                        onClick={() => setExpandedTplId(isExpanded ? null : item.id)}>
-                        <td className="w-8 px-3 py-3">
-                          <span className={`material-symbols-outlined text-[18px] text-on-surface-variant block transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-semibold text-on-surface">{item.title}</span>
-                            {subs.length > 0 && <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{subs.length} sub</span>}
-                          </div>
-                          {item.description && <p className="text-[11px] text-on-surface-variant line-clamp-1">{item.description}</p>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-bold text-on-surface-variant bg-surface-container px-2 py-1 rounded-lg">{getRecurrenceLabel(item.recurrence_rule)}</span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-on-surface-variant">{item.last_generated_at ?? '—'}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-6 h-6 rounded-full bg-surface-dim border border-outline-variant/30 flex items-center justify-center text-[9px] font-bold">{initials}</div>
-                            <span className="text-xs text-on-surface-variant">{aName.split(' ')[0]}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className={`text-[9px] font-black uppercase px-2 py-1 rounded ${item.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-container text-on-surface-variant'}`}>
-                            {item.is_active ? 'Active' : 'Paused'}
-                          </span>
-                        </td>
-                        {canEdit && (
-                          <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center gap-2 justify-end">
-                              {canManageSubs && (
-                                <button onClick={() => { setExpandedTplId(item.id); setAddingSubFor(item.id); }}
-                                  className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1">
-                                  <span className="material-symbols-outlined text-[13px]">add</span>Sub
-                                </button>
-                              )}
-                              <button onClick={() => openEdit(item)} className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all flex items-center gap-1">
-                                <span className="material-symbols-outlined text-[13px]">edit</span>Edit
-                              </button>
-                              <DeleteBtn onDelete={() => deleteSavedTask(item.id)} />
-                            </div>
-                          </td>
-                        )}
-                      </tr>,
-                      isExpanded && (
-                        <tr key={`exp-${item.id}`}>
-                          <td colSpan={colSpan} className="px-0 py-0 border-t border-primary/10">
-                            <div className="bg-surface-container-low/30 px-6 py-3 flex flex-col gap-2">
-                              {subs.length > 0 && (
-                                <table className="w-full text-left text-xs">
-                                  <thead className="text-[9px] uppercase font-bold text-on-surface-variant border-b border-outline-variant/20">
-                                    <tr>
-                                      <th className="py-1 pr-3">Title</th>
-                                      <th className="py-1 pr-3">Assignee</th>
-                                      <th className="py-1 pr-3">Due</th>
-                                      {canManageSubs && <th className="py-1 text-right">Actions</th>}
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-outline-variant/10">
-                                    {subs.map(sub => {
-                                      const subName = safeProfiles.find(p => p.id === sub.assignee_id)?.name ?? 'Unassigned';
-                                      return (
-                                        <tr key={sub.id} className="group">
-                                          <td className="py-1.5 pr-3 font-medium text-on-surface">{sub.title}</td>
-                                          <td className="py-1.5 pr-3 text-on-surface-variant">{subName.split(' ')[0]}</td>
-                                          <td className="py-1.5 pr-3 text-on-surface-variant">{sub.expected_date ? fmtDate(sub.expected_date) : '—'}</td>
-                                          {canManageSubs && (
-                                            <td className="py-1.5 text-right">
-                                              <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100">
-                                                <button onClick={() => setEditingSubItem(sub)} className="text-on-surface-variant hover:text-primary transition-colors">
-                                                  <span className="material-symbols-outlined text-[14px]">edit</span>
-                                                </button>
-                                                <DeleteBtn onDelete={() => deleteSavedTask(sub.id)} size="xs" />
-                                              </div>
-                                            </td>
-                                          )}
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              )}
-                              {canManageSubs && (
-                                addingSubFor === item.id ? (
-                                  <div className="flex items-center gap-2 flex-wrap pt-1">
-                                    <input autoFocus
-                                      className="border border-outline-variant/50 rounded-lg px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 flex-1 min-w-[160px]"
-                                      placeholder="Subtask title…"
-                                      value={subForm.title} onChange={e => setSubForm(f => ({ ...f, title: e.target.value }))}
-                                      onKeyDown={e => e.key === 'Enter' && handleAddSub(item.id)}
-                                    />
-                                    <select className="border border-outline-variant/50 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                      value={subForm.assignee_id} onChange={e => setSubForm(f => ({ ...f, assignee_id: e.target.value }))}>
-                                      <option value="">Same assignee</option>
-                                      {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                    <button onClick={() => handleAddSub(item.id)} disabled={subSaving || !subForm.title.trim()}
-                                      className="text-[10px] font-bold bg-primary text-white px-2.5 py-1 rounded-lg hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
-                                      {subSaving ? '…' : 'Add'}
-                                    </button>
-                                    <button onClick={() => { setAddingSubFor(null); setSubForm({ title: '', assignee_id: '' }); }}
-                                      className="text-[10px] font-bold border border-outline-variant/40 text-on-surface-variant px-2 py-1 rounded-lg hover:bg-surface-container whitespace-nowrap">
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button onClick={() => setAddingSubFor(item.id)} className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline self-start">
-                                    <span className="material-symbols-outlined text-[13px]">add_circle</span> Add Subtask
-                                  </button>
-                                )
-                              )}
-                            </div>
-                          </td>
+
+        <div className="flex flex-col gap-4">
+          {canEdit && (
+            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-outline-variant/30">
+              <div className="flex flex-col">
+                <span className="font-bold text-on-surface">Task Groups</span>
+                <span className="text-xs text-on-surface-variant">Organize recurring tasks into groups</span>
+              </div>
+              {!creatingGroup ? (
+                <button onClick={() => setCreatingGroup(true)} className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90">
+                  <span className="material-symbols-outlined text-[18px]">create_new_folder</span> New Group
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input autoFocus className={fieldCls + " py-1.5 min-w-[200px]"} value={groupTitle} onChange={e => setGroupTitle(e.target.value)} placeholder="Group Name..." />
+                  <button onClick={handleCreateGroup} disabled={groupSaving || !groupTitle.trim()} className="bg-primary text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50">Save</button>
+                  <button onClick={() => setCreatingGroup(false)} className="text-on-surface-variant px-3 py-1.5 rounded-lg text-sm font-bold border border-outline-variant/40 hover:bg-surface-container">Cancel</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {recurringGroups.map(group => {
+            const isExpanded = expandedGroupId === group.id;
+            const tasksInGroup = recurringTasks.filter(t => t.parent_id === group.id);
+            return (
+              <div key={group.id} className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+                <div className="px-4 py-3 bg-surface-container-lowest/50 border-b border-outline-variant/20 flex items-center justify-between cursor-pointer hover:bg-surface-container-low/40 transition-colors"
+                  onClick={() => setExpandedGroupId(isExpanded ? null : group.id)}>
+                  <div className="flex items-center gap-3">
+                    <span className={`material-symbols-outlined text-on-surface-variant transition-transform ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    <span className="material-symbols-outlined text-primary/70">folder</span>
+                    {editingGroup?.id === group.id ? (
+                      <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                        <input autoFocus className={fieldCls + " py-1 w-48 text-xs"} value={editingGroup.title} onChange={e => setEditingGroup({...editingGroup, title: e.target.value})} />
+                        <button onClick={handleEditGroup} className="text-primary font-bold text-xs">Save</button>
+                        <button onClick={() => setEditingGroup(null)} className="text-on-surface-variant font-bold text-xs">Cancel</button>
+                      </div>
+                    ) : (
+                      <span className="font-bold text-on-surface">{group.title}</span>
+                    )}
+                    <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">{tasksInGroup.length} items</span>
+                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setEditingGroup(group)} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>
+                      <DeleteBtn onDelete={() => deleteSavedTask(group.id)} />
+                    </div>
+                  )}
+                </div>
+                {isExpanded && (
+                  <div className="p-4 bg-surface-container-lowest">
+                    {tasksInGroup.length === 0 ? (
+                      <p className="text-xs text-center text-on-surface-variant py-4">No tasks in this group yet.</p>
+                    ) : (
+                      <table className="w-full text-left text-xs mb-3">
+                        <thead className="text-[10px] uppercase font-bold text-outline border-b border-outline-variant/30">
+                          <tr>
+                            <th className="py-2 px-3">Task Name</th>
+                            <th className="py-2 px-3">Assignee</th>
+                            <th className="py-2 px-3">Recurrence</th>
+                            <th className="py-2 px-3 text-center">Status</th>
+                            {canEdit && <th className="py-2 px-3 text-right">Actions</th>}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-outline-variant/10">
+                          {tasksInGroup.map(task => {
+                            const aName = safeProfiles.find(p => p.id === task.assignee_id)?.name ?? 'Unassigned';
+                            return (
+                              <tr key={task.id} className="hover:bg-surface-container-low/30">
+                                <td className="py-2 px-3 font-medium text-on-surface">{task.title}</td>
+                                <td className="py-2 px-3 text-on-surface-variant">{aName.split(' ')[0]}</td>
+                                <td className="py-2 px-3 text-on-surface-variant">{getRecurrenceLabel(task.recurrence_rule)}</td>
+                                <td className="py-2 px-3 text-center">
+                                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded ${task.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-container text-on-surface-variant'}`}>
+                                    {task.is_active ? 'Active' : 'Paused'}
+                                  </span>
+                                </td>
+                                {canEdit && (
+                                  <td className="py-2 px-3 text-right">
+                                    <div className="flex items-center gap-2 justify-end">
+                                      <button onClick={() => openEdit(task)} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>
+                                      <DeleteBtn onDelete={() => deleteSavedTask(task.id)} size="xs" />
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                    {canEdit && (
+                      addingTaskForGroup === group.id ? (
+                        <div className="flex items-center gap-2 bg-surface-container-low p-2 rounded-lg">
+                          <input autoFocus className={fieldCls + " py-1.5 text-xs flex-1"} placeholder="Task Title" value={taskForm.title} onChange={e => setTaskForm(f => ({...f, title: e.target.value}))} />
+                          <select className={fieldCls + " py-1.5 text-xs w-auto"} value={taskForm.assignee_id} onChange={e => setTaskForm(f => ({...f, assignee_id: e.target.value}))}>
+                            <option value="">Unassigned</option>
+                            {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                          <select className={fieldCls + " py-1.5 text-xs w-auto"} value={taskForm.recurrence_type} onChange={e => setTaskForm(f => ({...f, recurrence_type: e.target.value}))}>
+                            <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+                          </select>
+                          <button onClick={() => handleAddTask(group.id)} disabled={taskSaving || !taskForm.title.trim()} className="bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap">Save</button>
+                          <button onClick={() => setAddingTaskForGroup(null)} className="text-on-surface-variant px-3 py-1.5 border border-outline-variant/30 rounded-lg text-xs font-bold hover:bg-surface-container whitespace-nowrap">Cancel</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setAddingTaskForGroup(group.id)} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline px-3 mt-2">
+                          <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Recurring Task to Group
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Ungrouped Tasks */}
+          {(() => {
+            const ungrouped = recurringTasks.filter(t => !t.parent_id);
+            if (ungrouped.length === 0) return null;
+            const isExpanded = expandedGroupId === 'ungrouped';
+            return (
+              <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+                <div className="px-4 py-3 bg-surface-container-lowest/50 border-b border-outline-variant/20 flex items-center justify-between cursor-pointer hover:bg-surface-container-low/40 transition-colors"
+                  onClick={() => setExpandedGroupId(isExpanded ? null : 'ungrouped')}>
+                  <div className="flex items-center gap-3">
+                    <span className={`material-symbols-outlined text-on-surface-variant transition-transform ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    <span className="material-symbols-outlined text-outline">task</span>
+                    <span className="font-bold text-on-surface">Ungrouped Tasks</span>
+                    <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">{ungrouped.length} items</span>
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div className="p-4 bg-surface-container-lowest">
+                    <table className="w-full text-left text-xs mb-3">
+                      <thead className="text-[10px] uppercase font-bold text-outline border-b border-outline-variant/30">
+                        <tr>
+                          <th className="py-2 px-3">Task Name</th>
+                          <th className="py-2 px-3">Assignee</th>
+                          <th className="py-2 px-3">Recurrence</th>
+                          <th className="py-2 px-3 text-center">Status</th>
+                          {canEdit && <th className="py-2 px-3 text-right">Actions</th>}
                         </tr>
-                      ),
-                    ];
-                  })
-                }
-              </tbody>
-            </table>
-          </div>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant/10">
+                        {ungrouped.map(task => {
+                          const aName = safeProfiles.find(p => p.id === task.assignee_id)?.name ?? 'Unassigned';
+                          return (
+                            <tr key={task.id} className="hover:bg-surface-container-low/30">
+                              <td className="py-2 px-3 font-medium text-on-surface">{task.title}</td>
+                              <td className="py-2 px-3 text-on-surface-variant">{aName.split(' ')[0]}</td>
+                              <td className="py-2 px-3 text-on-surface-variant">{getRecurrenceLabel(task.recurrence_rule)}</td>
+                              <td className="py-2 px-3 text-center">
+                                <span className={`text-[9px] font-black uppercase px-2 py-1 rounded ${task.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-container text-on-surface-variant'}`}>
+                                  {task.is_active ? 'Active' : 'Paused'}
+                                </span>
+                              </td>
+                              {canEdit && (
+                                <td className="py-2 px-3 text-right">
+                                  <div className="flex items-center gap-2 justify-end">
+                                    <button onClick={() => openEdit(task)} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>
+                                    <DeleteBtn onDelete={() => deleteSavedTask(task.id)} size="xs" />
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </>
     );
@@ -1507,8 +1727,7 @@ export default function ProjectsEventsPage() {
         const tpl = deployModalTpl;
         const isEvent = tpl.type === 'Event';
         const phases = isEvent ? getSavedPhases(tpl.id) : [];
-        const allDated = phases.every(ph => !!deployPhaseDates[ph.id]);
-        const canDeploy = !isEvent || phases.length === 0 || allDated;
+        const canDeploy = true; // Phase dates are optional during deploy
         return (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4" onClick={() => setDeployModalTpl(null)}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" onClick={e => e.stopPropagation()}>
@@ -1538,7 +1757,6 @@ export default function ProjectsEventsPage() {
                     </div>
                     <input
                       type="date"
-                      required
                       className="border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary flex-shrink-0"
                       value={deployPhaseDates[ph.id] || ''}
                       onChange={e => setDeployPhaseDates(prev => ({ ...prev, [ph.id]: e.target.value }))}
@@ -1553,9 +1771,7 @@ export default function ProjectsEventsPage() {
               {deployError && (
                 <div className="mx-6 mb-2 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm font-medium rounded-xl">{deployError}</div>
               )}
-              {isEvent && !canDeploy && (
-                <p className="mx-6 mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 font-medium">Set a date for every phase to enable deploy.</p>
-              )}
+              {/* Optional dates warning removed */}
               <div className="flex justify-end gap-3 px-6 py-4 border-t border-surface-container">
                 <button className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={() => { setDeployModalTpl(null); setDeployError(null); }} disabled={deploying}>Cancel</button>
                 <button
@@ -1580,6 +1796,20 @@ export default function ProjectsEventsPage() {
           currentUser={currentUser}
           onConfirm={handleProjectComplete}
           onCancel={() => setPendingCompleteItem(null)}
+        />
+      )}
+
+      {followUpTarget && (
+        <FollowUpModal
+          completedItem={followUpTarget}
+          profiles={safeProfiles}
+          currentUser={currentUser}
+          onCancel={() => setFollowUpTarget(null)}
+          onConfirm={async (data) => {
+            await createFollowUpTask(followUpTarget.id, data);
+            setExpandedItemId(null);
+            setFollowUpTarget(null);
+          }}
         />
       )}
 

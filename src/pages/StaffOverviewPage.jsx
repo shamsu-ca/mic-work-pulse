@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
-import { getDisplayStatus, getActionableUnits } from '../lib/statusUtils';
+import { getDisplayStatus, getActionableUnits, calculateUserEfficiency } from '../lib/statusUtils';
 import { fmtDate } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 
@@ -202,74 +202,397 @@ function CredentialsModal({ name, loginId, password, onClose }) {
 }
 
 function LeaveManagementTab({ leaveRequests, profiles, updateLeaveRequest, deleteLeaveRequest }) {
+  const [subTab, setSubTab] = useState('Pending');
+  const [remarks, setRemarks] = useState({});
+  const [printingLeave, setPrintingLeave] = useState(null);
+
+  // Calendar states
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+
+  const today = new Date().toISOString().split('T')[0];
+
   const pendingLeaves = leaveRequests.filter(l => l.status === 'Pending');
-  const approvedLeaves = leaveRequests.filter(l => l.status === 'Approved');
+  const approvedToday = leaveRequests.filter(l => l.status === 'Approved' && today >= l.from_date && today <= l.to_date);
+  const upcomingLeaves = leaveRequests.filter(l => l.status === 'Approved' && l.from_date > today);
+  const leaveHistory = leaveRequests.filter(l => l.status === 'Rejected' || (l.status === 'Approved' && l.to_date < today));
 
   const getProfile = (id) => profiles.find(p => p.id === id);
 
+  const handleStatusChange = async (id, status) => {
+    const remark = remarks[id] || '';
+    await updateLeaveRequest(id, { status, admin_remark: remark });
+    setRemarks(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const triggerPrint = (leave) => {
+    setPrintingLeave(leave);
+    setTimeout(() => {
+      window.print();
+      setPrintingLeave(null);
+    }, 150);
+  };
+
+  const calculateTotalDays = (fromStr, toStr) => {
+    if (!fromStr || !toStr) return 0;
+    const from = new Date(fromStr + 'T00:00:00');
+    const to = new Date(toStr + 'T00:00:00');
+    const diffTime = to - from;
+    if (diffTime < 0) return 0;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  };
+
+  // Calendar helpers
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
+
+  const handlePrevMonth = () => {
+    if (currentMonth === 0) {
+      setCurrentMonth(11);
+      setCurrentYear(prev => prev - 1);
+    } else {
+      setCurrentMonth(prev => prev - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (currentMonth === 11) {
+      setCurrentMonth(0);
+      setCurrentYear(prev => prev + 1);
+    } else {
+      setCurrentMonth(prev => prev + 1);
+    }
+  };
+
+  const renderCalendarDays = () => {
+    const cells = [];
+    // padding cells
+    for (let i = 0; i < firstDayIndex; i++) {
+      cells.push(<div key={`pad-${i}`} className="bg-slate-50 border border-slate-100 min-h-[80px]"></div>);
+    }
+    // actual days
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const activeLeaves = leaveRequests.filter(l => l.status === 'Approved' && dateStr >= l.from_date && dateStr <= l.to_date);
+
+      cells.push(
+        <div key={`day-${day}`} className={`bg-white border border-outline-variant/20 p-2 min-h-[90px] flex flex-col gap-1 ${dateStr === today ? 'bg-primary/5 ring-1 ring-primary/30' : ''}`}>
+          <div className="flex justify-between items-center">
+            <span className={`text-xs font-bold ${dateStr === today ? 'text-primary bg-primary/10 w-5 h-5 rounded-full flex items-center justify-center' : 'text-on-surface-variant'}`}>{day}</span>
+          </div>
+          <div className="flex flex-col gap-0.5 overflow-y-auto max-h-[70px] custom-scrollbar">
+            {activeLeaves.map(l => {
+              const prof = getProfile(l.user_id);
+              const initials = prof ? prof.name.split(' ')[0] : 'Unknown';
+              let badgeCls = 'bg-red-50 text-red-700 border-red-100';
+              if (l.leave_type === 'Half Day AM') badgeCls = 'bg-blue-50 text-blue-700 border-blue-100';
+              if (l.leave_type === 'Half Day PM') badgeCls = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+              
+              return (
+                <div key={l.id} className={`text-[9px] font-bold px-1 py-0.5 rounded border truncate ${badgeCls}`} title={`${prof?.name || 'Unknown'} (${l.leave_type})`}>
+                  {initials} ({l.leave_type === 'Full Day' ? 'FD' : l.leave_type === 'Half Day AM' ? 'AM' : 'PM'})
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+    return cells;
+  };
+
+  const printingLeaveUser = printingLeave ? getProfile(printingLeave.user_id) : null;
+  const approvedByProfile = printingLeave ? profiles?.find(p => p.id === printingLeave.approved_by) : null;
+  const printDays = printingLeave ? calculateTotalDays(printingLeave.from_date, printingLeave.to_date) : 0;
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
-        <div className="px-6 py-4 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
-           <div className="flex items-center gap-3">
-             <span className="material-symbols-outlined text-amber-600">pending_actions</span>
-             <h2 className="font-bold text-lg text-amber-900">Pending Requests</h2>
-           </div>
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #print-leave-application, #print-leave-application * {
+            visibility: visible !important;
+          }
+          #print-leave-application {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 20px !important;
+            background: white !important;
+            color: black !important;
+          }
+        }
+      `}</style>
+
+      {/* Hidden A4 Print View */}
+      {printingLeave && (
+        <div id="print-leave-application" className="hidden print:block p-8 bg-white text-black font-sans" style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}>
+          <div className="text-center border-b-2 border-slate-800 pb-4 mb-6">
+            <h1 className="text-2xl font-bold uppercase tracking-wide">Malabar Islamic Complex</h1>
+            <p className="text-xs uppercase tracking-widest text-slate-600 mt-1">Mahinabad, Chattanchal</p>
+          </div>
+          <div className="text-center mb-6">
+            <h2 className="text-lg font-bold uppercase underline">Employee Leave Application</h2>
+          </div>
+          <div className="grid grid-cols-2 gap-y-3 gap-x-6 mb-8 text-sm">
+            <div className="border-b pb-1 flex justify-between">
+              <span className="font-semibold text-slate-700">Employee Name:</span>
+              <span>{printingLeaveUser?.name || '—'}</span>
+            </div>
+            <div className="border-b pb-1 flex justify-between">
+              <span className="font-semibold text-slate-700">Department:</span>
+              <span>{printingLeaveUser?.department || '—'}</span>
+            </div>
+            <div className="border-b pb-1 flex justify-between">
+              <span className="font-semibold text-slate-700">Role / Designation:</span>
+              <span>{printingLeaveUser?.position || printingLeaveUser?.role || '—'}</span>
+            </div>
+            <div className="border-b pb-1 flex justify-between">
+              <span className="font-semibold text-slate-700">Applied Date:</span>
+              <span>{printingLeave.created_at ? new Date(printingLeave.created_at).toLocaleDateString() : '—'}</span>
+            </div>
+          </div>
+          <div className="border border-slate-300 rounded-lg p-4 mb-8 bg-slate-50 text-sm">
+            <h3 className="font-bold text-base border-b pb-1.5 mb-3 text-slate-800">Leave Details</h3>
+            <div className="grid grid-cols-2 gap-y-2">
+              <div><strong className="text-slate-700">Leave Type:</strong> {printingLeave.leave_type}</div>
+              <div><strong className="text-slate-700">Total Days:</strong> {printDays} day{printDays > 1 ? 's' : ''}</div>
+              <div><strong className="text-slate-700">From Date:</strong> {printingLeave.from_date}</div>
+              <div><strong className="text-slate-700">To Date:</strong> {printingLeave.to_date}</div>
+            </div>
+            {printingLeave.reason && (
+              <div className="mt-3">
+                <strong className="text-slate-700">Reason:</strong>
+                <p className="mt-1 bg-white p-2 border rounded text-slate-800 italic">"{printingLeave.reason}"</p>
+              </div>
+            )}
+          </div>
+          <div className="border border-slate-300 rounded-lg p-4 mb-12 bg-slate-50 text-sm">
+            <h3 className="font-bold text-base border-b pb-1.5 mb-3 text-slate-800">Approval Details</h3>
+            <div className="grid grid-cols-2 gap-y-2">
+              <div><strong className="text-slate-700">Status:</strong> {printingLeave.status}</div>
+              <div><strong className="text-slate-700">Approved By:</strong> {approvedByProfile?.name || 'Admin'}</div>
+              {printingLeave.status === 'Approved' && (
+                <div><strong className="text-slate-700">Approved Date:</strong> {printingLeave.approved_date || (printingLeave.created_at ? new Date(printingLeave.created_at).toLocaleDateString() : '—')}</div>
+              )}
+            </div>
+            {printingLeave.admin_remark && (
+              <div className="mt-3">
+                <strong className="text-slate-700">Remarks:</strong>
+                <p className="mt-1 bg-white p-2 border rounded text-slate-800">"{printingLeave.admin_remark}"</p>
+              </div>
+            )}
+          </div>
+          <div className="mt-20 grid grid-cols-2 gap-12 text-sm pt-8 border-t border-dashed border-slate-300">
+            <div className="text-center">
+              <div className="h-12 border-b border-slate-400 mb-2"></div>
+              <p className="font-bold text-slate-800">Employee Signature</p>
+              <p className="text-xs text-slate-500 mt-0.5">Date: ____________________</p>
+            </div>
+            <div className="text-center">
+              <div className="h-12 border-b border-slate-400 mb-2"></div>
+              <p className="font-bold text-slate-800">Authorized Admin Signature</p>
+              <p className="text-xs text-slate-500 mt-0.5">Date: ____________________</p>
+            </div>
+          </div>
         </div>
-        <div className="p-0">
+      )}
+
+      {/* Sub tabs list */}
+      <div className="flex bg-surface-container rounded-xl p-1 gap-0.5 self-start">
+        {['Pending', 'Approved Today', 'Upcoming', 'History', 'Calendar'].map(t => (
+          <button
+            key={t}
+            onClick={() => setSubTab(t)}
+            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
+              subTab === t ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'Pending' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
+          <div className="px-6 py-4 bg-amber-50 border-b border-amber-100">
+            <h2 className="font-bold text-sm text-amber-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">pending_actions</span> Pending Requests
+            </h2>
+          </div>
           {pendingLeaves.length === 0 ? (
             <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No pending requests.</p>
           ) : (
              <ul className="divide-y divide-surface-container-low">
                 {pendingLeaves.map(leave => (
-                   <li key={leave.id} className="p-4 flex items-center justify-between hover:bg-surface-container-low/30">
+                   <li key={leave.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-surface-container-low/30">
                       <div>
                          <p className="font-bold text-sm text-on-surface">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
                          <p className="text-[11px] font-bold text-amber-700 uppercase mt-0.5">{leave.leave_type} | {leave.from_date} to {leave.to_date}</p>
                          <p className="text-xs text-on-surface-variant mt-1">"{leave.reason || 'No reason provided'}"</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => updateLeaveRequest(leave.id, { status: 'Approved' })} className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-xl hover:bg-green-200 transition-colors">Approve</button>
-                        <button onClick={() => updateLeaveRequest(leave.id, { status: 'Rejected' })} className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-bold rounded-xl hover:bg-red-200 transition-colors">Reject</button>
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                         <input 
+                           type="text" 
+                           placeholder="Admin Remarks (optional)" 
+                           className="bg-slate-50 border border-outline-variant rounded-lg px-3 py-1.5 text-xs focus:outline-none"
+                           value={remarks[leave.id] || ''}
+                           onChange={e => setRemarks({ ...remarks, [leave.id]: e.target.value })}
+                         />
+                         <div className="flex justify-end gap-2">
+                           <button onClick={() => handleStatusChange(leave.id, 'Approved')} className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-xl hover:bg-green-200 transition-colors">Approve</button>
+                           <button onClick={() => handleStatusChange(leave.id, 'Rejected')} className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-bold rounded-xl hover:bg-red-200 transition-colors">Reject</button>
+                         </div>
                       </div>
                    </li>
                 ))}
              </ul>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
-        <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
-           <div className="flex items-center gap-3">
-             <span className="material-symbols-outlined text-blue-600">event_available</span>
-             <h2 className="font-bold text-lg text-blue-900">Approved Leaves</h2>
-           </div>
-           <button onClick={() => window.print()} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 hover:bg-blue-700 transition-colors">
-             <span className="material-symbols-outlined text-[14px]">print</span> Print Report
-           </button>
-        </div>
-        <div className="p-0">
-          {approvedLeaves.length === 0 ? (
-            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No approved leaves.</p>
+      {subTab === 'Approved Today' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
+          <div className="px-6 py-4 bg-green-50 border-b border-green-100">
+            <h2 className="font-bold text-sm text-green-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">event_available</span> Active Approved Leaves Today
+            </h2>
+          </div>
+          {approvedToday.length === 0 ? (
+            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No active leaves today.</p>
           ) : (
              <ul className="divide-y divide-surface-container-low">
-                {approvedLeaves.map(leave => (
+                {approvedToday.map(leave => (
+                   <li key={leave.id} className="p-4 flex items-center justify-between hover:bg-surface-container-low/30">
+                      <div>
+                         <p className="font-bold text-sm text-on-surface">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
+                         <p className="text-[11px] font-bold text-green-700 uppercase mt-0.5">{leave.leave_type} | {leave.from_date} to {leave.to_date}</p>
+                         <p className="text-xs text-on-surface-variant mt-1">"{leave.reason || 'No reason provided'}"</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => triggerPrint(leave)} className="text-slate-600 hover:bg-slate-100 p-2 rounded-lg transition-colors flex items-center justify-center" title="Print Leave Document">
+                           <span className="material-symbols-outlined text-[18px]">print</span>
+                        </button>
+                        <button onClick={() => deleteLeaveRequest(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
+                           <span className="material-symbols-outlined text-[18px]">delete</span>
+                        </button>
+                      </div>
+                   </li>
+                ))}
+             </ul>
+          )}
+        </div>
+      )}
+
+      {subTab === 'Upcoming' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
+          <div className="px-6 py-4 bg-blue-50 border-b border-blue-100">
+            <h2 className="font-bold text-sm text-blue-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">calendar_today</span> Upcoming Leaves
+            </h2>
+          </div>
+          {upcomingLeaves.length === 0 ? (
+            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No upcoming leaves scheduled.</p>
+          ) : (
+             <ul className="divide-y divide-surface-container-low">
+                {upcomingLeaves.map(leave => (
                    <li key={leave.id} className="p-4 flex items-center justify-between hover:bg-surface-container-low/30">
                       <div>
                          <p className="font-bold text-sm text-on-surface">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
                          <p className="text-[11px] font-bold text-blue-700 uppercase mt-0.5">{leave.leave_type} | {leave.from_date} to {leave.to_date}</p>
                          <p className="text-xs text-on-surface-variant mt-1">"{leave.reason || 'No reason provided'}"</p>
                       </div>
-                      <button onClick={() => deleteLeaveRequest(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
-                         <span className="material-symbols-outlined text-[18px]">delete</span>
-                      </button>
+                      <div className="flex gap-2">
+                        <button onClick={() => triggerPrint(leave)} className="text-slate-600 hover:bg-slate-100 p-2 rounded-lg transition-colors flex items-center justify-center" title="Print Leave Document">
+                           <span className="material-symbols-outlined text-[18px]">print</span>
+                        </button>
+                        <button onClick={() => deleteLeaveRequest(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
+                           <span className="material-symbols-outlined text-[18px]">delete</span>
+                        </button>
+                      </div>
                    </li>
                 ))}
              </ul>
           )}
         </div>
-      </div>
+      )}
+
+      {subTab === 'History' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 overflow-hidden">
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
+            <h2 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">history</span> Leave History
+            </h2>
+          </div>
+          {leaveHistory.length === 0 ? (
+            <p className="p-6 text-center text-sm text-on-surface-variant font-medium">No leave history records.</p>
+          ) : (
+             <ul className="divide-y divide-surface-container-low">
+                {leaveHistory.map(leave => (
+                   <li key={leave.id} className="p-4 flex items-center justify-between hover:bg-surface-container-low/30">
+                      <div>
+                         <div className="flex items-center gap-2">
+                            <p className="font-bold text-sm text-on-surface">{getProfile(leave.user_id)?.name || 'Unknown'}</p>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${leave.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{leave.status}</span>
+                         </div>
+                         <p className="text-[11px] font-bold text-on-surface-variant uppercase mt-0.5">{leave.leave_type} | {leave.from_date} to {leave.to_date}</p>
+                         <p className="text-xs text-on-surface-variant mt-1">"{leave.reason || 'No reason provided'}"</p>
+                         {leave.admin_remark && <p className="text-xs text-slate-600 mt-1 font-semibold">Remarks: "{leave.admin_remark}"</p>}
+                      </div>
+                      <div className="flex gap-2">
+                        {leave.status === 'Approved' && (
+                          <button onClick={() => triggerPrint(leave)} className="text-slate-600 hover:bg-slate-100 p-2 rounded-lg transition-colors flex items-center justify-center" title="Print Leave Document">
+                             <span className="material-symbols-outlined text-[18px]">print</span>
+                          </button>
+                        )}
+                        <button onClick={() => deleteLeaveRequest(leave.id)} className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Delete Leave">
+                           <span className="material-symbols-outlined text-[18px]">delete</span>
+                        </button>
+                      </div>
+                   </li>
+                ))}
+             </ul>
+          )}
+        </div>
+      )}
+
+      {subTab === 'Calendar' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/40 p-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-base text-on-surface flex items-center gap-2 font-headline">
+              <span className="material-symbols-outlined text-primary">calendar_month</span> {monthNames[currentMonth]} {currentYear}
+            </h2>
+            <div className="flex gap-1">
+              <button onClick={handlePrevMonth} className="p-1.5 hover:bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface-variant hover:text-on-surface transition-colors">
+                <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+              </button>
+              <button onClick={handleNextMonth} className="p-1.5 hover:bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface-variant hover:text-on-surface transition-colors">
+                <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-px bg-slate-100 border border-slate-200 rounded-xl overflow-hidden shadow-inner">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+              <div key={d} className="bg-slate-50 py-2 text-center text-[10px] font-black uppercase text-on-surface-variant tracking-wider">{d}</div>
+            ))}
+            {renderCalendarDays()}
+          </div>
+          <div className="flex items-center gap-4 text-[10px] font-bold text-on-surface-variant justify-center border-t border-surface-container pt-3">
+             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-red-100 border border-red-200 block"></span> Full Day</span>
+             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-blue-100 border border-blue-200 block"></span> Half Day AM</span>
+             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-indigo-100 border border-indigo-200 block"></span> Half Day PM</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -473,43 +796,24 @@ export default function StaffOverviewPage() {
     const tasks = getActionableUnits(allTasks); // live view — no date filter
 
     let assigned = 0, notStarted = 0, ongoing = 0, completed = 0, overdue = 0;
-    let earlyCount = 0, onTimeCount = 0, lateCount = 0;
-    let latePenaltyReduction = 0; // for half-day leaves
 
     tasks.forEach(t => {
       const ds = getDisplayStatus(t);
-      if (ds === 'Completed') {
-        completed++;
-        if (t.expected_date && t.completed_at) {
-          const expected = new Date(t.expected_date).toISOString().split('T')[0];
-          const completedDate = new Date(t.completed_at).toISOString().split('T')[0];
-          if (completedDate < expected) earlyCount++;
-          else if (completedDate === expected) onTimeCount++;
-          else {
-            const hasHalfDay = leaveRequests?.some(l => 
-              l.user_id === staffId && l.status === 'Approved' && 
-              l.leave_type.startsWith('Half Day') &&
-              expected >= l.from_date && expected <= l.to_date
-            );
-            if (hasHalfDay) latePenaltyReduction += 0.25;
-            lateCount++;
-          }
-        } else {
-           onTimeCount++;
-        }
-      }
+      if (ds === 'Completed') completed++;
       else if (ds === 'Overdue') overdue++;
       else if (ds === 'Ongoing') ongoing++;
       else if (ds === 'Not Started') notStarted++;
       else assigned++; // 'Assigned' — not yet at trigger date
     });
 
-    const totalDueWork = tasks.length;
-    let efficiency = 0;
-    if (totalDueWork > 0) {
-       let score = (earlyCount * 1.0) + (onTimeCount * 1.0) + (lateCount * 0.5) + latePenaltyReduction;
-       efficiency = Math.round((score / totalDueWork) * 100);
-    }
+    const efficiency = calculateUserEfficiency(tasks, leaveRequests);
+    
+    // Total due work counts for efficiency display
+    const totalDueWork = tasks.filter(t => {
+      const ds = getDisplayStatus(t);
+      return ds === 'Completed' || ds === 'Overdue' || ds === 'Not Started';
+    }).length;
+
     return {
       overdue,
       notStarted,
@@ -581,13 +885,7 @@ export default function StaffOverviewPage() {
               <span className="material-symbols-outlined text-[16px]">manage_accounts</span>
               Manage Staff
             </button>
-            <button
-              onClick={() => setPageTab('Leave')}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-xl border transition-all ${pageTab === 'Leave' ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary hover:text-primary'}`}
-            >
-              <span className="material-symbols-outlined text-[16px]">event_busy</span>
-              Leave Management
-            </button>
+
 
             {pageTab === 'Manage' && (
               <button onClick={() => {
@@ -990,9 +1288,7 @@ export default function StaffOverviewPage() {
         </div>
       )}
 
-      {pageTab === 'Leave' && (
-        <LeaveManagementTab leaveRequests={leaveRequests || []} profiles={safeProfiles} updateLeaveRequest={updateLeaveRequest} deleteLeaveRequest={deleteLeaveRequest} />
-      )}
+
 
       {/* ── Modals ── */}
       {editingProfile && <EditUserModal profile={editingProfile} profiles={safeProfiles} onClose={() => setEditingProfile(null)} onSave={handleSaveEdit} />}

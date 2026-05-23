@@ -25,19 +25,6 @@
 
 const todayDateStr = () => new Date().toISOString().split('T')[0];
 
-/**
- * Returns the YYYY-MM-DD string on which an Assigned item enters "Not Started".
- * Task/Subtask → one day before due. Everything else → same day as due.
- * Returns null when there is no due date (item stays "Assigned" indefinitely).
- */
-function getNotStartedTrigger(item) {
-  if (!item.expected_date) return null;
-  const type = item.type?.toLowerCase();
-  const due = new Date(item.expected_date + 'T00:00:00');
-  if (type === 'task' || type === 'subtask') due.setDate(due.getDate() - 1);
-  return due.toISOString().split('T')[0];
-}
-
 /** True if this phase item is currently active (date reached, not completed). */
 export function isPhaseActive(phase) {
   if (!phase || phase.type !== 'Phase') return true; // non-phase items are always ok
@@ -46,31 +33,54 @@ export function isPhaseActive(phase) {
   return phase.expected_date <= todayDateStr();
 }
 
-/** True if item's due date is before today and it is not completed. */
-export function isOverdue(item) {
+/** True if item's due date is before today and it is not completed, unless user has approved full-day leave today. */
+export function isOverdue(item, todayStr = todayDateStr(), leaveRequests = []) {
   if (!item.expected_date) return false;
   if (item.status === 'Completed') return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(item.expected_date);
-  due.setHours(0, 0, 0, 0);
-  return due < today;
+  
+  // Overdue: today > expected_date AND status != completed
+  return todayStr > item.expected_date;
+}
+
+/**
+ * True if an Assigned item enters "Not Started" today.
+ * Rules:
+ * - Task/Milestone: actionable on expected_date and one day before
+ * - Checklist: actionable only on phase date (expected_date)
+ * Do NOT show future items or overdue items.
+ */
+export function isNotStarted(item, todayStr = todayDateStr()) {
+  if (item.status !== 'Assigned') return false;
+  if (!item.expected_date) return false;
+
+  const type = item.type?.toLowerCase();
+
+  if (type === 'task' || type === 'milestone') {
+    const due = new Date(item.expected_date + 'T00:00:00');
+    const dayBefore = new Date(due);
+    dayBefore.setDate(due.getDate() - 1);
+    
+    const dueStr = item.expected_date;
+    const dayBeforeStr = dayBefore.toISOString().split('T')[0];
+
+    return todayStr === dueStr || todayStr === dayBeforeStr;
+  } else if (type === 'checklist') {
+    return todayStr === item.expected_date;
+  }
+
+  return false;
 }
 
 /**
  * Display status for an item.
  * Priority: Completed > Overdue > Ongoing > Not Started > Assigned
  */
-export function getDisplayStatus(item) {
+export function getDisplayStatus(item, todayStr = todayDateStr(), leaveRequests = []) {
   if (!item) return '';
   if (item.status === 'Completed') return 'Completed';
-  if (isOverdue(item)) return 'Overdue';
+  if (isOverdue(item, todayStr, leaveRequests)) return 'Overdue';
   if (item.status === 'Ongoing') return 'Ongoing';
-  if (item.status === 'Assigned') {
-    const trigger = getNotStartedTrigger(item);
-    if (!trigger) return 'Assigned';
-    return todayDateStr() >= trigger ? 'Not Started' : 'Assigned';
-  }
+  if (isNotStarted(item, todayStr)) return 'Not Started';
   return item.status || 'Assigned';
 }
 
@@ -90,71 +100,46 @@ export function getStatusBadgeClass(displayStatus) {
  * Whether an item is the lowest-level actionable work unit.
  *
  * Rules:
- * - Project / Event / Phase → never count
- * - Subtask → always count
+ * - Project / Event / Phase → never count (containers)
+ * - Subtask → deprecated (never count/exist)
  * - Milestone → always count
- * - Checklist → count only if parent Phase is active (or no parent phase)
- * - Task → count only if it has no children AND (if under a phase) phase is active
+ * - Checklist → count only if active (under active phase or no phase)
+ * - Task → always count (flat structure, no subtasks)
  */
 export function isLowestLevelActionableUnit(item, allItems = []) {
   const type = item.type?.toLowerCase();
 
-  // Containers and Plans are never actionable units
+  // Containers are never actionable units
   if (type === 'project' || type === 'event' || type === 'phase' || type === 'plan' || item.in_planning_pool) return false;
 
-  // Helper: resolve the nearest Phase ancestor (if any)
-  const getNearestPhase = (itm) => {
-    if (!itm.parent_id) return null;
-    const parent = allItems.find(i => i.id === itm.parent_id);
-    if (!parent) return null;
-    if (parent.type === 'Phase') return parent;
-    // Go one level up (checklist → task → phase)
-    if (parent.parent_id) {
-      const grandparent = allItems.find(i => i.id === parent.parent_id);
-      if (grandparent?.type === 'Phase') return grandparent;
-    }
-    return null;
-  };
+  // Subtask - deprecated
+  if (type === 'subtask') return false;
 
-  // Subtask — always count (subtasks live under tasks, not phases)
-  if (type === 'subtask') return true;
-
-  // Milestone — always count (they are project-level, no phase involvement)
+  // Milestone - always count
   if (type === 'milestone') return true;
 
-  // Checklist — count only if under an active phase (or standalone with no phase)
+  // Checklist - count if under active phase or standalone
   if (type === 'checklist') {
-    const phase = getNearestPhase(item);
-    if (phase) return isPhaseActive(phase);
-    return true; // standalone checklist → always count
+    if (!item.parent_id) return true;
+    const parentPhase = allItems.find(i => i.id === item.parent_id);
+    if (parentPhase && parentPhase.type === 'Phase') {
+      return isPhaseActive(parentPhase);
+    }
+    return true;
   }
 
-  // Task — count only if no children AND not under an inactive phase
+  // Task - always count (subtask system completely removed)
   if (type === 'task') {
-    const phase = getNearestPhase(item);
-    if (phase && !isPhaseActive(phase)) return false;
-    const hasChildren = allItems.some(other => other.parent_id === item.id);
-    return !hasChildren;
+    if (item.parent_id) {
+      const parent = allItems.find(i => i.id === item.parent_id);
+      if (parent && parent.type === 'Phase') {
+        return isPhaseActive(parent);
+      }
+    }
+    return true;
   }
 
-  return true;
-}
-
-/**
- * True if an item's due date falls within the assignee's absence period.
- * Used to exclude items from overdue/not-started counts.
- * @param {object} item - work item with assignee_id and expected_date
- * @param {Array}  leaveRequests - array of leave request records from context
- */
-export function isItemExcludedByAbsence(item, leaveRequests) {
-  if (!leaveRequests?.length || !item.expected_date || item.status === 'Completed') return false;
-  return leaveRequests.some(l =>
-    l.user_id === item.assignee_id &&
-    l.status === 'Approved' &&
-    l.leave_type === 'Full Day' &&
-    item.expected_date >= l.from_date &&
-    item.expected_date <= l.to_date
-  );
+  return false;
 }
 
 /** Count of actionable units in a list (phase-aware). */
@@ -167,4 +152,46 @@ export function countActionableUnits(items) {
 export function getActionableUnits(items) {
   if (!items || !Array.isArray(items)) return [];
   return items.filter(item => isLowestLevelActionableUnit(item, items));
+}
+
+/**
+ * Calculates user efficiency.
+ * Formula:
+ * Efficiency = (Early * 1 + OnTime * 1 + Late * 0.5) / Total Due Work * 100
+ * where:
+ * - Total Due Work = Completed + Overdue + Not Started
+ * - Overdue = 0 score
+ */
+export function calculateUserEfficiency(tasks, leaveRequests = [], todayStr = todayDateStr()) {
+  let totalDueWork = 0;
+  let score = 0;
+
+  tasks.forEach(t => {
+    const ds = getDisplayStatus(t, todayStr, leaveRequests);
+    
+    if (ds === 'Completed') {
+      totalDueWork++;
+      if (t.expected_date && t.completed_at) {
+        const expected = t.expected_date;
+        const completedDate = new Date(t.completed_at).toISOString().split('T')[0];
+        
+        if (completedDate <= expected) {
+          score += 1.0;
+        } else {
+          score += 0.5; // standard late penalty
+        }
+      } else {
+        score += 1.0;
+      }
+    } else if (ds === 'Overdue') {
+      totalDueWork++;
+      score += 0.0;
+    } else if (ds === 'Not Started') {
+      totalDueWork++;
+      score += 0.0;
+    }
+  });
+
+  if (totalDueWork === 0) return 100;
+  return Math.round((score / totalDueWork) * 100);
 }

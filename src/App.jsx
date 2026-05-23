@@ -33,14 +33,13 @@ function AppContent() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
 
+            <Route path="/leave" element={<MyLeavePage />} />
+
             {role === 'Admin' && (
               <Route path="/staff" element={<StaffOverviewPage />} />
             )}
             {role !== 'Admin' && (
-              <>
-                <Route path="/staff" element={<Navigate to="/" replace />} />
-                <Route path="/leave" element={<MyLeavePage />} />
-              </>
+              <Route path="/staff" element={<Navigate to="/" replace />} />
             )}
 
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -221,7 +221,7 @@ function EditNoticeModal({ notice, onClose, onSave, isAdmin }) {
   );
 }
 
-function NotificationsTab({ currentUser, profiles }) {
+function AnnouncementsTab({ currentUser, profiles }) {
   const { announcements, addAnnouncement, updateAnnouncement, deleteAnnouncement, getDynamicNotificationText } = useDataContext();
   const [subTab, setSubTab] = useState('Active'); // Active | Expired
   const [editingAnn, setEditingAnn] = useState(null);
@@ -320,7 +320,7 @@ function NoticeCard({ notice, isAdmin, currentUser, profiles, getDynamicNotifica
   const creatorIsAdmin = creatorProfile?.role === 'Admin';
   const creatorName = creatorProfile?.name || 'Unknown';
   
-  const canEdit = isAdmin || currentUser?.id === notice.created_by;
+  const canEdit = isAdmin;
 
   return (
     <div className={`flex items-start justify-between px-5 py-4 hover:bg-surface-container-low/30 transition-colors group ${notice.is_pinned ? 'bg-amber-50/30' : ''}`}>
@@ -372,7 +372,7 @@ export default function PlanningPage() {
   const location = useLocation();
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'Pool');
+  const [activeTab, setActiveTab] = useState(location.state?.activeTab === 'Notifications' || location.state?.activeTab === 'Announcements' ? 'Announcements' : (location.state?.activeTab || 'Pool'));
   const [poolSubTab, setPoolSubTab] = useState('Self'); // 'Self' | 'Admins' | 'Assignees'
   const [assigneeFilterCategory, setAssigneeFilterCategory] = useState('');
   const [assigneeFilterName, setAssigneeFilterName]         = useState('');
@@ -490,10 +490,10 @@ export default function PlanningPage() {
               Pool
             </button>
             <button 
-              onClick={() => setActiveTab('Notifications')} 
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'Notifications' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+              onClick={() => setActiveTab('Announcements')} 
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'Announcements' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
             >
-              Notifications
+              Announcements
             </button>
           </div>
         </div>
@@ -511,8 +511,8 @@ export default function PlanningPage() {
         />
       )}
 
-      {activeTab === 'Notifications' && (
-        <NotificationsTab currentUser={currentUser} profiles={profiles} />
+      {activeTab === 'Announcements' && (
+        <AnnouncementsTab currentUser={currentUser} profiles={profiles} />
       )}
 
       {assignmentItem && (

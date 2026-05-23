@@ -47,32 +47,104 @@ function DeleteBtn({ onConfirm }) {
   );
 }
 
-function ExpandedContent({ item, profiles, containers, workItems, currentUser, onEdit, onStart, onComplete, onDelete, onAddSubtask, onFollowUp, showActions = true }) {
-  const [addingSubtask, setAddingSubtask] = useState(false);
-  const [stTitle, setStTitle]   = useState('');
-  const [stDate, setStDate]     = useState('');
-  const [stAssignee, setStAssignee] = useState('');
-  const [stSaving, setStSaving] = useState(false);
+function ActivityTimeline({ item, workItems }) {
+  const events = [];
 
+  events.push({
+    label: `${item.type || 'Task'} Created`,
+    date: item.created_at,
+    icon: 'add_circle',
+    color: 'text-blue-500 bg-blue-100',
+  });
+
+  if (item.status === 'Ongoing' || item.status === 'Completed') {
+    events.push({
+      label: `${item.type || 'Task'} Started`,
+      date: item.updated_at || item.created_at,
+      icon: 'play_circle',
+      color: 'text-indigo-500 bg-indigo-100',
+    });
+  }
+
+  if (item.status === 'Completed' && item.completed_at) {
+    events.push({
+      label: `${item.type || 'Task'} Completed`,
+      date: item.completed_at,
+      icon: 'check_circle',
+      color: 'text-green-500 bg-green-100',
+    });
+  }
+
+  const followUps = (workItems || []).filter(w => w.linked_to === item.id);
+  followUps.forEach(fu => {
+    events.push({
+      label: `Follow-up "${fu.title}" Created`,
+      date: fu.created_at,
+      icon: 'subdirectory_arrow_right',
+      color: 'text-purple-500 bg-purple-100',
+    });
+    if (fu.status === 'Completed' && fu.completed_at) {
+      events.push({
+        label: `Follow-up "${fu.title}" Completed`,
+        date: fu.completed_at,
+        icon: 'done_all',
+        color: 'text-emerald-500 bg-emerald-100',
+      });
+    }
+  });
+
+  events.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  return (
+    <div className="flex flex-col gap-3 mt-2 pl-1">
+      <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant flex items-center gap-1">
+        <span className="material-symbols-outlined text-[13px]">history</span>Activity Timeline
+      </span>
+      <div className="relative border-l-2 border-outline-variant/40 ml-2 pl-4 flex flex-col gap-3">
+        {events.map((ev, idx) => (
+          <div key={idx} className="relative flex items-start gap-3">
+            <div className={`absolute -left-[25px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white ${ev.color} flex-shrink-0 shadow-sm`}>
+              <span className="material-symbols-outlined text-[9px] font-bold">{ev.icon}</span>
+            </div>
+            <div className="flex-1 min-w-0 pt-0.5">
+              <p className="text-xs font-semibold text-on-surface leading-tight">{ev.label}</p>
+              <p className="text-[9px] text-on-surface-variant font-medium mt-0.5">
+                {new Date(ev.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExpandedContent({ item, profiles, containers, workItems, currentUser, onEdit, onStart, onComplete, onDelete, onFollowUp, onViewDetail, showActions = true }) {
   const container  = (containers || []).find(c => c.id === item.container_id) ?? null;
   const parentItem = (workItems  || []).find(w => w.id === item.parent_id)   ?? null;
   const parentTask = parentItem && !['Phase', 'Project', 'Event'].includes(parentItem.type) ? parentItem : null;
   const phaseItem  = parentItem?.type === 'Phase' ? parentItem : null;
   const assigneeName = (profiles || []).find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
   const ds = getDisplayStatus(item);
-  const isAssignee = currentUser?.role === 'Assignee';
-  const subItems = (workItems || []).filter(w => w.parent_id === item.id && (!isAssignee || w.assignee_id === currentUser.id));
 
-  const handleAddSub = async (e) => {
-    e.preventDefault();
-    if (!stTitle.trim() || !onAddSubtask) return;
-    setStSaving(true);
-    await onAddSubtask(item, { title: stTitle.trim(), date: stDate, assigneeId: stAssignee });
-    setStTitle(''); setStDate(''); setStAssignee(''); setStSaving(false); setAddingSubtask(false);
-  };
+  const sourceItem = item.linked_to ? (workItems || []).find(w => w.id === item.linked_to) : null;
+  const followUps = (workItems || []).filter(w => w.linked_to === item.id);
 
   return (
     <div className="px-5 py-4 flex flex-col gap-3">
+      {sourceItem && (
+        <div className="flex items-center gap-2 bg-indigo-50/50 border border-indigo-150 rounded-xl px-4 py-2.5">
+          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Follow-up for:</span>
+          <button 
+            type="button"
+            onClick={() => onViewDetail && onViewDetail(sourceItem)} 
+            className="text-xs font-bold text-indigo-950 hover:underline text-left"
+          >
+            {sourceItem.title}
+          </button>
+        </div>
+      )}
+
       {(container || parentTask || phaseItem) && (
         <div className="flex items-center gap-2 flex-wrap bg-white rounded-xl border border-outline-variant/20 px-3 py-2.5">
           {container && (
@@ -122,46 +194,41 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
         </div>
       )}
 
-      {(() => {
-        const followUps = (workItems || []).filter(w => w.linked_to === item.id);
-        if (!followUps.length && !onFollowUp) return null;
-        return (
-          <div className="flex flex-col gap-1.5">
-            {followUps.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Follow-ups</span>
-                {followUps.map(fu => (
-                  <div key={fu.id} className="flex items-center gap-2 text-xs pl-2 border-l-2 border-indigo-200">
-                    <span className="font-medium text-on-surface flex-1">{fu.title}</span>
-                    <span className="text-on-surface-variant/70">{fu.expected_date ? fmtDate(fu.expected_date) : '—'}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {onFollowUp && currentUser?.role === 'Admin' && item.status === 'Completed' && (
-              <button onClick={() => onFollowUp(item)} className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:underline self-start">
-                <span className="material-symbols-outlined text-[13px]">add_circle</span> Follow-up
-              </button>
-            )}
+      {/* Follow-up Items Section */}
+      {followUps.length > 0 && (
+        <div className="flex flex-col gap-1.5 bg-indigo-50/20 border border-indigo-100/30 rounded-xl p-3.5 mt-1">
+          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1">
+            <span className="material-symbols-outlined text-[13px]">list_alt</span>Follow-up Items
+          </span>
+          <div className="flex flex-col gap-2 pl-1 border-l-2 border-indigo-200/50">
+            {followUps.map(fu => {
+              const fuDs = getDisplayStatus(fu);
+              const fuBadge = fuDs === 'Completed' ? 'bg-green-100 text-green-700' : fuDs === 'Overdue' ? 'bg-red-100 text-red-700' : 'bg-surface-container text-on-surface-variant';
+              const fuAssignee = (profiles || []).find(p => p.id === fu.assignee_id)?.name || 'Unassigned';
+              return (
+                <div key={fu.id} className="flex items-center justify-between text-xs gap-3 hover:bg-white/80 p-1.5 rounded transition-colors cursor-pointer" onClick={() => onViewDetail && onViewDetail(fu)}>
+                  <span className="font-semibold text-indigo-900 hover:underline flex-1 truncate">{fu.title}</span>
+                  <span className="text-[10px] text-on-surface-variant/80">{fuAssignee.split(' ')[0]}</span>
+                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${fuBadge}`}>{fuDs}</span>
+                  <span className="text-[10px] text-on-surface-variant/60">{fu.expected_date ? fmtDate(fu.expected_date) : '—'}</span>
+                </div>
+              );
+            })}
           </div>
-        );
-      })()}
-
-      {subItems.length > 0 && (
-        <div className="flex flex-col gap-1.5 pl-4 border-l-2 border-primary/20">
-          {subItems.map(s => {
-            const sds = getDisplayStatus(s);
-            const sName = (profiles || []).find(p => p.id === s.assignee_id)?.name ?? 'Unassigned';
-            return (
-              <div key={s.id} className="flex items-center gap-2 text-xs">
-                <span className="text-on-surface-variant flex-shrink-0">↳</span>
-                <span className="font-medium text-on-surface flex-1 leading-snug">{s.title}</span>
-                <span className="text-on-surface-variant/70 hidden sm:block flex-shrink-0">{sName.split(' ')[0]}</span>
-                <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(sds)}`}>{sds}</span>
-              </div>
-            );
-          })}
         </div>
+      )}
+
+      {/* Activity Timeline */}
+      <ActivityTimeline item={item} workItems={workItems} />
+
+      {/* Create Follow-up Button */}
+      {onFollowUp && currentUser?.role === 'Admin' && (
+        <button 
+          onClick={() => onFollowUp(item)} 
+          className="flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl self-start mt-2 shadow-sm transition-all active:scale-95"
+        >
+          <span className="material-symbols-outlined text-[16px]">add_circle</span> Create Follow-up
+        </button>
       )}
 
       {showActions && (
@@ -184,43 +251,6 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
             )}
             {currentUser?.role === 'Admin' && <DeleteBtn onConfirm={() => onDelete(item.id)} />}
           </div>
-          {item.type === 'Task' && item.status !== 'Completed' && onAddSubtask && (
-            <div className="border-t border-surface-container-high pt-2">
-              {!addingSubtask ? (
-                <button onClick={() => setAddingSubtask(true)} className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline">
-                  <span className="material-symbols-outlined text-[13px]">add_circle</span> Add Subtask
-                </button>
-              ) : (
-                <form onSubmit={handleAddSub} className="flex flex-col gap-2">
-                  <input
-                    autoFocus required
-                    className="border border-outline-variant/50 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full"
-                    placeholder="Subtask title…"
-                    value={stTitle} onChange={e => setStTitle(e.target.value)}
-                  />
-                  <div className="flex gap-2">
-                    {!isAssignee && (
-                      <select className="flex-1 border border-outline-variant/50 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        value={stAssignee} onChange={e => setStAssignee(e.target.value)}>
-                        <option value="">Same assignee</option>
-                        {(profiles || []).filter(p => p.role !== 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                    )}
-                    <input type="date" className="flex-1 border border-outline-variant/50 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      value={stDate} onChange={e => setStDate(e.target.value)} />
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="submit" disabled={stSaving || !stTitle.trim()} className="flex-1 py-1.5 text-xs font-bold bg-primary text-white rounded-lg hover:opacity-90 disabled:opacity-50">
-                      {stSaving ? '…' : 'Add Subtask'}
-                    </button>
-                    <button type="button" onClick={() => { setAddingSubtask(false); setStTitle(''); setStDate(''); setStAssignee(''); }} className="flex-1 py-1.5 text-xs font-bold border border-outline-variant/40 text-on-surface-variant rounded-lg hover:bg-surface-container">
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -228,28 +258,30 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
 }
 
 function EditItemModal({ item, profiles, workItems, onClose, onSave }) {
+  const { leaveRequests } = useDataContext();
   const [title, setTitle]           = useState(item.title || '');
   const [desc, setDesc]             = useState(item.description || '');
   const [assigneeId, setAssigneeId] = useState(item.assignee_id || '');
   const [priority, setPriority]     = useState(item.priority || 'Medium');
   const [dueDate, setDueDate]       = useState(item.expected_date || '');
   const [status, setStatus]         = useState(item.status || 'Assigned');
-  const [parentId, setParentId]     = useState(item.parent_id || '');
   const [loading, setLoading]       = useState(false);
 
   const cls = "bg-slate-50 border border-outline-variant rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary w-full";
 
-  const potentialParents = (workItems || []).filter(w =>
-    w.id !== item.id && w.type === 'Task' && !w.parent_id
-  );
-
   const handleSave = async (e) => {
     e?.preventDefault();
     setLoading(true);
-    await onSave(item.id, { title, description: desc || null, assignee_id: assigneeId || null, priority, expected_date: dueDate || null, status, parent_id: parentId || null });
+    await onSave(item.id, { title, description: desc || null, assignee_id: assigneeId || null, priority, expected_date: dueDate || null, status, parent_id: item.parent_id || null });
     setLoading(false);
     onClose();
   };
+
+  const hasLeaveOnDate = leaveRequests?.some(l =>
+    l.user_id === assigneeId &&
+    l.status === 'Approved' &&
+    dueDate >= l.from_date && dueDate <= l.to_date
+  );
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4" onClick={onClose}>
@@ -296,20 +328,17 @@ function EditItemModal({ item, profiles, workItems, onClose, onSave }) {
               <input type="date" className={cls} value={dueDate} onChange={e => setDueDate(e.target.value)} />
             </div>
           </div>
-          {potentialParents.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Parent Task (make subtask of)</label>
-              <select className={cls} value={parentId} onChange={e => setParentId(e.target.value)}>
-                <option value="">— None (standalone task) —</option>
-                {potentialParents.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-              </select>
+          {hasLeaveOnDate && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-xl text-xs font-semibold my-2">
+              <span className="material-symbols-outlined text-[16px] text-amber-600">warning</span>
+              Note: Assignee is on approved leave on this date.
             </div>
           )}
         </form>
         <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
           <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
           <button onClick={handleSave} disabled={loading} className="flex-1 py-2.5 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 flex items-center justify-center gap-2">
-            <span className="material-symbols-outlined text-[16px]">save</span>{loading ? 'Saving…' : 'Save Changes'}
+            <span className="material-symbols-outlined text-[16px]">save</span>{loading ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -338,8 +367,7 @@ function Section({ icon, title, count, badge, children, defaultOpen = true }) {
 }
 
 // ─── Upcoming tab table ───────────────────────────────────────────────────────
-function WorkTable({ items, profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, onAddSubtask, emptyLabel }) {
-  const [expandedId, setExpandedId] = useState(null);
+function WorkTable({ items, profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, emptyLabel, expandedId, setExpandedId, onFollowUp, onViewDetail }) {
   const [editingItem, setEditingItem] = useState(null);
 
   const safeProfiles   = profiles   || [];
@@ -381,7 +409,6 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
                   container.type === 'Project' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
                 }`}>{container.type}</span>
               )}
-              {children.length > 0 && <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full flex-shrink-0">{children.length} sub</span>}
             </div>
           </td>
           {showAssignee && (
@@ -407,33 +434,12 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
               <ExpandedContent
                 item={item} profiles={safeProfiles} containers={safeContainers} workItems={safeWorkItems}
                 currentUser={currentUser} onEdit={() => setEditingItem(item)}
-                onStart={startWorkItem} onComplete={completeWorkItem} onDelete={deleteWorkItem} onAddSubtask={onAddSubtask} showActions />
+                onStart={startWorkItem} onComplete={completeWorkItem} onDelete={deleteWorkItem}
+                onFollowUp={onFollowUp} onViewDetail={onViewDetail}
+                showActions />
             </td>
           </tr>
         )}
-        {children.map(child => {
-          const cds = getDisplayStatus(child);
-          const cName = getAssigneeName(child.assignee_id);
-          return (
-            <tr key={child.id} className="bg-surface-container-lowest/40 hover:bg-surface-container-low/30 transition-colors">
-              <td className="w-8 px-3 py-2" />
-              <td className="px-2 py-2 max-w-[260px]">
-                <div className="flex items-center gap-1.5 pl-5">
-                  <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>
-                  <span className={`text-xs font-medium leading-tight line-clamp-1 ${cds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{child.title}</span>
-                  <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(cds)}`}>{cds}</span>
-                </div>
-              </td>
-              {showAssignee && (
-                <td className="px-2 py-2">
-                  <span className="text-[10px] text-on-surface-variant">{cName.split(' ')[0]}</span>
-                </td>
-              )}
-              <td className="px-2 py-2" />
-              <td className="px-2 py-2 text-[10px] text-on-surface-variant text-right pr-4">{child.expected_date ? fmtDate(child.expected_date) : '—'}</td>
-            </tr>
-          );
-        })}
       </React.Fragment>
     );
   };
@@ -470,33 +476,27 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
 }
 
 // ─── Active tab: table for one status group ───────────────────────────────────
-function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, onAddSubtask, showAssignee }) {
-  const [expandedId, setExpandedId] = useState(null);
+function ActiveGroupTable({ roots, profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, showAssignee, expandedId, setExpandedId, onFollowUp, onViewDetail }) {
   const [editingItem, setEditingItem] = useState(null);
   const colCount = showAssignee ? 4 : 3;
 
-  const renderRow = (item, isChild = false) => {
+  const renderRow = (item) => {
     const isExpanded = expandedId === item.id;
     const ds = getDisplayStatus(item);
     const assigneeName = (profiles || []).find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
-    const children = isChild ? [] : childrenOf(item.id);
 
     return (
       <React.Fragment key={item.id}>
         <tr
-          className={`cursor-pointer transition-colors ${isChild ? 'bg-surface-container-lowest/40' : ''} ${isExpanded ? 'bg-surface-container-low/60' : 'hover:bg-surface-container-low/40'}`}
+          className={`cursor-pointer transition-colors ${isExpanded ? 'bg-surface-container-low/60' : 'hover:bg-surface-container-low/40'}`}
           onClick={() => setExpandedId(prev => prev === item.id ? null : item.id)}
         >
           <td className="w-8 px-3 py-3">
             <span className={`material-symbols-outlined text-[18px] text-on-surface-variant block transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
           </td>
           <td className="px-2 py-3 max-w-[260px]">
-            <div className={`flex items-center gap-1.5 ${isChild ? 'pl-5' : ''}`}>
-              {isChild && <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>}
-              <span className={`text-sm font-semibold leading-tight line-clamp-1 ${isChild && ds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{item.title}</span>
-              {isChild && (
-                <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(ds)}`}>{ds}</span>
-              )}
+            <div className={`flex items-center gap-1.5`}>
+              <span className={`text-sm font-semibold leading-tight line-clamp-1 text-on-surface`}>{item.title}</span>
             </div>
           </td>
           {showAssignee && (
@@ -519,11 +519,12 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
               <ExpandedContent
                 item={item} profiles={profiles || []} containers={containers || []} workItems={workItems || []}
                 currentUser={currentUser} onEdit={() => setEditingItem(item)}
-                onStart={startWorkItem} onComplete={completeWorkItem} onDelete={deleteWorkItem} onAddSubtask={onAddSubtask} showActions />
+                onStart={startWorkItem} onComplete={completeWorkItem} onDelete={deleteWorkItem}
+                onFollowUp={onFollowUp} onViewDetail={onViewDetail}
+                showActions />
             </td>
           </tr>
         )}
-        {!isChild && children.map(child => renderRow(child, true))}
       </React.Fragment>
     );
   };
@@ -542,7 +543,7 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container-low">
-              {roots.map(root => renderRow(root, false))}
+              {roots.map(root => renderRow(root))}
             </tbody>
           </table>
         </div>
@@ -555,10 +556,10 @@ function ActiveGroupTable({ roots, childrenOf, profiles, containers, workItems, 
   );
 }
 
-function StatusGroupedView({ items, profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, onAddSubtask }) {
+function StatusGroupedView({ items, profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, expandedId, setExpandedId, onFollowUp, onViewDetail }) {
   const showAssignee = currentUser?.role !== 'Assignee';
   const rootItems = items; // allBase already excludes subtasks
-  const childrenOf = (parentId) => (workItems || []).filter(w => w.parent_id === parentId && !w.is_recurring);
+  const tableProps = { profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, showAssignee, expandedId, setExpandedId, onFollowUp, onViewDetail };
 
   const STATUS_GROUPS = [
     { key: 'Overdue',     label: 'Overdue',     icon: 'warning',  badge: 'bg-red-100 text-red-700',      defaultOpen: true },
@@ -566,8 +567,6 @@ function StatusGroupedView({ items, profiles, containers, workItems, currentUser
     { key: 'Assigned',    label: 'Assigned',    icon: 'person',   badge: 'bg-blue-100 text-blue-700',    defaultOpen: true },
     { key: 'Ongoing',     label: 'Ongoing',     icon: 'sync',     badge: 'bg-purple-100 text-purple-700',defaultOpen: true },
   ];
-
-  const tableProps = { profiles, containers, workItems, currentUser, startWorkItem, completeWorkItem, updateWorkItem, deleteWorkItem, onAddSubtask, showAssignee, childrenOf };
 
   return (
     <div className="flex flex-col gap-4">
@@ -591,19 +590,14 @@ function StatusGroupedView({ items, profiles, containers, workItems, currentUser
 }
 
 // ─── History table ─────────────────────────────────────────────────────────────
-function HistoryTable({ items, profiles, containers, workItems, currentUser, createFollowUpTask }) {
-  const [expandedId, setExpandedId] = useState(null);
-  const [followUpTarget, setFollowUpTarget] = useState(null);
+function HistoryTable({ items, profiles, containers, workItems, currentUser, expandedId, setExpandedId, onFollowUp, onViewDetail }) {
   const showAssignee = currentUser?.role !== 'Assignee';
   const colCount = showAssignee ? 4 : 3;
-  const canFollowUp = currentUser?.role === 'Admin' && !!createFollowUpTask;
 
   const renderRow = (item) => {
     const isExpanded = expandedId === item.id;
     const assigneeName = (profiles || []).find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
     const resolution = getResolutionStatus(item);
-    const children = (workItems || []).filter(w => w.parent_id === item.id && !w.is_recurring);
-
     return (
       <React.Fragment key={item.id}>
         <tr className="cursor-pointer hover:bg-surface-container-low/40 transition-colors"
@@ -614,7 +608,6 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser, cre
           <td className="px-2 py-3 max-w-[260px]">
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-semibold text-on-surface leading-tight line-clamp-1">{item.title}</span>
-              {children.length > 0 && <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full flex-shrink-0">{children.length} sub</span>}
             </div>
           </td>
           {showAssignee && (
@@ -637,28 +630,11 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser, cre
               <ExpandedContent
                 item={item} profiles={profiles || []} containers={containers || []} workItems={workItems || []}
                 currentUser={currentUser} onEdit={() => {}} onStart={() => {}} onComplete={() => {}} onDelete={() => {}}
-                onFollowUp={canFollowUp ? (i) => setFollowUpTarget(i) : undefined}
+                onFollowUp={onFollowUp} onViewDetail={onViewDetail}
                 showActions={false} />
             </td>
           </tr>
         )}
-        {children.map(child => {
-          const cds = getDisplayStatus(child);
-          return (
-            <tr key={child.id} className="bg-surface-container-lowest/40">
-              <td className="w-8 px-3 py-2" />
-              <td className="px-2 py-2 max-w-[260px]" colSpan={showAssignee ? 1 : 2}>
-                <div className="flex items-center gap-1.5 pl-5">
-                  <span className="text-on-surface-variant text-xs flex-shrink-0">↳</span>
-                  <span className={`text-xs font-medium leading-tight line-clamp-1 ${cds === 'Completed' ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>{child.title}</span>
-                  <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${getStatusBadgeClass(child.status === 'Completed' ? 'Completed' : cds)}`}>{cds}</span>
-                </div>
-              </td>
-              {showAssignee && <td className="px-2 py-2 text-[10px] text-on-surface-variant">{((profiles || []).find(p => p.id === child.assignee_id)?.name ?? '').split(' ')[0]}</td>}
-              <td className="px-2 py-2" />
-            </tr>
-          );
-        })}
       </React.Fragment>
     );
   };
@@ -685,18 +661,6 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser, cre
           </table>
         </div>
       </div>
-      {followUpTarget && (
-        <FollowUpModal
-          completedItem={followUpTarget}
-          profiles={profiles || []}
-          currentUser={currentUser}
-          onCancel={() => setFollowUpTarget(null)}
-          onConfirm={async (data) => {
-            await createFollowUpTask(followUpTarget.id, data);
-            setFollowUpTarget(null);
-          }}
-        />
-      )}
     </>
   );
 }
@@ -708,7 +672,7 @@ export default function AllTasksPage() {
     startWorkItem, completeWorkItem, createFollowUpTask, addWorkItem, updateWorkItem, deleteWorkItem,
   } = useDataContext();
 
-  const [activeTab, setActiveTab]           = useState('Active');
+  const [activeTab, setActiveTab]           = useState('Today');
   const [searchQuery, setSearchQuery]       = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [filterStaff, setFilterStaff]       = useState('');
@@ -718,6 +682,31 @@ export default function AllTasksPage() {
   const [historyFilter, setHistoryFilter]   = useState('');
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo]   = useState('');
+  const [expandedId, setExpandedId]         = useState(null);
+  const [followUpTarget, setFollowUpTarget] = useState(null);
+
+  const handleViewDetail = (item) => {
+    if (!item) return;
+    let targetTab = 'Today';
+    if (item.status === 'Completed') {
+      targetTab = 'History';
+    } else {
+      const today = todayStr();
+      const tomorrow = offsetDate(1);
+      const isToday = !item.expected_date || item.expected_date <= today || item.status === 'Ongoing';
+      if (isToday) {
+        targetTab = 'Today';
+      } else {
+        targetTab = 'Upcoming';
+      }
+    }
+    setSearchQuery('');
+    setFilterPriority('');
+    setFilterStaff('');
+    setFilterDept('');
+    setActiveTab(targetTab);
+    setExpandedId(item.id);
+  };
 
   const handleCompleteClick = (itemId) => setPendingCompleteId(itemId);
   const handleCompleteConfirm = async ({ note, tag, followUp }) => {
@@ -730,8 +719,10 @@ export default function AllTasksPage() {
         description: followUp.description,
         dueDate: followUp.dueDate,
         assigneeId: followUp.assigneeId,
+        priority: followUp.priority || 'Medium',
         linkType: 'Continuation',
         type: completedItem?.type || 'Task',
+        container_id: completedItem?.container_id || null,
       });
     }
     setPendingCompleteId(null);
@@ -850,10 +841,24 @@ export default function AllTasksPage() {
     }
   };
 
-  const sharedProps = { profiles: safeProfiles, containers: safeContainers, workItems: safeWorkItems, currentUser, startWorkItem, completeWorkItem: handleCompleteClick, updateWorkItem, deleteWorkItem, onAddSubtask: handleAddSubtask };
+  const sharedProps = {
+    profiles: safeProfiles,
+    containers: safeContainers,
+    workItems: safeWorkItems,
+    currentUser,
+    startWorkItem,
+    completeWorkItem: handleCompleteClick,
+    updateWorkItem,
+    deleteWorkItem,
+    onAddSubtask: handleAddSubtask,
+    expandedId,
+    setExpandedId,
+    onFollowUp: currentUser?.role === 'Admin' ? (item) => setFollowUpTarget(item) : undefined,
+    onViewDetail: handleViewDetail
+  };
 
   const TAB_CFG = [
-    { key: 'Active',   label: 'Today',    count: todayItems.length,   badge: todayItems.some(w => getDisplayStatus(w) === 'Overdue') ? 'bg-red-100 text-red-700' : 'bg-primary-container text-on-primary-container' },
+    { key: 'Today',    label: 'Today',    count: todayItems.length,   badge: todayItems.some(w => getDisplayStatus(w) === 'Overdue') ? 'bg-red-100 text-red-700' : 'bg-primary-container text-on-primary-container' },
     { key: 'Upcoming', label: 'Upcoming', count: upcomingCount,       badge: 'bg-blue-100 text-blue-700' },
     { key: 'History',  label: 'History',  count: historyItems.length, badge: 'bg-green-100 text-green-700' },
   ];
@@ -933,7 +938,7 @@ export default function AllTasksPage() {
         )}
       </div>
 
-      {activeTab === 'Active' && (
+      {activeTab === 'Today' && (
         <StatusGroupedView items={todayItems} {...sharedProps} />
       )}
 
@@ -1033,6 +1038,20 @@ export default function AllTasksPage() {
           currentUser={currentUser}
           onConfirm={handleCompleteConfirm}
           onCancel={() => setPendingCompleteId(null)}
+        />
+      )}
+
+      {followUpTarget && (
+        <FollowUpModal
+          completedItem={followUpTarget}
+          profiles={safeProfiles}
+          currentUser={currentUser}
+          onCancel={() => setFollowUpTarget(null)}
+          onConfirm={async (data) => {
+            await createFollowUpTask(followUpTarget.id, data);
+            setExpandedId(null);
+            setFollowUpTarget(null);
+          }}
         />
       )}
 

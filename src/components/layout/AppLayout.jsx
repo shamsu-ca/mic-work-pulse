@@ -11,8 +11,12 @@ export default function AppLayout({ userRole, currentUser }) {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const navigate = useNavigate();
-  const { getActiveAnnouncements } = useDataContext();
-  const unreadCount = (getActiveAnnouncements?.() || []).length;
+  const { getActiveAnnouncements, leaveRequests } = useDataContext();
+  const pendingLeavesCount = userRole === 'Admin'
+    ? (leaveRequests || []).filter(l => l.status === 'Pending').length
+    : 0;
+  const announcementsCount = (getActiveAnnouncements?.() || []).length;
+  const totalCount = announcementsCount + pendingLeavesCount;
 
   const adminNav = [
     { label: 'Dashboard',  path: '/',               icon: 'dashboard' },
@@ -21,6 +25,7 @@ export default function AppLayout({ userRole, currentUser }) {
     { label: 'Planning',   path: '/planning',        icon: 'account_tree' },
     { label: 'Works Hub',  path: '/projects-events', icon: 'hub' },
     { label: 'Reports',    path: '/reports',         icon: 'analytics' },
+    { label: 'Leaves',     path: '/leave',           icon: 'event_busy' },
   ];
 
   const assigneeNav = [
@@ -75,9 +80,11 @@ export default function AppLayout({ userRole, currentUser }) {
 
 
           <button onClick={() => navigate('/notifications')} className="relative w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-primary transition-all">
-            <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: unreadCount > 0 ? "'FILL' 1" : "'FILL' 0" }}>notifications</span>
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-error text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none">{unreadCount > 9 ? '9+' : unreadCount}</span>
+            <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: totalCount > 0 ? "'FILL' 1" : "'FILL' 0" }}>notifications</span>
+            {totalCount > 0 && (
+              <span className={`absolute -top-0.5 -right-0.5 w-4 h-4 text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none ${
+                pendingLeavesCount > 0 ? 'bg-amber-500 animate-pulse ring-2 ring-amber-300' : 'bg-error'
+              }`}>{totalCount > 9 ? '9+' : totalCount}</span>
             )}
           </button>
 

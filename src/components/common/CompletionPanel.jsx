@@ -19,15 +19,19 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
   const [note, setNote] = useState('');
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpForm, setFollowUpForm] = useState({
-    title: '',
-    description: `Follow-up: ${item?.title ?? ''}`,
+    title: `Follow-up: ${item?.title ?? ''}`,
+    description: item ? `Follow-up for: ${item.title}` : '',
     dueDate: tomorrow(),
     assigneeId: item?.assignee_id ?? '',
+    priority: item?.priority || 'Medium',
+    linkType: 'Continuation',
   });
   const [followUpError, setFollowUpError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const resolution = getResolutionInfo(item);
+  const isAdmin = currentUser?.role === 'Admin';
+  const isMilestone = item?.type === 'Milestone';
 
   const followUpAssigneeOptions = (() => {
     if (currentUser?.role === 'Assignee') return profiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
@@ -51,14 +55,23 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
     await onConfirm({
       note: note.trim() || null,
       tag: null,
-      followUp: followUpEnabled ? followUpForm : null,
+      followUp: followUpEnabled ? {
+        title: followUpForm.title,
+        description: followUpForm.description,
+        dueDate: followUpForm.dueDate,
+        assigneeId: followUpForm.assigneeId,
+        priority: followUpForm.priority,
+        linkType: followUpForm.linkType,
+        type: isMilestone ? 'Milestone' : 'Task',
+        container_id: item?.container_id || null,
+      } : null,
     });
     setSaving(false);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-black/50 p-4 z-[2000] flex items-center justify-center">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-800">Complete Work</h2>
           {resolution && (
@@ -85,59 +98,106 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
             />
           </div>
 
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={followUpEnabled}
-                onChange={e => { setFollowUpEnabled(e.target.checked); setFollowUpError(''); }}
-                className="rounded"
-              />
-              <span className="text-sm text-gray-700">Create a follow-up {item?.type === 'Milestone' ? 'milestone' : 'task'}</span>
-            </label>
-
-            {followUpEnabled && (
-              <div className="mt-3 space-y-2 pl-6">
-                <div>
-                  <input
-                    type="text"
-                    value={followUpForm.title}
-                    onChange={e => setFollowUpForm(p => ({ ...p, title: e.target.value }))}
-                    placeholder="Title *"
-                    className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${followUpError && !followUpForm.title.trim() ? 'border-red-400' : 'border-gray-300'}`}
-                  />
-                  {followUpError && !followUpForm.title.trim() && (
-                    <p className="text-xs text-red-500 mt-1">{followUpError}</p>
-                  )}
-                </div>
-                <textarea
-                  value={followUpForm.description}
-                  onChange={e => setFollowUpForm(p => ({ ...p, description: e.target.value }))}
-                  rows={2}
-                  placeholder="Description"
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                />
+          {isAdmin && (
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
-                  type="date"
-                  value={followUpForm.dueDate}
-                  onChange={e => setFollowUpForm(p => ({ ...p, dueDate: e.target.value }))}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  type="checkbox"
+                  checked={followUpEnabled}
+                  onChange={e => { setFollowUpEnabled(e.target.checked); setFollowUpError(''); }}
+                  className="rounded"
                 />
-                {followUpAssigneeOptions.length > 0 && (
-                  <select
-                    value={followUpForm.assigneeId}
-                    onChange={e => setFollowUpForm(p => ({ ...p, assigneeId: e.target.value }))}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  >
-                    <option value="">Unassigned</option>
-                    {followUpAssigneeOptions.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            )}
-          </div>
+                <span className="text-sm text-gray-700 font-semibold">Create Follow-up {isMilestone ? 'Milestone' : 'Task'}</span>
+              </label>
+
+              {followUpEnabled && (
+                <div className="mt-3 space-y-3 pl-6 border-l-2 border-indigo-100">
+                  {isMilestone && (
+                    <div className="bg-purple-50 border border-purple-200 text-purple-800 p-2.5 rounded-lg text-[10px] font-semibold leading-relaxed">
+                      Note: Locked to a **Milestone** inside the same project.
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Title *</label>
+                    <input
+                      type="text"
+                      value={followUpForm.title}
+                      onChange={e => setFollowUpForm(p => ({ ...p, title: e.target.value }))}
+                      placeholder="Title"
+                      className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${followUpError && !followUpForm.title.trim() ? 'border-red-400' : 'border-gray-300'}`}
+                    />
+                    {followUpError && !followUpForm.title.trim() && (
+                      <p className="text-xs text-red-500 mt-1">{followUpError}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Description</label>
+                    <textarea
+                      value={followUpForm.description}
+                      onChange={e => setFollowUpForm(p => ({ ...p, description: e.target.value }))}
+                      rows={2}
+                      placeholder="Description"
+                      className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">Due Date *</label>
+                      <input
+                        type="date"
+                        value={followUpForm.dueDate}
+                        onChange={e => setFollowUpForm(p => ({ ...p, dueDate: e.target.value }))}
+                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </div>
+                    {followUpAssigneeOptions.length > 0 && (
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase">Assignee</label>
+                        <select
+                          value={followUpForm.assigneeId}
+                          onChange={e => setFollowUpForm(p => ({ ...p, assigneeId: e.target.value }))}
+                          className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        >
+                          <option value="">Unassigned</option>
+                          {followUpAssigneeOptions.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">Priority</label>
+                      <select
+                        value={followUpForm.priority}
+                        onChange={e => setFollowUpForm(p => ({ ...p, priority: e.target.value }))}
+                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      >
+                        <option>Low</option>
+                        <option>Medium</option>
+                        <option>High</option>
+                        <option>Critical</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">Link Type</label>
+                      <select
+                        value={followUpForm.linkType}
+                        onChange={e => setFollowUpForm(p => ({ ...p, linkType: e.target.value }))}
+                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      >
+                        <option>Continuation</option>
+                        <option>Correction</option>
+                        <option>Review</option>
+                        <option>New Work</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="px-5 py-3 border-t flex justify-end gap-2">
