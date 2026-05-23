@@ -6,7 +6,7 @@ import { StaffToggle } from '../components/common/FilterBar';
 import CompletionPanel from '../components/common/CompletionPanel';
 import FollowUpModal from '../components/common/FollowUpModal';
 
-function ActivityTimeline({ item, workItems }) {
+function ActivityTimeline({ item, workItems, onViewDetail }) {
   const events = [];
 
   events.push({
@@ -37,10 +37,11 @@ function ActivityTimeline({ item, workItems }) {
   const followUps = (workItems || []).filter(w => w.linked_to === item.id);
   followUps.forEach(fu => {
     events.push({
-      label: `Follow-up "${fu.title}" Created`,
+      label: `Created Follow-up ${fu.title}`,
       date: fu.created_at,
       icon: 'subdirectory_arrow_right',
       color: 'text-purple-500 bg-purple-100',
+      targetItem: fu,
     });
     if (fu.status === 'Completed' && fu.completed_at) {
       events.push({
@@ -66,7 +67,17 @@ function ActivityTimeline({ item, workItems }) {
               <span className="material-symbols-outlined text-[9px] font-bold">{ev.icon}</span>
             </div>
             <div className="flex-1 min-w-0 pt-0.5">
-              <p className="text-xs font-semibold text-on-surface leading-tight">{ev.label}</p>
+              {ev.targetItem && onViewDetail ? (
+                <button
+                  type="button"
+                  onClick={() => onViewDetail(ev.targetItem)}
+                  className="text-xs font-bold text-indigo-600 hover:underline text-left block"
+                >
+                  {ev.label}
+                </button>
+              ) : (
+                <p className="text-xs font-semibold text-on-surface leading-tight">{ev.label}</p>
+              )}
               <p className="text-[9px] text-on-surface-variant font-medium mt-0.5">
                 {new Date(ev.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
@@ -81,19 +92,21 @@ function ActivityTimeline({ item, workItems }) {
 function ExpandedItemDetails({ item, workItems, profiles, currentUser, onFollowUp, onViewDetail }) {
   const sourceItem = item.linked_to ? (workItems || []).find(w => w.id === item.linked_to) : null;
   const followUps = (workItems || []).filter(w => w.linked_to === item.id);
+  const { savedTasks } = useDataContext();
+  const groupName = item.group_name || (item.parent_id ? (savedTasks || []).find(g => g.id === item.parent_id)?.title : null);
 
   return (
     <div className="px-5 py-4 flex flex-col gap-3 bg-slate-50/50 border-t border-b border-slate-100">
+      {groupName && (
+        <div className="flex items-center gap-1.5 bg-slate-100/80 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 w-fit">
+          <span className="material-symbols-outlined text-[14px]">folder</span>
+          <span className="font-semibold">Group: {groupName}</span>
+        </div>
+      )}
       {sourceItem && (
-        <div className="flex items-center gap-2 bg-indigo-50/50 border border-indigo-150 rounded-xl px-4 py-2.5">
-          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Follow-up for:</span>
-          <button 
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onViewDetail && onViewDetail(sourceItem); }} 
-            className="text-xs font-bold text-indigo-950 hover:underline text-left"
-          >
-            {sourceItem.title}
-          </button>
+        <div className="flex items-center gap-2 bg-indigo-50/30 border border-indigo-100 rounded-xl px-4 py-2 text-xs text-indigo-900">
+          <span className="font-bold">Follow-up of:</span>
+          <span>{sourceItem.title}</span>
         </div>
       )}
 
@@ -123,7 +136,7 @@ function ExpandedItemDetails({ item, workItems, profiles, currentUser, onFollowU
       )}
 
       {/* Activity Timeline */}
-      <ActivityTimeline item={item} workItems={workItems} />
+      <ActivityTimeline item={item} workItems={workItems} onViewDetail={onViewDetail} />
 
       {/* Create Follow-up Button */}
       {currentUser?.role === 'Admin' && (
@@ -275,7 +288,7 @@ export default function ProjectsEventsPage() {
     containers, workItems, profiles, currentUser,
     savedContainers, savedTasks,
     addContainer, updateContainer, addWorkItem, updateWorkItem, deleteWorkItem,
-    addSavedContainer, updateSavedContainer, deleteSavedContainer,
+    addSavedContainer, updateSavedContainer,
     addSavedTask, updateSavedTask, deleteSavedTask,
     completeWorkItem, createFollowUpTask,
     staffGroup,
@@ -286,6 +299,8 @@ export default function ProjectsEventsPage() {
   const [modeTab, setModeTab]       = useState('Active');
   const [expandedId, setExpandedId] = useState(null);
   const [selectedTplId, setSelectedTplId] = useState(null);
+  const [activeCardDetail, setActiveCardDetail] = useState(null);
+  const [filterAssigneeId, setFilterAssigneeId] = useState('');
 
   // Modals
   const [isCreateOpen, setIsCreateOpen]       = useState(false);
@@ -309,6 +324,20 @@ export default function ProjectsEventsPage() {
   const [expandedItemId, setExpandedItemId] = useState(null);
   const [followUpTarget, setFollowUpTarget] = useState(null);
 
+  const handleAddMilestoneClick = (projectId) => {
+    const projectMilestones = safeSavedContainers.some(c => c.id === projectId)
+      ? getSavedMilestones(projectId)
+      : getMilestones(projectId);
+    const sorted = [...projectMilestones].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    const lastAssigneeId = sorted[0]?.assignee_id || '';
+    setMilestoneForm({
+      title: '',
+      date: '',
+      assignee_id: lastAssigneeId,
+    });
+    setMilestoneTarget(projectId);
+  };
+
   const handleViewDetail = (item) => {
     if (!item) return;
     if (!item.container_id) {
@@ -322,6 +351,14 @@ export default function ProjectsEventsPage() {
     setExpandedId(container.id);
     setExpandedItemId(item.id);
   };
+
+  const handleProjectClick = (projectId) => {
+    setExpandedId(projectId);
+    setTimeout(() => {
+      document.getElementById(`container-card-${projectId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  };
+
 
   const handleProjectComplete = async ({ note, tag, followUp }) => {
     if (!pendingCompleteItem) return;
@@ -376,8 +413,22 @@ export default function ProjectsEventsPage() {
     if (c.type !== containerType)  return false;
     if (c.is_active === false)     return false;
     if (currentUser?.role !== 'Admin') {
-      return c.created_by === currentUser.id ||
+      const isAllowed = c.created_by === currentUser.id ||
         safeWorkItems.some(w => w.container_id === c.id && w.assignee_id === currentUser.id);
+      if (!isAllowed) return false;
+    }
+    if (filterAssigneeId) {
+      const hasItem = safeWorkItems.some(w => {
+        if (w.container_id === c.id) {
+          if (w.assignee_id === filterAssigneeId) return true;
+        }
+        if (w.parent_id) {
+          const parent = safeWorkItems.find(p => p.id === w.parent_id);
+          if (parent?.container_id === c.id && w.assignee_id === filterAssigneeId) return true;
+        }
+        return false;
+      });
+      if (!hasItem) return false;
     }
     return true;
   });
@@ -386,8 +437,22 @@ export default function ProjectsEventsPage() {
     if (c.type !== containerType)  return false;
     if (c.is_active !== false)     return false;
     if (currentUser?.role !== 'Admin') {
-      return c.created_by === currentUser.id ||
+      const isAllowed = c.created_by === currentUser.id ||
         safeWorkItems.some(w => w.container_id === c.id && w.assignee_id === currentUser.id);
+      if (!isAllowed) return false;
+    }
+    if (filterAssigneeId) {
+      const hasItem = safeWorkItems.some(w => {
+        if (w.container_id === c.id) {
+          if (w.assignee_id === filterAssigneeId) return true;
+        }
+        if (w.parent_id) {
+          const parent = safeWorkItems.find(p => p.id === w.parent_id);
+          if (parent?.container_id === c.id && w.assignee_id === filterAssigneeId) return true;
+        }
+        return false;
+      });
+      if (!hasItem) return false;
     }
     return true;
   });
@@ -395,7 +460,21 @@ export default function ProjectsEventsPage() {
   const templateContainers = safeSavedContainers.filter(c => {
     if (c.type !== containerType) return false;
     if (currentUser?.role !== 'Admin') {
-      return c.created_by === currentUser.id;
+      const isAllowed = c.created_by === currentUser.id;
+      if (!isAllowed) return false;
+    }
+    if (filterAssigneeId) {
+      const hasItem = safeSavedTasks.some(w => {
+        if (w.saved_container_id === c.id) {
+          if (w.assignee_id === filterAssigneeId) return true;
+        }
+        if (w.parent_id) {
+          const parent = safeSavedTasks.find(p => p.id === w.parent_id);
+          if (parent?.saved_container_id === c.id && w.assignee_id === filterAssigneeId) return true;
+        }
+        return false;
+      });
+      if (!hasItem) return false;
     }
     return true;
   });
@@ -414,13 +493,15 @@ export default function ProjectsEventsPage() {
   // Standalone tasks (no container)
   const standaloneTasks = safeWorkItems.filter(w =>
     !w.container_id && !w.in_planning_pool && w.type === 'Task' &&
-    !w.parent_id && (currentUser?.role !== 'Admin' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
+    !w.parent_id && (currentUser?.role !== 'Admin' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true) &&
+    (filterAssigneeId ? w.assignee_id === filterAssigneeId : true)
   );
   const getSubItems = (pid) => safeWorkItems.filter(w => w.parent_id === pid);
 
   // Recurring templates (live in saved_tasks)
   const recurringTemplates = safeSavedTasks.filter(w => w.is_recurring &&
-    (currentUser?.role !== 'Admin' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true)
+    (currentUser?.role !== 'Admin' ? (w.assignee_id === currentUser.id || w.created_by === currentUser.id) : true) &&
+    (filterAssigneeId ? w.assignee_id === filterAssigneeId : true)
   );
 
   // ── Container actions ──────────────────────────────────────────────────────
@@ -547,6 +628,19 @@ export default function ProjectsEventsPage() {
   // ── Milestone table (shared between active & saved) ────────────────────────
   function MilestoneTable({ milestones, showStatus, containerId }) {
     const canManage = canManageContainer(containerId);
+    const statusOrder = { 'Ongoing': 1, 'Assigned': 2, 'Not Started': 2, 'Completed': 3 };
+    const sortedMilestones = [...milestones]
+      .filter(m => (filterAssigneeId ? m.assignee_id === filterAssigneeId : true))
+      .sort((a, b) => {
+        const orderA = statusOrder[a.status] || 99;
+        const orderB = statusOrder[b.status] || 99;
+        if (orderA !== orderB) return orderA - orderB;
+        if (a.expected_date && b.expected_date) return a.expected_date.localeCompare(b.expected_date);
+        if (a.expected_date) return -1;
+        if (b.expected_date) return 1;
+        return 0;
+      });
+
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -561,10 +655,10 @@ export default function ProjectsEventsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-container-low">
-            {milestones.length === 0 && (
+            {sortedMilestones.length === 0 && (
               <tr><td colSpan={showStatus ? 6 : 4} className="px-3 py-6 text-center text-on-surface-variant italic text-xs">No milestones yet.</td></tr>
             )}
-            {milestones.map(m => {
+            {sortedMilestones.map(m => {
               const ds = getDisplayStatus(m);
               const assignee = getProfile(m.assignee_id);
               const isExpanded = expandedItemId === m.id;
@@ -605,13 +699,13 @@ export default function ProjectsEventsPage() {
                             <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
                           </button>
                         )}
-                        {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
+                        {showStatus && m.status !== 'Completed' && (
                           <button onClick={(e) => { e.stopPropagation(); updateAnyItem(m.id, { expected_date: todayStr() }); }}
                             className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">
                             <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                           </button>
                         )}
-                        {canManage && <button onClick={(e) => { e.stopPropagation(); setEditingItem(m); }} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+                        {canManage && <button onClick={(e) => { e.stopPropagation(); setEditingItem(m); }} className="text-on-surface-variant hover:text-primary transition-colors">
                           <span className="material-symbols-outlined text-[15px]">edit</span>
                         </button>}
                         {canManage && <DeleteBtn onDelete={() => deleteAnyItem(m.id)} size="xs" />}
@@ -637,9 +731,9 @@ export default function ProjectsEventsPage() {
             })}
           </tbody>
         </table>
-        {canManage && (
+        {(canManage || currentUser?.role === 'Assignee' || currentUser?.role === 'Manager') && (
           <div className="px-3 py-2 border-t border-surface-container-low">
-            <button onClick={() => setMilestoneTarget(containerId)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
+            <button onClick={() => handleAddMilestoneClick(containerId)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
               <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Milestone
             </button>
           </div>
@@ -650,6 +744,7 @@ export default function ProjectsEventsPage() {
 
   // ── Checklist table (active event phases) ─────────────────────────────────
   function ChecklistTable({ items, phaseId, phaseDate, showStatus }) {
+    const filteredItems = items.filter(item => (filterAssigneeId ? item.assignee_id === filterAssigneeId : true));
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -663,10 +758,10 @@ export default function ProjectsEventsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-container-low">
-            {items.length === 0 && (
+            {filteredItems.length === 0 && (
               <tr><td colSpan={showStatus ? 5 : 4} className="px-3 py-4 text-center text-on-surface-variant italic text-xs">No items.</td></tr>
             )}
-            {(showStatus ? sortByStatus(items) : items).map(item => {
+            {(showStatus ? sortByStatus(filteredItems) : filteredItems).map(item => {
               const ds = getDisplayStatus(item);
               const assignee = getProfile(item.assignee_id);
               const isExpanded = expandedItemId === item.id;
@@ -708,12 +803,12 @@ export default function ProjectsEventsPage() {
                         )}
                         {showStatus && ds !== 'Completed' && ds !== 'Overdue' && (
                           <button onClick={(e) => { e.stopPropagation(); updateAnyItem(item.id, { expected_date: todayStr() }); }}
-                            className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all opacity-0 group-hover:opacity-100">
+                            className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">
                             <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                           </button>
                         )}
                         {isAdmin && !showStatus && (
-                          <button onClick={(e) => { e.stopPropagation(); setEditingItem(item); }} className="text-on-surface-variant hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+                          <button onClick={(e) => { e.stopPropagation(); setEditingItem(item); }} className="text-on-surface-variant hover:text-primary transition-colors">
                             <span className="material-symbols-outlined text-[15px]">edit</span>
                           </button>
                         )}
@@ -764,7 +859,7 @@ export default function ProjectsEventsPage() {
     const isEditingName  = editNameId === c.id;
 
     return (
-      <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-shadow ${isExpanded ? 'border-primary/40' : 'border-outline-variant/30'}`}>
+      <div id={`container-card-${c.id}`} className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-shadow ${isExpanded ? 'border-primary/40' : 'border-outline-variant/30'}`}>
         <div className="p-5 cursor-pointer hover:bg-surface-container-low/30 transition-colors" onClick={() => setExpandedId(isExpanded ? null : c.id)}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -782,12 +877,21 @@ export default function ProjectsEventsPage() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="text-right">
+            <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+              {isExpanded && isProject && (
+                <button
+                  onClick={() => handleAddMilestoneClick(c.id)}
+                  title="Add Milestone"
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-primary border border-primary/20 bg-primary/5 hover:bg-primary hover:text-white px-2 py-1 rounded-xl transition-all mr-1"
+                >
+                  <span className="material-symbols-outlined text-[13px]">add</span>Milestone
+                </button>
+              )}
+              <div className="text-right cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : c.id)}>
                 <p className="text-lg font-black text-on-surface leading-none">{progress}%</p>
                 <p className="text-[10px] text-on-surface-variant">Done</p>
               </div>
-              <span className="material-symbols-outlined text-on-surface-variant transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+              <span className="material-symbols-outlined text-on-surface-variant transition-transform duration-200 cursor-pointer" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }} onClick={() => setExpandedId(isExpanded ? null : c.id)}>expand_more</span>
             </div>
           </div>
           <div className="mt-3">{progressBar(progress)}</div>
@@ -1103,12 +1207,42 @@ export default function ProjectsEventsPage() {
     const [addingTaskForGroup, setAddingTaskForGroup] = useState(null);
     const [taskForm, setTaskForm] = useState({ title: '', assignee_id: '', recurrence_type: 'daily' });
     const [taskSaving, setTaskSaving] = useState(false);
-    const [editingTask, setEditingTask] = useState(null);
+
+    // Group shift states
+    const [shiftTargetGroup, setShiftTargetGroup] = useState(null);
+    const [shiftSelectedIds, setShiftSelectedIds] = useState(new Set());
+    const [shifting, setShifting] = useState(false);
+    
+    // Grouping / Move Target states
+    const [moveTarget, setMoveTarget] = useState(null);
+    let pressTimer;
+
+    const handlePressStart = (task) => {
+      if (!canEdit) return;
+      pressTimer = setTimeout(() => {
+        setMoveTarget(task);
+      }, 600);
+    };
+
+    const handlePressEnd = () => {
+      clearTimeout(pressTimer);
+    };
 
     const canEdit = isAdmin || currentUser?.role === 'Manager';
 
-    const recurringGroups = safeSavedTasks.filter(w => w.type === 'Group');
-    const recurringTasks = safeSavedTasks.filter(w => w.is_recurring && w.type !== 'Group');
+    const isAssignee = currentUser?.role !== 'Admin' && currentUser?.role !== 'Manager';
+    const rawRecurringGroups = safeSavedTasks.filter(w => w.type === 'Group');
+    const rawRecurringTasks = safeSavedTasks.filter(w => w.is_recurring && w.type !== 'Group');
+
+    const recurringTasks = isAssignee
+      ? rawRecurringTasks.filter(t => t.assignee_id === currentUser?.id)
+      : rawRecurringTasks;
+
+    const recurringGroups = isAssignee
+      ? rawRecurringGroups.filter(g => 
+          recurringTasks.some(t => t.parent_id === g.id)
+        )
+      : rawRecurringGroups;
 
     const handleCreateGroup = async () => {
       if (!groupTitle.trim()) return;
@@ -1298,7 +1432,14 @@ export default function ProjectsEventsPage() {
                           {tasksInGroup.map(task => {
                             const aName = safeProfiles.find(p => p.id === task.assignee_id)?.name ?? 'Unassigned';
                             return (
-                              <tr key={task.id} className="hover:bg-surface-container-low/30">
+                              <tr key={task.id} 
+                                className="hover:bg-surface-container-low/30 select-none cursor-pointer"
+                                onMouseDown={() => handlePressStart(task)}
+                                onMouseUp={handlePressEnd}
+                                onMouseLeave={handlePressEnd}
+                                onTouchStart={() => handlePressStart(task)}
+                                onTouchEnd={handlePressEnd}
+                              >
                                 <td className="py-2 px-3 font-medium text-on-surface">{task.title}</td>
                                 <td className="py-2 px-3 text-on-surface-variant">{aName.split(' ')[0]}</td>
                                 <td className="py-2 px-3 text-on-surface-variant">{getRecurrenceLabel(task.recurrence_rule)}</td>
@@ -1336,9 +1477,17 @@ export default function ProjectsEventsPage() {
                           <button onClick={() => setAddingTaskForGroup(null)} className="text-on-surface-variant px-3 py-1.5 border border-outline-variant/30 rounded-lg text-xs font-bold hover:bg-surface-container whitespace-nowrap">Cancel</button>
                         </div>
                       ) : (
-                        <button onClick={() => setAddingTaskForGroup(group.id)} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline px-3 mt-2">
-                          <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Recurring Task to Group
-                        </button>
+                        <div className="flex items-center gap-4 mt-2 px-3 flex-wrap">
+                          <button onClick={() => setAddingTaskForGroup(group.id)} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">
+                            <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Recurring Task to Group
+                          </button>
+                          <button 
+                            onClick={() => { setShiftTargetGroup(group); setShiftSelectedIds(new Set()); }}
+                            className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:underline"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">drive_file_move</span> Shift/Move Items to Group
+                          </button>
+                        </div>
                       )
                     )}
                   </div>
@@ -1379,7 +1528,14 @@ export default function ProjectsEventsPage() {
                         {ungrouped.map(task => {
                           const aName = safeProfiles.find(p => p.id === task.assignee_id)?.name ?? 'Unassigned';
                           return (
-                            <tr key={task.id} className="hover:bg-surface-container-low/30">
+                            <tr key={task.id} 
+                                className="hover:bg-surface-container-low/30 select-none cursor-pointer"
+                                onMouseDown={() => handlePressStart(task)}
+                                onMouseUp={handlePressEnd}
+                                onMouseLeave={handlePressEnd}
+                                onTouchStart={() => handlePressStart(task)}
+                                onTouchEnd={handlePressEnd}
+                              >
                               <td className="py-2 px-3 font-medium text-on-surface">{task.title}</td>
                               <td className="py-2 px-3 text-on-surface-variant">{aName.split(' ')[0]}</td>
                               <td className="py-2 px-3 text-on-surface-variant">{getRecurrenceLabel(task.recurrence_rule)}</td>
@@ -1407,6 +1563,120 @@ export default function ProjectsEventsPage() {
             );
           })()}
         </div>
+
+        {moveTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs" onClick={() => setMoveTarget(null)}>
+            <div className="bg-white rounded-xl shadow-xl w-72 p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-sm text-on-surface">Move "{moveTarget.title}" to Group</h3>
+              <div className="flex flex-col gap-1 max-h-60 overflow-y-auto">
+                <button
+                  onClick={async () => {
+                    await updateSavedTask(moveTarget.id, { parent_id: null });
+                    setMoveTarget(null);
+                  }}
+                  className="px-3 py-2 text-left text-xs font-semibold rounded-lg hover:bg-slate-100 text-on-surface-variant flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-[16px]">folder_off</span>
+                  No Group (Ungroup)
+                </button>
+                {recurringGroups.map(g => (
+                  <button
+                    key={g.id}
+                    onClick={async () => {
+                      await updateSavedTask(moveTarget.id, { parent_id: g.id });
+                      setMoveTarget(null);
+                    }}
+                    className={`px-3 py-2 text-left text-xs font-semibold rounded-lg hover:bg-slate-100 flex items-center gap-2 ${
+                      moveTarget.parent_id === g.id ? 'bg-primary/5 text-primary' : 'text-on-surface'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">folder</span>
+                    {g.title}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setMoveTarget(null)}
+                className="mt-2 py-1.5 text-xs font-bold border border-outline-variant/40 rounded-lg text-on-surface-variant hover:bg-surface-container"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {shiftTargetGroup && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" onClick={() => setShiftTargetGroup(null)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b pb-2">
+                <h3 className="font-bold text-on-surface text-base flex items-center gap-2">
+                  <span className="material-symbols-outlined text-indigo-600">drive_file_move</span>
+                  Move tasks to "{shiftTargetGroup.title}"
+                </h3>
+                <button onClick={() => setShiftTargetGroup(null)} className="p-1 rounded-lg hover:bg-slate-100">
+                  <span className="material-symbols-outlined text-on-surface-variant">close</span>
+                </button>
+              </div>
+              <p className="text-xs text-on-surface-variant">Select recurring tasks from other groups or ungrouped to move to this group.</p>
+              
+              <div className="max-h-60 overflow-y-auto flex flex-col gap-2 my-2 pr-1">
+                {rawRecurringTasks.filter(t => t.parent_id !== shiftTargetGroup.id).map(task => {
+                  const currentGroup = rawRecurringGroups.find(g => g.id === task.parent_id);
+                  const isChecked = shiftSelectedIds.has(task.id);
+                  return (
+                    <label key={task.id} className="flex items-start gap-3 p-2.5 rounded-lg border border-slate-100 hover:bg-slate-50 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked}
+                        onChange={() => {
+                          setShiftSelectedIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(task.id)) next.delete(task.id);
+                            else next.add(task.id);
+                            return next;
+                          });
+                        }}
+                        className="rounded mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-on-surface leading-tight truncate">{task.title}</p>
+                        <p className="text-[10px] text-on-surface-variant mt-0.5">
+                          {currentGroup ? `Currently in: ${currentGroup.title}` : 'Currently: Ungrouped'}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+                {rawRecurringTasks.filter(t => t.parent_id !== shiftTargetGroup.id).length === 0 && (
+                  <p className="text-xs text-on-surface-variant italic py-4 text-center">No other recurring tasks available.</p>
+                )}
+              </div>
+              
+              <div className="flex justify-end gap-2 border-t pt-3">
+                <button 
+                  onClick={() => setShiftTargetGroup(null)}
+                  className="px-4 py-2 text-xs font-bold border border-outline-variant/40 rounded-lg text-on-surface-variant hover:bg-surface-container"
+                >
+                  Cancel
+                </button>
+                <button 
+                  disabled={shifting || shiftSelectedIds.size === 0}
+                  onClick={async () => {
+                    setShifting(true);
+                    for (const taskId of shiftSelectedIds) {
+                      await updateSavedTask(taskId, { parent_id: shiftTargetGroup.id });
+                    }
+                    setShifting(false);
+                    setShiftTargetGroup(null);
+                  }}
+                  className="px-4 py-2 text-xs font-bold bg-primary text-white rounded-lg hover:opacity-90 disabled:opacity-50"
+                >
+                  {shifting ? 'Moving...' : `Move ${shiftSelectedIds.size} Items`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   }
@@ -1427,109 +1697,227 @@ export default function ProjectsEventsPage() {
     const isTplEditingName = editNameId === active?.id;
 
     return (
-      <div className="flex gap-4 min-h-[520px]">
-        {/* Template list */}
-        <div className="w-56 flex-shrink-0 flex flex-col gap-3">
-          <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant px-1">Templates <span className="text-primary">{templateContainers.length}</span></p>
-          <div className="flex flex-col gap-2">
-            {templateContainers.map(c => {
-              const isSel = (selectedTplId ?? templateContainers[0]?.id) === c.id;
-              return (
-                <div key={c.id} onClick={() => setSelectedTplId(c.id)}
-                  className={`bg-white rounded-2xl border-2 p-4 cursor-pointer transition-all ${isSel ? 'border-primary shadow-sm' : 'border-outline-variant/30 hover:border-primary/40'}`}>
-                  <p className="font-bold text-on-surface text-sm leading-tight mb-2">{cName(c)}</p>
-                  <div className="flex gap-2">
-                    {isAdmin && (
-                      <button onClick={e => { e.stopPropagation(); setDeployModalTpl(c); setDeployPhaseDates({}); }} disabled={deploying}
-                        className="flex-1 py-1.5 text-xs font-bold bg-primary text-white rounded-xl hover:opacity-90 disabled:opacity-50">{deploying ? '…' : 'Deploy'}</button>
-                    )}
-                    <button onClick={e => { e.stopPropagation(); setSelectedTplId(c.id); }}
-                      className="flex-1 py-1.5 text-xs font-bold border border-outline-variant/40 rounded-xl hover:bg-surface-container text-on-surface">View</button>
+      <>
+        {/* Desktop View */}
+        <div className="hidden md:flex gap-4 min-h-[520px]">
+          {/* Template list */}
+          <div className="w-56 flex-shrink-0 flex flex-col gap-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant px-1">Templates <span className="text-primary">{templateContainers.length}</span></p>
+            <div className="flex flex-col gap-2">
+              {templateContainers.map(c => {
+                const isSel = (selectedTplId ?? templateContainers[0]?.id) === c.id;
+                return (
+                  <div key={c.id} onClick={() => setSelectedTplId(c.id)}
+                    className={`bg-white rounded-2xl border-2 p-4 cursor-pointer transition-all ${isSel ? 'border-primary shadow-sm' : 'border-outline-variant/30 hover:border-primary/40'}`}>
+                    <p className="font-bold text-on-surface text-sm leading-tight mb-2">{cName(c)}</p>
+                    <div className="flex gap-2">
+                      {isAdmin && (
+                        <button onClick={e => { e.stopPropagation(); setDeployModalTpl(c); setDeployPhaseDates({}); }} disabled={deploying}
+                          className="flex-1 py-1.5 text-xs font-bold bg-primary text-white rounded-xl hover:opacity-90 disabled:opacity-50">{deploying ? '…' : 'Deploy'}</button>
+                      )}
+                      <button onClick={e => { e.stopPropagation(); setSelectedTplId(c.id); }}
+                        className="flex-1 py-1.5 text-xs font-bold border border-outline-variant/40 rounded-xl hover:bg-surface-container text-on-surface">View</button>
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Template detail */}
+          <div className="flex-1 bg-white rounded-2xl border border-outline-variant/30 overflow-hidden flex flex-col">
+            {active ? (
+              <>
+                <div className="px-6 py-4 border-b border-surface-container-high">
+                  {isTplEditingName ? (
+                    <div className="flex items-center gap-2 mb-2">
+                      <input autoFocus className="flex-1 border border-outline-variant/50 rounded-xl px-3 py-1.5 text-sm font-medium focus:outline-none"
+                        value={editNameVal} onChange={e => setEditNameVal(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') commitEditName(); if (e.key === 'Escape') setEditNameId(null); }} />
+                      <button onClick={commitEditName} className="text-xs font-bold text-primary hover:underline">Save</button>
+                      <button onClick={() => setEditNameId(null)} className="text-xs font-bold text-on-surface-variant hover:underline">Cancel</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mb-1">
+                      <h2 className="text-lg font-extrabold text-on-surface">{cName(active)}</h2>
+                      {isAdmin && <button onClick={() => { setEditNameId(active.id); setEditNameVal(cName(active)); }} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>}
+                    </div>
+                  )}
+                  <p className="text-xs text-on-surface-variant">{isProject ? `${milestones.length} milestones` : `${phases.length} phases`}</p>
                 </div>
-              );
-            })}
+
+                <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+                  {isProject ? (
+                    <MilestoneTable milestones={milestones} showStatus={false} containerId={active.id} />
+                  ) : (
+                    <>
+                      {phases.map((ph, i) => {
+                        const items = getSavedPhaseItems(ph.id);
+                        return (
+                          <div key={ph.id} className="rounded-xl border border-outline-variant/20 overflow-hidden">
+                            <div className="px-4 py-2.5 bg-surface-container-low/40 flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-surface-container text-on-surface-variant text-[10px] font-black flex items-center justify-center">{i + 1}</span>
+                                <h3 className="text-xs font-black text-on-surface uppercase tracking-wide">{ph.title}</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {isAdmin && (
+                                  <div className="flex gap-1">
+                                    <button onClick={() => { setChecklistTarget({ phaseId: ph.id, phaseDate: ph.expected_date }); setChecklistForm({ title: '', assignee_id: '', date: '' }); }}
+                                      className="flex items-center gap-1 text-[11px] font-bold bg-primary text-white px-2 py-0.5 rounded-lg hover:opacity-90">
+                                      <span className="material-symbols-outlined text-[12px]">add</span> Add
+                                    </button>
+                                    <DeleteBtn onDelete={() => deleteSavedTask(ph.id)} />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <ChecklistTable items={items} phaseId={ph.id} phaseDate={ph.expected_date} showStatus={false} />
+                          </div>
+                        );
+                      })}
+                      {phases.length === 0 && <p className="text-sm text-on-surface-variant italic">No phases yet.</p>}
+                      {isAdmin && (
+                        <button onClick={() => setPhaseTarget(active.id)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
+                          <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Phase
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {isAdmin && (
+                  <div className="px-6 py-4 border-t border-surface-container-high flex items-center justify-between">
+                    <span className="text-xs text-on-surface-variant">Deploy creates a live {isProject ? 'project' : 'event'} from this template</span>
+                    <button onClick={() => { setDeployModalTpl(active); setDeployPhaseDates({}); }} disabled={deploying}
+                      className="bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
+                      {deploying
+                        ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying…</>
+                        : <><span className="material-symbols-outlined text-[16px]">rocket_launch</span> Deploy {isProject ? 'Project' : 'Event'}</>
+                      }
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : <div className="flex-1 flex items-center justify-center text-on-surface-variant text-sm">Select a template.</div>}
           </div>
         </div>
 
-        {/* Template detail */}
-        <div className="flex-1 bg-white rounded-2xl border border-outline-variant/30 overflow-hidden flex flex-col">
-          {active ? (
-            <>
-              <div className="px-6 py-4 border-b border-surface-container-high">
-                {isTplEditingName ? (
-                  <div className="flex items-center gap-2 mb-2">
-                    <input autoFocus className="flex-1 border border-outline-variant/50 rounded-xl px-3 py-1.5 text-sm font-medium focus:outline-none"
-                      value={editNameVal} onChange={e => setEditNameVal(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') commitEditName(); if (e.key === 'Escape') setEditNameId(null); }} />
-                    <button onClick={commitEditName} className="text-xs font-bold text-primary hover:underline">Save</button>
-                    <button onClick={() => setEditNameId(null)} className="text-xs font-bold text-on-surface-variant hover:underline">Cancel</button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 mb-1">
-                    <h2 className="text-lg font-extrabold text-on-surface">{cName(active)}</h2>
-                    {isAdmin && <button onClick={() => { setEditNameId(active.id); setEditNameVal(cName(active)); }} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>}
-                  </div>
-                )}
-                <p className="text-xs text-on-surface-variant">{isProject ? `${milestones.length} milestones` : `${phases.length} phases`}</p>
-              </div>
+        {/* Mobile View */}
+        <div className="block md:hidden space-y-3 w-full">
+          {templateContainers.map(c => {
+            const isExpanded = (selectedTplId === c.id);
+            const isProj = c.type === 'Project';
+            const phs = isProj ? [] : getSavedPhases(c.id);
+            const ms = getSavedMilestones(c.id);
+            const isEditing = editNameId === c.id;
 
-              <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-                {isProject ? (
-                  <MilestoneTable milestones={milestones} showStatus={false} containerId={active.id} />
-                ) : (
-                  <>
-                    {phases.map((ph, i) => {
-                      const items = getSavedPhaseItems(ph.id);
-                      return (
-                        <div key={ph.id} className="rounded-xl border border-outline-variant/20 overflow-hidden">
-                          <div className="px-4 py-2.5 bg-surface-container-low/40 flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="w-5 h-5 rounded-full bg-surface-container text-on-surface-variant text-[10px] font-black flex items-center justify-center">{i + 1}</span>
-                              <h3 className="text-xs font-black text-on-surface uppercase tracking-wide">{ph.title}</h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {isAdmin && (
-                                <div className="flex gap-1">
-                                  <button onClick={() => { setChecklistTarget({ phaseId: ph.id, phaseDate: ph.expected_date }); setChecklistForm({ title: '', assignee_id: '', date: '' }); }}
-                                    className="flex items-center gap-1 text-[11px] font-bold bg-primary text-white px-2 py-0.5 rounded-lg hover:opacity-90">
-                                    <span className="material-symbols-outlined text-[12px]">add</span> Add
-                                  </button>
-                                  <DeleteBtn onDelete={() => deleteSavedTask(ph.id)} />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <ChecklistTable items={items} phaseId={ph.id} phaseDate={ph.expected_date} showStatus={false} />
-                        </div>
-                      );
-                    })}
-                    {phases.length === 0 && <p className="text-sm text-on-surface-variant italic">No phases yet.</p>}
+            return (
+              <div 
+                key={c.id} 
+                className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-shadow ${
+                  isExpanded ? 'border-primary/60' : 'border-outline-variant/30'
+                }`}
+              >
+                <div 
+                  className="p-4 cursor-pointer hover:bg-slate-50 transition-colors flex items-center justify-between"
+                  onClick={() => setSelectedTplId(isExpanded ? null : c.id)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-on-surface text-sm leading-tight truncate">{cName(c)}</h3>
+                    <p className="text-[10px] text-on-surface-variant mt-1">
+                      {isProj ? `${ms.length} milestones` : `${phs.length} phases`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                     {isAdmin && (
-                      <button onClick={() => setPhaseTarget(active.id)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
-                        <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Phase
+                      <button 
+                        onClick={() => { setDeployModalTpl(c); setDeployPhaseDates({}); }}
+                        className="px-3 py-1 bg-primary text-white text-[11px] font-bold rounded-lg hover:opacity-90 animate-fade-in"
+                      >
+                        Deploy
                       </button>
                     )}
-                  </>
+                    <span className="material-symbols-outlined text-on-surface-variant transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}>
+                      expand_more
+                    </span>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="border-t border-slate-100 p-4 bg-slate-50/30 flex flex-col gap-4">
+                    {isAdmin && (
+                      <div className="flex items-center gap-2 border-b pb-3 mb-1">
+                        {isEditing ? (
+                          <>
+                            <input autoFocus className="flex-1 border border-outline-variant/50 rounded-xl px-2.5 py-1 text-xs font-medium focus:outline-none"
+                              value={editNameVal} onChange={e => setEditNameVal(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') commitEditName(); if (e.key === 'Escape') setEditNameId(null); }} />
+                            <button onClick={commitEditName} className="text-xs font-bold text-primary hover:underline">Save</button>
+                            <button onClick={() => setEditNameId(null)} className="text-xs font-bold text-on-surface-variant hover:underline">Cancel</button>
+                          </>
+                        ) : (
+                          <button onClick={() => { setEditNameId(c.id); setEditNameVal(cName(c)); }} className="text-xs text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">edit</span> Edit Name
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {isProj ? (
+                      <MilestoneTable milestones={ms} showStatus={false} containerId={c.id} />
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {phs.map((ph, i) => {
+                          const items = getSavedPhaseItems(ph.id);
+                          return (
+                            <div key={ph.id} className="rounded-xl border border-outline-variant/20 overflow-hidden bg-white">
+                              <div className="px-3 py-2 bg-surface-container-low/40 flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-5 h-5 rounded-full bg-surface-container text-on-surface-variant text-[10px] font-black flex items-center justify-center">{i + 1}</span>
+                                  <h4 className="text-[11px] font-black text-on-surface uppercase tracking-wide">{ph.title}</h4>
+                                </div>
+                                {isAdmin && (
+                                  <div className="flex gap-1 items-center">
+                                    <button onClick={() => { setChecklistTarget({ phaseId: ph.id, phaseDate: ph.expected_date }); setChecklistForm({ title: '', assignee_id: '', date: '' }); }}
+                                      className="flex items-center gap-0.5 text-[10px] font-bold bg-primary text-white px-2 py-0.5 rounded-lg hover:opacity-90">
+                                      <span className="material-symbols-outlined text-[10px]">add</span> Add
+                                    </button>
+                                    <DeleteBtn onDelete={() => deleteSavedTask(ph.id)} />
+                                  </div>
+                                )}
+                              </div>
+                              <ChecklistTable items={items} phaseId={ph.id} phaseDate={ph.expected_date} showStatus={false} />
+                            </div>
+                          );
+                        })}
+                        {phs.length === 0 && <p className="text-xs text-on-surface-variant italic">No phases yet.</p>}
+                        {isAdmin && (
+                          <button onClick={() => setPhaseTarget(c.id)} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline self-start">
+                            <span className="material-symbols-outlined text-[13px]">add_circle</span> Add Phase
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {isAdmin && (
+                      <div className="border-t pt-3 flex justify-between items-center">
+                        <span className="text-[10px] text-on-surface-variant">Deploy template to create live project/event</span>
+                        <button 
+                          onClick={() => { setDeployModalTpl(c); setDeployPhaseDates({}); }}
+                          className="bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">rocket_launch</span> Deploy Template
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-
-              {isAdmin && (
-                <div className="px-6 py-4 border-t border-surface-container-high flex items-center justify-between">
-                  <span className="text-xs text-on-surface-variant">Deploy creates a live {isProject ? 'project' : 'event'} from this template</span>
-                  <button onClick={() => { setDeployModalTpl(active); setDeployPhaseDates({}); }} disabled={deploying}
-                    className="bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
-                    {deploying
-                      ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying…</>
-                      : <><span className="material-symbols-outlined text-[16px]">rocket_launch</span> Deploy {isProject ? 'Project' : 'Event'}</>
-                    }
-                  </button>
-                </div>
-              )}
-            </>
-          ) : <div className="flex-1 flex items-center justify-center text-on-surface-variant text-sm">Select a template.</div>}
+            );
+          })}
         </div>
-      </div>
+      </>
     );
   }
 
@@ -1547,7 +1935,7 @@ export default function ProjectsEventsPage() {
 
       {/* Controls */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex bg-surface-container p-1 rounded-xl gap-0.5">
             {[
               { key: 'Projects', icon: 'folder_open',  color: 'text-indigo-600' },
@@ -1563,8 +1951,21 @@ export default function ProjectsEventsPage() {
               </button>
             ))}
           </div>
-          <StaffToggle />
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={filterAssigneeId}
+              onChange={e => setFilterAssigneeId(e.target.value)}
+              className="border border-outline-variant/40 bg-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">All Assignees</option>
+              {safeProfiles.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <StaffToggle />
+          </div>
         </div>
+
 
         {typeTab !== 'Tasks' && currentUser?.role !== 'Assignee' && (
           <div className="flex items-center gap-3">
@@ -1608,13 +2009,158 @@ export default function ProjectsEventsPage() {
 
       {/* ── Projects Active ── */}
       {typeTab === 'Projects' && modeTab === 'Active' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {activeContainers.length === 0 ? (
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-outline-variant/30 px-6 py-16 text-center">
-              <span className="material-symbols-outlined text-5xl text-outline mb-3 block" style={{ fontVariationSettings: "'FILL' 1" }}>folder_open</span>
-              <p className="font-bold text-on-surface-variant">No active projects.</p>
+        <div className="flex flex-col gap-4 animate-fade-in">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Total Projects Card */}
+            <div 
+              onClick={() => setActiveCardDetail(activeCardDetail === 'projects' ? null : 'projects')}
+              className={`bg-white rounded-2xl border p-4 flex items-center justify-between cursor-pointer transition-all hover:shadow-md ${
+                activeCardDetail === 'projects' ? 'border-primary ring-1 ring-primary/20' : 'border-outline-variant/30'
+              }`}
+            >
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Total Projects</p>
+                <h3 className="text-2xl font-black text-indigo-600 mt-1">{activeContainers.length}</h3>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                <span className="material-symbols-outlined">folder</span>
+              </div>
             </div>
-          ) : activeContainers.map(c => <ActiveCard key={c.id} c={c} />)}
+
+            {/* Total Milestones Card */}
+            <div 
+              onClick={() => setActiveCardDetail(activeCardDetail === 'milestones' ? null : 'milestones')}
+              className={`bg-white rounded-2xl border p-4 flex items-center justify-between cursor-pointer transition-all hover:shadow-md ${
+                activeCardDetail === 'milestones' ? 'border-primary ring-1 ring-primary/20' : 'border-outline-variant/30'
+              }`}
+            >
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Total Milestones</p>
+                <h3 className="text-2xl font-black text-purple-600 mt-1">
+                  {safeWorkItems.filter(w => w.type === 'Milestone' && activeContainers.some(c => c.id === w.container_id)).length}
+                </h3>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
+                <span className="material-symbols-outlined">flag</span>
+              </div>
+            </div>
+
+            {/* Completed Card */}
+            <div 
+              onClick={() => setActiveCardDetail(activeCardDetail === 'completed' ? null : 'completed')}
+              className={`bg-white rounded-2xl border p-4 flex items-center justify-between cursor-pointer transition-all hover:shadow-md ${
+                activeCardDetail === 'completed' ? 'border-primary ring-1 ring-primary/20' : 'border-outline-variant/30'
+              }`}
+            >
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Completed Milestones</p>
+                <h3 className="text-2xl font-black text-green-600 mt-1">
+                  {safeWorkItems.filter(w => w.type === 'Milestone' && w.status === 'Completed' && activeContainers.some(c => c.id === w.container_id)).length}
+                </h3>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600">
+                <span className="material-symbols-outlined">check_circle</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Collapsible Details List */}
+          {activeCardDetail && (
+            <div className="bg-white rounded-2xl border border-outline-variant/30 p-5 mt-1 animate-fade-in flex flex-col gap-4">
+              <div className="flex items-center justify-between border-b border-surface-container pb-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-on-surface-variant">
+                  {activeCardDetail === 'projects' && 'Active Projects List'}
+                  {activeCardDetail === 'milestones' && 'Milestones by Project'}
+                  {activeCardDetail === 'completed' && 'Completed Milestones Details'}
+                </h3>
+                <button 
+                  onClick={() => setActiveCardDetail(null)} 
+                  className="w-6 h-6 rounded-full hover:bg-surface-container text-on-surface-variant flex items-center justify-center"
+                >
+                  <span className="material-symbols-outlined text-[16px]">close</span>
+                </button>
+              </div>
+
+              <div className="max-h-[300px] overflow-y-auto pr-1 flex flex-col gap-3">
+                {activeContainers.map(project => {
+                  const milestones = safeWorkItems.filter(w => w.container_id === project.id && w.type === 'Milestone');
+                  const completedMilestones = milestones.filter(m => m.status === 'Completed');
+
+                  if (activeCardDetail === 'projects') {
+                    return (
+                      <div key={project.id} 
+                        onClick={() => handleProjectClick(project.id)}
+                        className="flex items-center justify-between p-2.5 rounded-xl border border-outline-variant/10 bg-slate-50/50 hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        <span className="text-xs font-bold text-on-surface">{project.title}</span>
+                        <span className="text-[10px] font-extrabold bg-indigo-50 border border-indigo-150 text-indigo-700 px-2 py-0.5 rounded-full">{project.progress ?? 0}% Done</span>
+                      </div>
+                    );
+                  }
+
+                  if (activeCardDetail === 'milestones') {
+                    if (milestones.length === 0) return null;
+                    return (
+                      <div key={project.id} className="flex flex-col gap-1.5 p-3 rounded-xl border border-outline-variant/10 bg-slate-50/50">
+                        <span 
+                          onClick={() => handleProjectClick(project.id)}
+                          className="text-xs font-bold text-on-surface hover:text-primary hover:underline cursor-pointer"
+                        >
+                          {project.title}
+                        </span>
+                        <div className="pl-3 border-l border-outline-variant/30 flex flex-col gap-1 mt-1">
+                          {milestones.map(m => (
+                            <div key={m.id} className="flex items-center justify-between text-[11px] font-medium text-on-surface-variant">
+                              <span>• {m.title}</span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                                m.status === 'Completed' ? 'bg-green-100 text-green-700' :
+                                m.status === 'Ongoing' ? 'bg-blue-100 text-blue-700' :
+                                'bg-slate-100 text-slate-600'
+                              }`}>{m.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (activeCardDetail === 'completed') {
+                    if (completedMilestones.length === 0) return null;
+                    return (
+                      <div key={project.id} className="flex flex-col gap-1.5 p-3 rounded-xl border border-outline-variant/10 bg-slate-50/50">
+                        <span 
+                          onClick={() => handleProjectClick(project.id)}
+                          className="text-xs font-bold text-on-surface hover:text-primary hover:underline cursor-pointer"
+                        >
+                          {project.title}
+                        </span>
+                        <div className="pl-3 border-l border-outline-variant/30 flex flex-col gap-1 mt-1">
+                          {completedMilestones.map(m => (
+                            <div key={m.id} className="flex items-center justify-between text-[11px] font-medium text-green-700">
+                              <span>• {m.title}</span>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded uppercase bg-green-100 text-green-700">Completed</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {activeContainers.length === 0 ? (
+              <div className="lg:col-span-2 bg-white rounded-2xl border border-outline-variant/30 px-6 py-16 text-center">
+                <span className="material-symbols-outlined text-5xl text-outline mb-3 block" style={{ fontVariationSettings: "'FILL' 1" }}>folder_open</span>
+                <p className="font-bold text-on-surface-variant">No active projects.</p>
+              </div>
+            ) : activeContainers.map(c => <ActiveCard key={c.id} c={c} />)}
+          </div>
         </div>
       )}
 

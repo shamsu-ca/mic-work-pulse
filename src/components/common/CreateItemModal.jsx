@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import ClockTimePicker from './ClockTimePicker';
 
-export default function CreateItemModal({ onClose, initialData, onSuccessConvert, defaultTab = 'choose', defaultSelfOnly = false, predefinedAssignee = null }) {
+export default function CreateItemModal({ onClose, initialData, onSuccessConvert, defaultTab = 'choose' }) {
   const { addWorkItem, addSavedTask, profiles, currentUser, addAnnouncement, containers, leaveRequests } = useDataContext();
   const navigate = useNavigate();
   const [step, setStep] = useState(initialData ? 'task' : (defaultTab === 'Plan' ? 'plan' : 'choose')); // 'choose' | 'task' | 'plan' | 'notification'
@@ -21,7 +21,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   const [taskAssignee, setTaskAssignee] = useState(selfOnly ? (currentUser?.id || '') : '');
   const [taskPriority, setTaskPriority] = useState('Medium');
   const [taskDate, setTaskDate] = useState(new Date().toISOString().split('T')[0]);
-  const [taskEstMins, setTaskEstMins] = useState('');
+  const [taskEstMins] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState('daily');
   const [weeklyDays, setWeeklyDays] = useState(new Set([1]));
@@ -38,9 +38,9 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   // Plan form
   const [planTitle, setPlanTitle] = useState('');
   const [planDesc, setPlanDesc] = useState('');
-  const [planAssignee, setPlanAssignee] = useState(selfOnly ? (currentUser?.id || '') : '');
+  const [planAssignee] = useState(selfOnly ? (currentUser?.id || '') : '');
   const [planPriority, setPlanPriority] = useState('Medium');
-  const [planEstMins, setPlanEstMins] = useState('');
+  const [planEstMins] = useState('');
 
   // Notification form
   const [notifType, setNotifType] = useState('Text');
@@ -331,21 +331,9 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Due Date</label>
-                    <input type="date" className={inputCls} value={taskDate} onChange={e => setTaskDate(e.target.value)} />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>
-                    <input type="number" min="0" placeholder="e.g. 90" className={inputCls} value={taskEstMins} onChange={e => setTaskEstMins(e.target.value)} />
-                  </div>
-                </div>
-              )}
-              {isRecurring && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>
-                  <input type="number" min="0" placeholder="e.g. 90" className={inputCls} value={taskEstMins} onChange={e => setTaskEstMins(e.target.value)} />
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Due Date</label>
+                  <input type="date" className={inputCls} value={taskDate} onChange={e => setTaskDate(e.target.value)} />
                 </div>
               )}
 
@@ -405,10 +393,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                   <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
                 </select>
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Est. Time (min)</label>
-                <input type="number" min="0" placeholder="e.g. 120" className={inputCls} value={planEstMins} onChange={e => setPlanEstMins(e.target.value)} />
-              </div>
+
             </div>
             <div className="flex gap-3 px-6 pb-5 border-t border-surface-container pt-4">
               <button type="button" className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>

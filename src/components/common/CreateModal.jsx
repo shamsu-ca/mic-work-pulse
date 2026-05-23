@@ -11,7 +11,7 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
   const [assigneeId, setAssigneeId] = useState(currentUser?.id || '');
   const [containerId, setContainerId] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
-  const [estimatedHours, setEstimatedHours] = useState('');
+  const [estimatedHours] = useState('');
   const [priority, setPriority] = useState('3');
   
   const [isRecurring, setIsRecurring] = useState(false);
@@ -200,15 +200,9 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
               </div>
 
               {!isRecurring && (
-                <div className="flex-row gap-3">
-                  <div className="flex-column gap-1" style={{ flex: 1 }}>
-                    <label className="label-sm text-muted">Expected Date</label>
-                    <input type="date" className="input-base" value={expectedDate} onChange={e => setExpectedDate(e.target.value)} />
-                  </div>
-                  <div className="flex-column gap-1" style={{ flex: 1 }}>
-                    <label className="label-sm text-muted">Est. Hours</label>
-                    <input type="number" step="0.5" className="input-base" placeholder="e.g. 2.5" value={estimatedHours} onChange={e => setEstimatedHours(e.target.value)} />
-                  </div>
+                <div className="flex-column gap-1">
+                  <label className="label-sm text-muted">Expected Date</label>
+                  <input type="date" className="input-base" value={expectedDate} onChange={e => setExpectedDate(e.target.value)} />
                 </div>
               )}
 

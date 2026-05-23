@@ -19,12 +19,14 @@ export default function ClockTimePicker({ value, onChange, className }) {
     return { h: h12, m, isAm };
   };
 
-  const [time, setTime] = useState(parseTime(value));
+  const [time, setTime] = useState(() => parseTime(value));
+  const [prevValue, setPrevValue] = useState(value);
   const containerRef = useRef(null);
 
-  useEffect(() => {
-    if (value) setTime(parseTime(value));
-  }, [value]);
+  if (value !== prevValue) {
+    setTime(parseTime(value));
+    setPrevValue(value);
+  }
 
   useEffect(() => {
     const handleClickOutside = (e) => {

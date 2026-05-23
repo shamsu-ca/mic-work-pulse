@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDataContext } from '../context/SupabaseDataContext';
 import CreateItemModal from '../components/common/CreateItemModal';
@@ -67,6 +67,8 @@ function EditPoolModal({ item, onClose, onSave }) {
 }
 
 function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, searchQuery, poolSubTab }) {
+  const [expandedRowId, setExpandedRowId] = useState(null);
+
   // Filter based on search
   const filtered = poolItems.filter(item => {
     if (searchQuery && !item.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -74,6 +76,7 @@ function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, sear
   });
 
   const showCreatedBy = currentUser?.role === 'Admin' && poolSubTab !== 'Self';
+  const totalCols = 3 + (showCreatedBy ? 1 : 0) + 1; // Sl, Title, Age, Creator, Actions
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
@@ -81,65 +84,113 @@ function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, sear
         <table className="w-full text-left">
           <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
             <tr>
+              <th className="px-4 py-3 w-12 text-center">Sl.</th>
               <th className="px-5 py-3">Task Title</th>
               <th className="px-5 py-3 w-32">Aging Status</th>
-              {showCreatedBy && <th className="px-5 py-3">Created By</th>}
-              <th className="px-5 py-3 text-right pr-4 w-48">Actions</th>
+              {showCreatedBy && <th className="px-5 py-3 hidden md:table-cell">Created By</th>}
+              <th className="px-5 py-3 text-right pr-4 w-48 hidden md:table-cell">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-container-low text-sm font-medium">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan="4" className="px-6 py-14 text-center text-on-surface-variant">
+                <td colSpan={totalCols} className="px-6 py-14 text-center text-on-surface-variant">
                   <span className="material-symbols-outlined text-4xl text-outline mb-2 block">done_all</span>
                   <p>Pool is empty.</p>
                 </td>
               </tr>
-            ) : filtered.map(item => {
+            ) : filtered.map((item, idx) => {
               const ageStr = calculateAge(item.created_at);
               const creator = profiles.find(p => p.id === item.created_by)?.name || 'Unknown';
+              const isExpanded = expandedRowId === item.id;
 
               return (
-                <tr key={item.id} className="hover:bg-surface-container-low/40 transition-colors">
-                  <td className="px-5 py-4 text-on-surface font-semibold">{item.title}</td>
-                  <td className="px-5 py-4">
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded ${getAgeClass(ageStr)}`}>
-                      {ageStr}
-                    </span>
-                  </td>
-                  {showCreatedBy && (
-                    <td className="px-5 py-4 text-on-surface-variant text-xs">{creator}</td>
+                <React.Fragment key={item.id}>
+                  <tr 
+                    onClick={() => setExpandedRowId(isExpanded ? null : item.id)}
+                    className="hover:bg-surface-container-low/40 transition-colors cursor-pointer md:cursor-default"
+                  >
+                    <td className="px-4 py-4 text-center text-on-surface-variant text-xs">{idx + 1}</td>
+                    <td className="px-5 py-4 text-on-surface font-semibold">{item.title}</td>
+                    <td className="px-5 py-4">
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded ${getAgeClass(ageStr)}`}>
+                        {ageStr}
+                      </span>
+                    </td>
+                    {showCreatedBy && (
+                      <td className="px-5 py-4 text-on-surface-variant text-xs hidden md:table-cell">{creator}</td>
+                    )}
+                    <td className="px-5 py-4 text-right pr-4 hidden md:table-cell" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        {currentUser?.role === 'Admin' || currentUser?.id === item.created_by ? (
+                          <>
+                            <button
+                              onClick={() => onAssignClick(item, 'edit')}
+                              className="text-on-surface-variant hover:text-primary transition-colors p-1"
+                              title="Edit"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">edit</span>
+                            </button>
+                            <button
+                              onClick={() => onAssignClick(item, 'delete')}
+                              className="text-on-surface-variant hover:text-error transition-colors p-1"
+                              title="Delete"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                            </button>
+                          </>
+                        ) : null}
+                        <button
+                          onClick={() => onAssignClick(item, 'assign')}
+                          className="flex items-center gap-1 ml-2 text-[11px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">person_add</span>
+                          Assign
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr className="md:hidden bg-slate-50/50">
+                      <td colSpan={3} className="px-5 py-3 border-t border-b border-slate-100">
+                        <div className="flex flex-col gap-2.5">
+                          {showCreatedBy && (
+                            <div className="text-xs text-on-surface-variant">
+                              <span className="font-semibold text-slate-500">Created By:</span> <span className="font-bold text-on-surface">{creator}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 mt-1" onClick={e => e.stopPropagation()}>
+                            {currentUser?.role === 'Admin' || currentUser?.id === item.created_by ? (
+                              <>
+                                <button
+                                  onClick={() => { onAssignClick(item, 'edit'); setExpandedRowId(null); }}
+                                  className="flex items-center gap-1 text-[11px] font-bold text-on-surface-variant border border-outline-variant/40 bg-white hover:bg-slate-100 px-3 py-1.5 rounded-lg"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">edit</span>
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => { onAssignClick(item, 'delete'); setExpandedRowId(null); }}
+                                  className="flex items-center gap-1 text-[11px] font-bold text-error border border-error/20 bg-error/5 hover:bg-error/10 px-3 py-1.5 rounded-lg"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">delete</span>
+                                  Delete
+                                </button>
+                              </>
+                            ) : null}
+                            <button
+                              onClick={() => { onAssignClick(item, 'assign'); setExpandedRowId(null); }}
+                              className="flex items-center gap-1 text-[11px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">person_add</span>
+                              Assign
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
                   )}
-                  <td className="px-5 py-4 text-right pr-4">
-                    <div className="flex items-center justify-end gap-2">
-                      {currentUser?.role === 'Admin' || currentUser?.id === item.created_by ? (
-                        <>
-                          <button
-                            onClick={() => onAssignClick(item, 'edit')}
-                            className="text-on-surface-variant hover:text-primary transition-colors p-1"
-                            title="Edit"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">edit</span>
-                          </button>
-                          <button
-                            onClick={() => onAssignClick(item, 'delete')}
-                            className="text-on-surface-variant hover:text-error transition-colors p-1"
-                            title="Delete"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">delete</span>
-                          </button>
-                        </>
-                      ) : null}
-                      <button
-                        onClick={() => onAssignClick(item, 'assign')}
-                        className="flex items-center gap-1 ml-2 text-[11px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
-                      >
-                        <span className="material-symbols-outlined text-[14px]">person_add</span>
-                        Assign
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -222,7 +273,7 @@ function EditNoticeModal({ notice, onClose, onSave, isAdmin }) {
 }
 
 function AnnouncementsTab({ currentUser, profiles }) {
-  const { announcements, addAnnouncement, updateAnnouncement, deleteAnnouncement, getDynamicNotificationText } = useDataContext();
+  const { announcements, updateAnnouncement, deleteAnnouncement, getDynamicNotificationText } = useDataContext();
   const [subTab, setSubTab] = useState('Active'); // Active | Expired
   const [editingAnn, setEditingAnn] = useState(null);
   
@@ -311,7 +362,7 @@ function AnnouncementsTab({ currentUser, profiles }) {
   );
 }
 
-function NoticeCard({ notice, isAdmin, currentUser, profiles, getDynamicNotificationText, onEdit, onDelete, onTogglePin }) {
+function NoticeCard({ notice, isAdmin, _currentUser, profiles, getDynamicNotificationText, onEdit, onDelete, onTogglePin }) {
   const isText = notice.type === 'Text';
   const displayStr = getDynamicNotificationText(notice);
   const mainText = isText ? notice.message : notice.title;
@@ -368,22 +419,24 @@ function NoticeCard({ notice, isAdmin, currentUser, profiles, getDynamicNotifica
 // ─── MAIN PLANNING PAGE ────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
-  const { workItems, currentUser, profiles, updateWorkItem, deleteWorkItem, addContainer, addWorkItem } = useDataContext();
+  const { workItems, currentUser, profiles, updateWorkItem, deleteWorkItem } = useDataContext();
   const location = useLocation();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState(location.state?.activeTab === 'Notifications' || location.state?.activeTab === 'Announcements' ? 'Announcements' : (location.state?.activeTab || 'Pool'));
+  const [prevLocationState, setPrevLocationState] = useState(location.state);
   const [poolSubTab, setPoolSubTab] = useState('Self'); // 'Self' | 'Admins' | 'Assignees'
   const [assigneeFilterCategory, setAssigneeFilterCategory] = useState('');
   const [assigneeFilterName, setAssigneeFilterName]         = useState('');
   const [assignmentItem, setAssignmentItem] = useState(null);
   const [editingPoolItem, setEditingPoolItem] = useState(null);
 
-  useEffect(() => {
+  if (location.state !== prevLocationState) {
     if (location.state?.activeTab) {
       setActiveTab(location.state.activeTab);
     }
-  }, [location.state]);
+    setPrevLocationState(location.state);
+  }
 
   const isSuperAdmin = currentUser?.role === 'Admin';
 
@@ -418,13 +471,7 @@ export default function PlanningPage() {
     ? assigneeProfiles.filter(p => (p.category || 'Office Staff') === assigneeFilterCategory)
     : assigneeProfiles;
 
-  const handleAssignTask = async (item, assigneeId) => {
-    // Keep it here just in case, but no longer used directly by direct conversion.
-  };
-
-  const handleAssignProject = async (item, assigneeId, date, milestoneTitle) => {
-    // Keep it here just in case, but no longer used directly.
-  };
+  // handleAssignTask and handleAssignProject removed as they are no longer used directly.
 
   const handlePoolAction = async (item, action) => {
     if (action === 'edit') {

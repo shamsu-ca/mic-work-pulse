@@ -163,7 +163,7 @@ function CredentialsModal({ name, username, password, onClose }) {
   // Auto-copy when modal opens
   React.useEffect(() => {
     navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {});
-  }, []);
+  }, [text]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(text);
@@ -450,7 +450,7 @@ export default function UsersPage() {
       {createdCreds && (
         <CredentialsModal
           name={createdCreds.name}
-          email={createdCreds.email}
+          username={createdCreds.username}
           password={createdCreds.password}
           onClose={() => setCreatedCreds(null)}
         />

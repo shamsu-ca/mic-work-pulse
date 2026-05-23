@@ -15,12 +15,12 @@ function getResolutionInfo(item) {
   return { label: `Late by ${diff}d`, color: 'bg-red-100 text-red-800' };
 }
 
-export default function CompletionPanel({ item, profiles = [], currentUser, onConfirm, onCancel }) {
+export default function CompletionPanel({ item, profiles = [], onConfirm, onCancel }) {
   const [note, setNote] = useState('');
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpForm, setFollowUpForm] = useState({
-    title: `Follow-up: ${item?.title ?? ''}`,
-    description: item ? `Follow-up for: ${item.title}` : '',
+    title: '',
+    description: item ? `Follow-up of: ${item.title}` : '',
     dueDate: tomorrow(),
     assigneeId: item?.assignee_id ?? '',
     priority: item?.priority || 'Medium',
@@ -30,14 +30,7 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
   const [saving, setSaving] = useState(false);
 
   const resolution = getResolutionInfo(item);
-  const isAdmin = currentUser?.role === 'Admin';
   const isMilestone = item?.type === 'Milestone';
-
-  const followUpAssigneeOptions = (() => {
-    if (currentUser?.role === 'Assignee') return profiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
-    if (currentUser?.role === 'Manager') return profiles.filter(p => p.manager === currentUser.name);
-    return profiles;
-  })();
 
   const handleConfirm = async () => {
     if (followUpEnabled) {
@@ -59,6 +52,7 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
         title: followUpForm.title,
         description: followUpForm.description,
         dueDate: followUpForm.dueDate,
+        dueTime: null,
         assigneeId: followUpForm.assigneeId,
         priority: followUpForm.priority,
         linkType: followUpForm.linkType,
@@ -98,106 +92,82 @@ export default function CompletionPanel({ item, profiles = [], currentUser, onCo
             />
           </div>
 
-          {isAdmin && (
-            <div>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={followUpEnabled}
-                  onChange={e => { setFollowUpEnabled(e.target.checked); setFollowUpError(''); }}
-                  className="rounded"
-                />
-                <span className="text-sm text-gray-700 font-semibold">Create Follow-up {isMilestone ? 'Milestone' : 'Task'}</span>
-              </label>
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={followUpEnabled}
+                onChange={e => { setFollowUpEnabled(e.target.checked); setFollowUpError(''); }}
+                className="rounded"
+              />
+              <span className="text-sm text-gray-700 font-semibold">Add Follow-up</span>
+            </label>
 
-              {followUpEnabled && (
-                <div className="mt-3 space-y-3 pl-6 border-l-2 border-indigo-100">
-                  {isMilestone && (
-                    <div className="bg-purple-50 border border-purple-200 text-purple-800 p-2.5 rounded-lg text-[10px] font-semibold leading-relaxed">
-                      Note: Locked to a **Milestone** inside the same project.
-                    </div>
+            {followUpEnabled && (
+              <div className="mt-3 space-y-3 pl-6 border-l-2 border-indigo-100">
+                {isMilestone && (
+                  <div className="bg-purple-50 border border-purple-200 text-purple-800 p-2.5 rounded-lg text-[10px] font-semibold leading-relaxed">
+                    Note: Locked to a **Milestone** inside the same project.
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Title *</label>
+                  <input
+                    type="text"
+                    value={followUpForm.title}
+                    onChange={e => setFollowUpForm(p => ({ ...p, title: e.target.value }))}
+                    placeholder="Title"
+                    className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${followUpError && !followUpForm.title.trim() ? 'border-red-400' : 'border-gray-300'}`}
+                  />
+                  {followUpError && !followUpForm.title.trim() && (
+                    <p className="text-xs text-red-500 mt-1">{followUpError}</p>
                   )}
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Description</label>
+                  <textarea
+                    value={followUpForm.description}
+                    onChange={e => setFollowUpForm(p => ({ ...p, description: e.target.value }))}
+                    rows={2}
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Due Date *</label>
+                  <input
+                    type="date"
+                    value={followUpForm.dueDate}
+                    onChange={e => setFollowUpForm(p => ({ ...p, dueDate: e.target.value }))}
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Title *</label>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Priority</label>
+                    <select
+                      value={followUpForm.priority}
+                      onChange={e => setFollowUpForm(p => ({ ...p, priority: e.target.value }))}
+                      className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                      <option>Low</option>
+                      <option>Medium</option>
+                      <option>High</option>
+                      <option>Critical</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Assignee (Same Assignee)</label>
                     <input
                       type="text"
-                      value={followUpForm.title}
-                      onChange={e => setFollowUpForm(p => ({ ...p, title: e.target.value }))}
-                      placeholder="Title"
-                      className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${followUpError && !followUpForm.title.trim() ? 'border-red-400' : 'border-gray-300'}`}
+                      readOnly
+                      value={profiles.find(p => p.id === followUpForm.assigneeId)?.name || 'Unassigned'}
+                      className="w-full text-sm border border-gray-200 bg-slate-50 text-gray-500 rounded-lg px-3 py-2 focus:outline-none"
                     />
-                    {followUpError && !followUpForm.title.trim() && (
-                      <p className="text-xs text-red-500 mt-1">{followUpError}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Description</label>
-                    <textarea
-                      value={followUpForm.description}
-                      onChange={e => setFollowUpForm(p => ({ ...p, description: e.target.value }))}
-                      rows={2}
-                      placeholder="Description"
-                      className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Due Date *</label>
-                      <input
-                        type="date"
-                        value={followUpForm.dueDate}
-                        onChange={e => setFollowUpForm(p => ({ ...p, dueDate: e.target.value }))}
-                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      />
-                    </div>
-                    {followUpAssigneeOptions.length > 0 && (
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-500 uppercase">Assignee</label>
-                        <select
-                          value={followUpForm.assigneeId}
-                          onChange={e => setFollowUpForm(p => ({ ...p, assigneeId: e.target.value }))}
-                          className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        >
-                          <option value="">Unassigned</option>
-                          {followUpAssigneeOptions.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Priority</label>
-                      <select
-                        value={followUpForm.priority}
-                        onChange={e => setFollowUpForm(p => ({ ...p, priority: e.target.value }))}
-                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      >
-                        <option>Low</option>
-                        <option>Medium</option>
-                        <option>High</option>
-                        <option>Critical</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Link Type</label>
-                      <select
-                        value={followUpForm.linkType}
-                        onChange={e => setFollowUpForm(p => ({ ...p, linkType: e.target.value }))}
-                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      >
-                        <option>Continuation</option>
-                        <option>Correction</option>
-                        <option>Review</option>
-                        <option>New Work</option>
-                      </select>
-                    </div>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="px-5 py-3 border-t flex justify-end gap-2">

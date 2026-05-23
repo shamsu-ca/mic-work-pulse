@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, supabaseAdmin } from '../lib/supabaseClient';
 
 const DataContext = createContext();
@@ -175,6 +176,7 @@ export function SupabaseDataProvider({ children, session }) {
       supabase.removeChannel(absencesSub);
       supabase.removeChannel(leavesSub);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
 
   // Reads from saved_tasks, spawns actual task entries into work_items
@@ -191,15 +193,6 @@ export function SupabaseDataProvider({ children, session }) {
       );
     };
 
-    const isAbsentHalfDayToday = (userId) => {
-      if (!userId || !currentLeaves.length) return false;
-      return currentLeaves.some(l => 
-        l.user_id === userId && 
-        l.status === 'Approved' && 
-        l.leave_type.startsWith('Half Day') && 
-        today >= l.from_date && today <= l.to_date
-      );
-    };
 
     // ── Phase A: parent templates ──────────────────────────────────────────
     let spawnedParents = [];
@@ -300,10 +293,11 @@ export function SupabaseDataProvider({ children, session }) {
     await supabase.from('work_items').update(updates).eq('id', itemId);
   };
 
-  const createFollowUpTask = async (completedItemId, { title, description, assigneeId, dueDate, priority, linkType, type, container_id }) => {
+  const createFollowUpTask = async (completedItemId, { title, description, assigneeId, dueDate, dueTime, priority, linkType, type, container_id }) => {
     const { data, error } = await supabase.from('work_items').insert([{
       title, description: description || null,
       assignee_id: assigneeId || null, expected_date: dueDate || null,
+      due_time: dueTime || null,
       priority: priority || 'Medium', status: 'Assigned',
       type: type || 'Task',
       container_id: container_id || null,
@@ -645,9 +639,8 @@ export function SupabaseDataProvider({ children, session }) {
     const client = (isAdmin && supabaseAdmin) ? supabaseAdmin : supabase;
     let result = await client.from('leave_requests').insert([payload]).select();
     
-    // Graceful fallback if approved_date column does not exist
     if (result.error && (result.error.message?.includes('approved_date') || result.error.code === 'PGRST204')) {
-      const { approved_date, ...cleanPayload } = payload;
+      const { approved_date: _approved_date, ...cleanPayload } = payload;
       result = await client.from('leave_requests').insert([cleanPayload]).select();
     }
     
@@ -679,9 +672,8 @@ export function SupabaseDataProvider({ children, session }) {
     const client = (isAdmin && supabaseAdmin) ? supabaseAdmin : supabase;
     let result = await client.from('leave_requests').update(updates).eq('id', id).select();
     
-    // Graceful fallback if approved_date column does not exist
     if (result.error && (result.error.message?.includes('approved_date') || result.error.code === 'PGRST204')) {
-      const { approved_date, ...cleanUpdates } = updates;
+      const { approved_date: _approved_date, ...cleanUpdates } = updates;
       result = await client.from('leave_requests').update(cleanUpdates).eq('id', id).select();
     }
     

@@ -27,7 +27,7 @@ export default function NotificationManager() {
       }
     };
 
-    const showPopup = (title, body, tag, url = '/') => {
+    const showPopup = (title, body, tag) => {
       // Check local storage to avoid duplicate spam
       const notified = JSON.parse(localStorage.getItem('notified_ids') || '{}');
       if (notified[tag]) return;

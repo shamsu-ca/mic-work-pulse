@@ -168,7 +168,7 @@ const generatePassword = () => {
 function CredentialsModal({ name, loginId, password, onClose }) {
   const [copied, setCopied] = useState(false);
   const text = `MIC WorkPulse Credentials\n\nName: ${name}\nLogin ID: ${loginId}\nPassword: ${password}`;
-  React.useEffect(() => { navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {}); }, []);
+  React.useEffect(() => { navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {}); }, [text]);
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[1002] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -681,7 +681,7 @@ function TaskDetailModal({ task, workItems, containers, profiles, onClose }) {
     Assigned: 'bg-surface-container text-on-surface-variant',
   };
 
-  const Row = ({ label, value }) => value ? (
+  const renderRow = (label, value) => value ? (
     <div className="flex items-start gap-3 py-2.5 border-b border-surface-container last:border-0">
       <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest w-24 flex-shrink-0 pt-0.5">{label}</span>
       <span className="text-sm text-on-surface font-medium flex-1">{value}</span>
@@ -702,11 +702,11 @@ function TaskDetailModal({ task, workItems, containers, profiles, onClose }) {
           <button onClick={onClose} className="flex-shrink-0"><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
         </div>
         <div className="px-6 py-2 overflow-y-auto max-h-[70vh]">
-          <Row label="Due Date" value={task.expected_date ? fmtDate(task.expected_date) : 'No date set'} />
-          <Row label="Assignee" value={assignee?.name || (task.assignee_id ? 'Unknown' : 'Unassigned')} />
-          {container && <Row label={container.type} value={container.title} />}
-          {!container && !task.container_id && <Row label="Context" value="Standalone Task" />}
-          {task.description && <Row label="Description" value={task.description} />}
+          {renderRow("Due Date", task.expected_date ? fmtDate(task.expected_date) : 'No date set')}
+          {renderRow("Assignee", assignee?.name || (task.assignee_id ? 'Unknown' : 'Unassigned'))}
+          {container && renderRow(container.type, container.title)}
+          {!container && !task.container_id && renderRow("Context", "Standalone Task")}
+          {task.description && renderRow("Description", task.description)}
           {task.status === 'Completed' && task.completion_note && (
             <div className="py-2.5 border-b border-surface-container">
               <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Completion Note</span>
@@ -714,7 +714,7 @@ function TaskDetailModal({ task, workItems, containers, profiles, onClose }) {
             </div>
           )}
           {task.status === 'Completed' && task.completion_tag && (
-            <Row label="Tag" value={task.completion_tag} />
+            renderRow("Tag", task.completion_tag)
           )}
           {followUps.length > 0 && (
             <div className="py-2.5">
@@ -745,7 +745,7 @@ function TaskDetailModal({ task, workItems, containers, profiles, onClose }) {
 export default function StaffOverviewPage() {
   const {
     profiles, workItems, containers, staffGroup, currentUser,
-    leaveRequests, applyLeave, updateLeaveRequest, deleteLeaveRequest,
+    leaveRequests, applyLeave,
     createUser, adminUpdateProfile, adminResetUserPassword,
   } = useDataContext();
   const safeProfiles = profiles || [];

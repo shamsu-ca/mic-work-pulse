@@ -47,7 +47,7 @@ function DeleteBtn({ onConfirm }) {
   );
 }
 
-function ActivityTimeline({ item, workItems }) {
+function ActivityTimeline({ item, workItems, onViewDetail }) {
   const events = [];
 
   events.push({
@@ -78,10 +78,11 @@ function ActivityTimeline({ item, workItems }) {
   const followUps = (workItems || []).filter(w => w.linked_to === item.id);
   followUps.forEach(fu => {
     events.push({
-      label: `Follow-up "${fu.title}" Created`,
+      label: `Created Follow-up ${fu.title}`,
       date: fu.created_at,
       icon: 'subdirectory_arrow_right',
       color: 'text-purple-500 bg-purple-100',
+      targetItem: fu,
     });
     if (fu.status === 'Completed' && fu.completed_at) {
       events.push({
@@ -107,7 +108,17 @@ function ActivityTimeline({ item, workItems }) {
               <span className="material-symbols-outlined text-[9px] font-bold">{ev.icon}</span>
             </div>
             <div className="flex-1 min-w-0 pt-0.5">
-              <p className="text-xs font-semibold text-on-surface leading-tight">{ev.label}</p>
+              {ev.targetItem && onViewDetail ? (
+                <button
+                  type="button"
+                  onClick={() => onViewDetail(ev.targetItem)}
+                  className="text-xs font-bold text-indigo-600 hover:underline text-left block"
+                >
+                  {ev.label}
+                </button>
+              ) : (
+                <p className="text-xs font-semibold text-on-surface leading-tight">{ev.label}</p>
+              )}
               <p className="text-[9px] text-on-surface-variant font-medium mt-0.5">
                 {new Date(ev.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
@@ -133,15 +144,9 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
   return (
     <div className="px-5 py-4 flex flex-col gap-3">
       {sourceItem && (
-        <div className="flex items-center gap-2 bg-indigo-50/50 border border-indigo-150 rounded-xl px-4 py-2.5">
-          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Follow-up for:</span>
-          <button 
-            type="button"
-            onClick={() => onViewDetail && onViewDetail(sourceItem)} 
-            className="text-xs font-bold text-indigo-950 hover:underline text-left"
-          >
-            {sourceItem.title}
-          </button>
+        <div className="flex items-center gap-2 bg-indigo-50/30 border border-indigo-100 rounded-xl px-4 py-2 text-xs text-indigo-900">
+          <span className="font-bold">Follow-up of:</span>
+          <span>{sourceItem.title}</span>
         </div>
       )}
 
@@ -219,7 +224,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
       )}
 
       {/* Activity Timeline */}
-      <ActivityTimeline item={item} workItems={workItems} />
+      <ActivityTimeline item={item} workItems={workItems} onViewDetail={onViewDetail} />
 
       {/* Create Follow-up Button */}
       {onFollowUp && currentUser?.role === 'Admin' && (
@@ -257,7 +262,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
   );
 }
 
-function EditItemModal({ item, profiles, workItems, onClose, onSave }) {
+function EditItemModal({ item, profiles, _workItems, onClose, onSave }) {
   const { leaveRequests } = useDataContext();
   const [title, setTitle]           = useState(item.title || '');
   const [desc, setDesc]             = useState(item.description || '');
@@ -378,14 +383,12 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
 
   const getAssigneeName = (id) => safeProfiles.find(p => p.id === id)?.name ?? 'Unassigned';
   const getContainer    = (id) => safeContainers.find(c => c.id === id);
-  const getItem         = (id) => safeWorkItems.find(w => w.id === id);
 
   const renderRow = (item) => {
     const isExpanded   = expandedId === item.id;
     const ds           = getDisplayStatus(item);
     const container    = item.container_id ? getContainer(item.container_id) : null;
     const assigneeName = getAssigneeName(item.assignee_id);
-    const children     = safeWorkItems.filter(w => w.parent_id === item.id);
 
     return (
       <React.Fragment key={item.id}>
@@ -482,7 +485,6 @@ function ActiveGroupTable({ roots, profiles, containers, workItems, currentUser,
 
   const renderRow = (item) => {
     const isExpanded = expandedId === item.id;
-    const ds = getDisplayStatus(item);
     const assigneeName = (profiles || []).find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
 
     return (
@@ -692,7 +694,6 @@ export default function AllTasksPage() {
       targetTab = 'History';
     } else {
       const today = todayStr();
-      const tomorrow = offsetDate(1);
       const isToday = !item.expected_date || item.expected_date <= today || item.status === 'Ongoing';
       if (isToday) {
         targetTab = 'Today';

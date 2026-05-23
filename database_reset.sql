@@ -38,6 +38,8 @@ CREATE TABLE public.containers (
   is_template BOOLEAN DEFAULT false,
   source_template_id UUID REFERENCES public.containers(id) ON DELETE SET NULL,
   created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  is_active BOOLEAN DEFAULT true,
+  expected_date DATE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE public.containers DISABLE ROW LEVEL SECURITY;
@@ -55,6 +57,7 @@ CREATE TABLE public.work_items (
   priority TEXT,
   status TEXT DEFAULT 'Assigned',
   expected_date DATE,
+  due_time TIME,
   is_active BOOLEAN DEFAULT true,
   is_recurring BOOLEAN DEFAULT false,
   recurrence_rule JSONB,

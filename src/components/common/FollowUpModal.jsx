@@ -3,14 +3,9 @@ import { useState } from 'react';
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
 const LINK_TYPES = ['Continuation', 'Correction', 'Review', 'New Work'];
 
-export default function FollowUpModal({ completedItem, profiles = [], currentUser, onConfirm, onCancel }) {
+export default function FollowUpModal({ completedItem, profiles = [], onConfirm, onCancel }) {
   const assigneeName = profiles.find(p => p.id === completedItem?.assignee_id)?.name || 'Unassigned';
 
-  const assigneeOptions = (() => {
-    if (currentUser?.role === 'Assignee') return profiles.filter(p => p.id === currentUser.id);
-    if (currentUser?.role === 'Manager') return profiles.filter(p => p.manager === currentUser.name);
-    return profiles;
-  })();
   const completedDate = completedItem?.completed_at
     ? new Date(completedItem.completed_at).toLocaleDateString()
     : '—';
@@ -18,10 +13,9 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
   const isMilestone = completedItem?.type === 'Milestone';
 
   const [form, setForm] = useState({
-    title: `Follow-up: ${completedItem?.title ?? ''}`,
-    description: completedItem ? `Follow-up for: ${completedItem.title}` : '',
+    title: '',
+    description: completedItem ? `Follow-up of: ${completedItem.title}` : '',
     assigneeId: completedItem?.assignee_id ?? '',
-    dueDate: '',
     priority: completedItem?.priority || 'Medium',
     linkType: 'Continuation',
   });
@@ -30,13 +24,13 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
   const set = (key, val) => setForm(p => ({ ...p, [key]: val }));
 
   const handleConfirm = async () => {
-    if (!form.dueDate) return;
     setSaving(true);
     await onConfirm({
       title: form.title,
       description: form.description || null,
       assigneeId: form.assigneeId || null,
-      dueDate: form.dueDate,
+      dueDate: null,
+      dueTime: null,
       priority: form.priority,
       linkType: form.linkType,
       type: isMilestone ? 'Milestone' : 'Task',
@@ -46,7 +40,7 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
         <div className="px-5 py-4 border-b">
           <h2 className="text-base font-semibold text-gray-800">
@@ -84,34 +78,8 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
               value={form.description}
               onChange={e => set('description', e.target.value)}
               rows={2}
-              placeholder={`Follow-up for: ${completedItem?.title}`}
               className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Assignee</label>
-              <select
-                value={form.assigneeId}
-                onChange={e => set('assigneeId', e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              >
-                <option value="">Unassigned</option>
-                {assigneeOptions.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Due Date *</label>
-              <input
-                type="date"
-                value={form.dueDate}
-                onChange={e => set('dueDate', e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -126,14 +94,13 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Link Type</label>
-              <select
-                value={form.linkType}
-                onChange={e => set('linkType', e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              >
-                {LINK_TYPES.map(t => <option key={t}>{t}</option>)}
-              </select>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Assignee (Same Assignee)</label>
+              <input
+                type="text"
+                readOnly
+                value={profiles.find(p => p.id === form.assigneeId)?.name || 'Unassigned'}
+                className="w-full text-sm border border-gray-200 bg-gray-50 text-gray-500 rounded-lg px-3 py-2 focus:outline-none"
+              />
             </div>
           </div>
         </div>
@@ -148,7 +115,7 @@ export default function FollowUpModal({ completedItem, profiles = [], currentUse
           </button>
           <button
             onClick={handleConfirm}
-            disabled={saving || !form.dueDate || !form.title}
+            disabled={saving || !form.title}
             className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
           >
             {saving ? 'Creating...' : 'Create'}

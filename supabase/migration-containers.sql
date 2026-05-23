@@ -7,7 +7,7 @@ ALTER TABLE containers
   ADD COLUMN IF NOT EXISTS staff_group     TEXT    DEFAULT 'Office Staff',
   ADD COLUMN IF NOT EXISTS description     TEXT,
   ADD COLUMN IF NOT EXISTS expected_date   DATE,
-  ADD COLUMN IF NOT EXISTS lead_id         UUID REFERENCES profiles(id),
+  ADD COLUMN IF NOT EXISTS lead_id         UUID REFERENCES users(id),
   ADD COLUMN IF NOT EXISTS is_active       BOOLEAN DEFAULT true,
   ADD COLUMN IF NOT EXISTS source_template_id UUID REFERENCES containers(id);
 

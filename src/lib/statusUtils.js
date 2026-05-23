@@ -34,7 +34,7 @@ export function isPhaseActive(phase) {
 }
 
 /** True if item's due date is before today and it is not completed, unless user has approved full-day leave today. */
-export function isOverdue(item, todayStr = todayDateStr(), leaveRequests = []) {
+export function isOverdue(item, todayStr = todayDateStr(), _leaveRequests = []) {
   if (!item.expected_date) return false;
   if (item.status === 'Completed') return false;
   
