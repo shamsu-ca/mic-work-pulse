@@ -89,7 +89,7 @@ function ActivityTimeline({ item, workItems, onViewDetail }) {
   );
 }
 
-function ExpandedItemDetails({ item, workItems, profiles, currentUser, onFollowUp, onViewDetail }) {
+function ExpandedItemDetails({ item, workItems, profiles, currentUser, onFollowUp, onViewDetail, isClosed }) {
   const sourceItem = item.linked_to ? (workItems || []).find(w => w.id === item.linked_to) : null;
   const followUps = (workItems || []).filter(w => w.linked_to === item.id);
   const { savedTasks } = useDataContext();
@@ -139,7 +139,7 @@ function ExpandedItemDetails({ item, workItems, profiles, currentUser, onFollowU
       <ActivityTimeline item={item} workItems={workItems} onViewDetail={onViewDetail} />
 
       {/* Create Follow-up Button */}
-      {currentUser?.role === 'Admin' && (
+      {currentUser?.role === 'Admin' && !isClosed && (
         <button 
           onClick={(e) => { e.stopPropagation(); onFollowUp(item); }} 
           className="flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl self-start mt-2 shadow-sm transition-all active:scale-95"
@@ -301,6 +301,7 @@ export default function ProjectsEventsPage() {
   const [selectedTplId, setSelectedTplId] = useState(null);
   const [activeCardDetail, setActiveCardDetail] = useState(null);
   const [filterAssigneeId, setFilterAssigneeId] = useState('');
+  const [showClosedProjects, setShowClosedProjects] = useState(false);
 
   // Modals
   const [isCreateOpen, setIsCreateOpen]       = useState(false);
@@ -412,6 +413,7 @@ export default function ProjectsEventsPage() {
   const activeContainers = safeContainers.filter(c => {
     if (c.type !== containerType)  return false;
     if (c.is_active === false)     return false;
+    if (c.status === 'Closed' && !showClosedProjects) return false;
     if (currentUser?.role !== 'Admin') {
       const isAllowed = c.created_by === currentUser.id ||
         safeWorkItems.some(w => w.container_id === c.id && w.assignee_id === currentUser.id);
@@ -615,7 +617,7 @@ export default function ProjectsEventsPage() {
 
   const doDeactivate = async (c, saveFirst) => {
     if (saveFirst) await saveAsTemplate(c);
-    await updateContainer(c.id, { is_active: false });
+    await updateContainer(c.id, { status: 'Closed' });
     setDeactivateTarget(null); setExpandedId(null);
   };
 
@@ -626,8 +628,8 @@ export default function ProjectsEventsPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   // ── Milestone table (shared between active & saved) ────────────────────────
-  function MilestoneTable({ milestones, showStatus, containerId }) {
-    const canManage = canManageContainer(containerId);
+  function MilestoneTable({ milestones, showStatus, containerId, isClosed }) {
+    const canManage = canManageContainer(containerId) && !isClosed;
     const statusOrder = { 'Ongoing': 1, 'Assigned': 2, 'Not Started': 2, 'Completed': 3 };
     const sortedMilestones = [...milestones]
       .filter(m => (filterAssigneeId ? m.assignee_id === filterAssigneeId : true))
@@ -687,28 +689,28 @@ export default function ProjectsEventsPage() {
                     {showStatus && <td className="px-3 py-2.5 text-xs text-on-surface-variant">{m.expected_date ? fmtDate(m.expected_date) : '—'}</td>}
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                        {showStatus && m.status === 'Assigned' && m.assignee_id === currentUser?.id && (
+                        {showStatus && m.status === 'Assigned' && m.assignee_id === currentUser?.id && !isClosed && (
                           <button onClick={(e) => { e.stopPropagation(); updateAnyItem(m.id, { status: 'Ongoing' }); }}
                             className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-primary hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                             <span className="material-symbols-outlined text-[11px]">play_arrow</span>Start
                           </button>
                         )}
-                        {showStatus && m.status === 'Ongoing' && m.assignee_id === currentUser?.id && (
+                        {showStatus && m.status === 'Ongoing' && m.assignee_id === currentUser?.id && !isClosed && (
                           <button onClick={(e) => { e.stopPropagation(); setPendingCompleteItem(m); }}
                             className="flex items-center gap-0.5 text-[9px] font-bold text-white bg-green-600 hover:opacity-90 px-2 py-0.5 rounded-lg whitespace-nowrap transition-all">
                             <span className="material-symbols-outlined text-[11px]">check_circle</span>Complete
                           </button>
                         )}
-                        {showStatus && m.status !== 'Completed' && (
+                        {showStatus && m.status !== 'Completed' && !isClosed && (
                           <button onClick={(e) => { e.stopPropagation(); updateAnyItem(m.id, { expected_date: todayStr() }); }}
                             className="flex items-center gap-0.5 text-[9px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-1.5 py-0.5 rounded-lg whitespace-nowrap transition-all">
                             <span className="material-symbols-outlined text-[11px]">today</span>Set Today
                           </button>
                         )}
-                        {canManage && <button onClick={(e) => { e.stopPropagation(); setEditingItem(m); }} className="text-on-surface-variant hover:text-primary transition-colors">
+                        {canManage && !isClosed && <button onClick={(e) => { e.stopPropagation(); setEditingItem(m); }} className="text-on-surface-variant hover:text-primary transition-colors">
                           <span className="material-symbols-outlined text-[15px]">edit</span>
                         </button>}
-                        {canManage && <DeleteBtn onDelete={() => deleteAnyItem(m.id)} size="xs" />}
+                        {canManage && !isClosed && <DeleteBtn onDelete={() => deleteAnyItem(m.id)} size="xs" />}
                       </div>
                     </td>
                   </tr>
@@ -722,6 +724,7 @@ export default function ProjectsEventsPage() {
                           currentUser={currentUser}
                           onFollowUp={(item) => setFollowUpTarget(item)}
                           onViewDetail={handleViewDetail}
+                          isClosed={isClosed}
                         />
                       </td>
                     </tr>
@@ -731,7 +734,7 @@ export default function ProjectsEventsPage() {
             })}
           </tbody>
         </table>
-        {(canManage || currentUser?.role === 'Assignee' || currentUser?.role === 'Manager') && (
+        {(canManage || currentUser?.role === 'Assignee' || currentUser?.role === 'Manager') && !isClosed && (
           <div className="px-3 py-2 border-t border-surface-container-low">
             <button onClick={() => handleAddMilestoneClick(containerId)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
               <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Milestone
@@ -857,19 +860,33 @@ export default function ProjectsEventsPage() {
     const counts      = buildCounts(allItems);
     const isFromTemplate = !!c.source_template_id;
     const isEditingName  = editNameId === c.id;
+    const isClosed       = c.status === 'Closed';
 
     return (
-      <div id={`container-card-${c.id}`} className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-shadow ${isExpanded ? 'border-primary/40' : 'border-outline-variant/30'}`}>
+      <div id={`container-card-${c.id}`} className={`rounded-2xl border shadow-sm overflow-hidden transition-shadow ${
+        isClosed ? 'bg-slate-100/70 border-slate-300 opacity-85' : isExpanded ? 'bg-white border-primary/40' : 'bg-white border-outline-variant/30'
+      }`}>
+        {isClosed && (
+          <div className="bg-slate-200/60 px-5 py-2 text-xs font-semibold text-slate-700 border-b border-slate-300 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            <span className="material-symbols-outlined text-[15px]">lock</span>
+            This {isProject ? 'project' : 'event'} is closed and read-only.
+          </div>
+        )}
         <div className="p-5 cursor-pointer hover:bg-surface-container-low/30 transition-colors" onClick={() => setExpandedId(isExpanded ? null : c.id)}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 flex-1 min-w-0">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isProject ? 'bg-indigo-50' : 'bg-emerald-50'}`}>
-                <span className={`material-symbols-outlined ${isProject ? 'text-indigo-600' : 'text-emerald-600'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
-                  {isProject ? 'folder_open' : 'event'}
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isClosed ? 'bg-slate-250 text-slate-500 border border-slate-300' : isProject ? 'bg-indigo-50' : 'bg-emerald-50'}`}>
+                <span className={`material-symbols-outlined ${isClosed ? 'text-slate-500' : isProject ? 'text-indigo-600' : 'text-emerald-600'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
+                  {isClosed ? 'lock' : isProject ? 'folder_open' : 'event'}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-on-surface leading-tight">{cName(c)}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className={`font-bold leading-tight ${isClosed ? 'text-slate-650' : 'text-on-surface'}`}>{cName(c)}</p>
+                  {isClosed && (
+                    <span className="text-[9px] font-black bg-slate-200 text-slate-700 px-2 py-0.5 rounded border border-slate-300 uppercase">Closed</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 mt-0.5 text-xs text-on-surface-variant flex-wrap">
                   {c.expected_date && <span>{fmtDate(c.expected_date)}</span>}
                   <span>{allItems.length} items</span>
@@ -878,7 +895,7 @@ export default function ProjectsEventsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-              {isExpanded && isProject && (
+              {isExpanded && isProject && !isClosed && (
                 <button
                   onClick={() => handleAddMilestoneClick(c.id)}
                   title="Add Milestone"
@@ -908,7 +925,7 @@ export default function ProjectsEventsPage() {
 
         {isExpanded && (
           <div className="border-t border-surface-container-high">
-            {canManageContainer(c.id) && (
+            {canManageContainer(c.id) && !isClosed && (
               <div className="px-5 py-3 border-b border-surface-container-low flex items-center gap-2" onClick={e => e.stopPropagation()}>
                 {isEditingName ? (
                   <>
@@ -935,7 +952,7 @@ export default function ProjectsEventsPage() {
             {/* Project: milestones table */}
             {isProject && (
               <div className="max-h-80 overflow-y-auto">
-                <MilestoneTable milestones={getMilestones(c.id)} showStatus containerId={c.id} />
+                <MilestoneTable milestones={getMilestones(c.id)} showStatus containerId={c.id} isClosed={isClosed} />
               </div>
             )}
 
@@ -953,7 +970,7 @@ export default function ProjectsEventsPage() {
                           <span className={`w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center flex-shrink-0 ${phActive ? 'bg-emerald-500 text-white' : 'bg-outline-variant/40 text-on-surface-variant'}`}>{i + 1}</span>
                           <span className={`text-xs font-black uppercase tracking-wide ${phActive ? 'text-on-surface' : 'text-on-surface-variant'}`}>{ph.title}</span>
                           {phActive && <span className="text-[9px] font-bold bg-emerald-500 text-white px-1.5 py-0.5 rounded uppercase">Active</span>}
-                          {isAdmin ? (
+                          {isAdmin && !isClosed ? (
                             <div className="flex items-center gap-1">
                               <input type="date" value={phaseDateEdits[ph.id] ?? ph.expected_date ?? ''}
                                 onChange={e => setPhaseDateEdits(prev => ({ ...prev, [ph.id]: e.target.value }))}
@@ -970,12 +987,12 @@ export default function ProjectsEventsPage() {
                             </>
                           )}
                         </div>
-                        {isAdmin && (
+                        {isAdmin && !isClosed && (
                           <DeleteBtn onDelete={() => deleteWorkItem(ph.id)} />
                         )}
                       </div>
                       {phActive ? (
-                        <ChecklistTable items={phItems} phaseId={ph.id} phaseDate={ph.expected_date} showStatus />
+                        <ChecklistTable items={phItems} phaseId={ph.id} phaseDate={ph.expected_date} showStatus isClosed={isClosed} />
                       ) : (
                         <div className="px-4 py-3 text-xs text-on-surface-variant italic">
                           {phItems.length} item{phItems.length !== 1 ? 's' : ''} — unlocks when phase date ({ph.expected_date ? fmtDate(ph.expected_date) : 'unset'}) is reached.
@@ -985,7 +1002,7 @@ export default function ProjectsEventsPage() {
                   );
                 })}
                 {getPhases(c.id).length === 0 && <p className="text-sm text-on-surface-variant italic">No phases yet.</p>}
-                {isAdmin && (
+                {isAdmin && !isClosed && (
                   <button onClick={() => setPhaseTarget(c.id)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
                     <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Phase
                   </button>
@@ -993,7 +1010,7 @@ export default function ProjectsEventsPage() {
               </div>
             )}
 
-            {isAdmin && c.is_active !== false && (
+            {isAdmin && c.is_active !== false && !isClosed && (
               <div className="px-5 py-3 border-t border-surface-container-low flex items-center gap-2 flex-wrap">
                 {isProject && !isFromTemplate && (
                   <button onClick={() => saveAsTemplate(c)} className="flex items-center gap-1.5 text-xs font-bold border border-outline-variant/40 bg-white text-on-surface px-3 py-1.5 rounded-xl hover:bg-surface-container">
@@ -1952,10 +1969,21 @@ export default function ProjectsEventsPage() {
             ))}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {typeTab !== 'Tasks' && modeTab === 'Active' && (
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-on-surface-variant cursor-pointer select-none bg-white border border-outline-variant/40 rounded-xl px-3 py-1.5 hover:bg-surface-container-low transition-colors mr-1 shadow-sm">
+                <input
+                  type="checkbox"
+                  checked={showClosedProjects}
+                  onChange={e => setShowClosedProjects(e.target.checked)}
+                  className="rounded text-primary focus:ring-primary/20"
+                />
+                Show Closed Projects
+              </label>
+            )}
             <select
               value={filterAssigneeId}
               onChange={e => setFilterAssigneeId(e.target.value)}
-              className="border border-outline-variant/40 bg-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="border border-outline-variant/40 bg-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm"
             >
               <option value="">All Assignees</option>
               {safeProfiles.map(p => (
@@ -2252,7 +2280,7 @@ export default function ProjectsEventsPage() {
       )}
       {deactivateTarget && (
         <Modal title={`Close ${deactivateTarget.type}?`} onClose={() => setDeactivateTarget(null)}>
-          <p className="text-sm text-on-surface-variant">"{cName(deactivateTarget)}" will be moved to History.</p>
+          <p className="text-sm text-on-surface-variant">"{cName(deactivateTarget)}" will be closed and marked as read-only.</p>
           <div className="flex flex-col gap-2">
             {deactivateTarget.type === 'Project' && !deactivateTarget.source_template_id && (
               <button onClick={() => doDeactivate(deactivateTarget, true)} className={btnPrimary}>

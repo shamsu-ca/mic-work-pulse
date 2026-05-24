@@ -582,7 +582,7 @@ export default function MainDashboard() {
 
   const activeProjects = safeContainers
     .filter(c => {
-      if (c.type !== 'Project' || c.is_active === false) return false;
+      if (c.type !== 'Project' || c.is_active === false || c.status === 'Closed') return false;
       if (isAdmin) return true;
       if (c.created_by && targetUserIds.has(c.created_by)) return true;
       
