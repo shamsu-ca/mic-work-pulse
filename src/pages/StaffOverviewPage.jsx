@@ -661,17 +661,23 @@ function LeaveRequestModal({ profile, onClose, onSave }) {
 }
 
 function TaskDetailModal({ task, workItems, containers, profiles, onClose }) {
-  const container = task.container_id ? containers.find(c => c.id === task.container_id) : null;
+  let container = task.container_id ? containers.find(c => c.id === task.container_id) : null;
+  if (!container && task.parent_id) {
+    const parent = workItems.find(w => w.id === task.parent_id);
+    if (parent && parent.container_id) {
+      container = containers.find(c => c.id === parent.container_id);
+    }
+  }
   const assignee = task.assignee_id ? profiles.find(p => p.id === task.assignee_id) : null;
   const status = getDisplayStatus(task);
   const followUps = workItems.filter(w => w.linked_to === task.id);
 
+  const displayType = task.type === 'Milestone' ? 'Project' : (task.type === 'Checklist' || task.type === 'Phase' ? 'Event' : task.type);
   const typeColors = {
     Task: 'bg-blue-100 text-blue-700',
-    Milestone: 'bg-purple-100 text-purple-700',
-    Checklist: 'bg-green-100 text-green-700',
+    Project: 'bg-purple-100 text-purple-700',
+    Event: 'bg-emerald-100 text-emerald-700',
     Subtask: 'bg-orange-100 text-orange-700',
-    Phase: 'bg-emerald-100 text-emerald-700',
   };
   const statusColors = {
     Overdue: 'bg-red-100 text-red-700',
@@ -694,7 +700,9 @@ function TaskDetailModal({ task, workItems, containers, profiles, onClose }) {
         <div className="flex items-start justify-between px-6 py-4 border-b border-surface-container">
           <div className="flex-1 pr-3">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${typeColors[task.type] || 'bg-surface-container text-on-surface-variant'}`}>{task.type || 'Task'}</span>
+              {task.type !== 'Task' && (
+                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${typeColors[displayType] || 'bg-surface-container text-on-surface-variant'}`}>{displayType}</span>
+              )}
               <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${statusColors[status] || ''}`}>{status}</span>
             </div>
             <h2 className="font-bold text-base text-on-surface leading-snug">{task.title}</h2>
@@ -758,6 +766,7 @@ export default function StaffOverviewPage() {
   const [deptFilter, setDeptFilter] = useState('All');
   const [efficiencyDetailId, setEfficiencyDetailId] = useState(null);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
+  const [collapsedCompleted, setCollapsedCompleted] = useState({});
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -922,6 +931,16 @@ export default function StaffOverviewPage() {
             const notStartedTasks = activeTasks.filter(t => getDisplayStatus(t) === 'Not Started');
             const assignedTasks = activeTasks.filter(t => getDisplayStatus(t) === 'Assigned');
 
+            const completedTasks = m.tasks.filter(t => t.status === 'Completed');
+            const todayStr = new Date().toISOString().split('T')[0];
+            const yesterdayObj = new Date();
+            yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+            const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+
+            const todayCompleted = completedTasks.filter(t => t.completed_at && t.completed_at.split('T')[0] === todayStr);
+            const yesterdayCompleted = completedTasks.filter(t => t.completed_at && t.completed_at.split('T')[0] === yesterdayStr);
+            const oldCompleted = completedTasks.filter(t => !t.completed_at || (t.completed_at.split('T')[0] !== todayStr && t.completed_at.split('T')[0] !== yesterdayStr));
+
             // Recent activity: last 3 completed/started tasks
             const recentAct = [...m.tasks]
               .filter(t => t.status === 'Completed' || t.status === 'Ongoing')
@@ -949,6 +968,13 @@ export default function StaffOverviewPage() {
 
             const taskRow = (t) => {
               const s = getDisplayStatus(t);
+              const displayType = t.type === 'Milestone' ? 'Project' : (t.type === 'Checklist' || t.type === 'Phase' ? 'Event' : t.type);
+              const typeColorsMap = {
+                Project: 'bg-purple-100 text-purple-700',
+                Event: 'bg-emerald-100 text-emerald-700',
+              };
+              const typeColorCls = typeColorsMap[displayType] || typeChip(t.type);
+
               return (
                 <div key={t.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-outline-variant/20 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all" onClick={() => setSelectedTaskDetail(t)}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s === 'Overdue' ? 'bg-error' : s === 'Ongoing' ? 'bg-blue-500' : s === 'Completed' ? 'bg-green-500' : 'bg-amber-400'}`}></span>
@@ -956,7 +982,9 @@ export default function StaffOverviewPage() {
                     <p className="text-xs font-semibold text-on-surface truncate">{t.title}</p>
                     <p className="text-[10px] text-on-surface-variant">{t.expected_date ? `Due ${fmtDate(t.expected_date)}` : 'No date'}</p>
                   </div>
-                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${typeChip(t.type)}`}>{t.type || 'Task'}</span>
+                  {t.type !== 'Task' && (
+                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${typeColorCls}`}>{displayType}</span>
+                  )}
                   <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
                     <span className="text-[8px] font-bold uppercase text-on-surface-variant tracking-wider">STATUS</span>
                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${statusChip(s)}`}>{s}</span>
@@ -1100,12 +1128,105 @@ export default function StaffOverviewPage() {
                           </div>
                         )}
                         {expandedFilter === 'Completed' && (
-                          <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest text-green-700 mb-1.5 flex items-center gap-1">
-                              <span className="w-2 h-2 bg-green-500 rounded-full inline-block"></span>
-                              Completed ({m.tasks.filter(t => t.status === 'Completed').length})
+                          <div className="flex flex-col gap-3">
+                            <p className="text-xs font-black text-on-surface uppercase tracking-widest mb-1 flex items-center gap-2">
+                              <span className="material-symbols-outlined text-[16px] text-green-600">check_circle</span>
+                              Completed Tasks ({completedTasks.length})
                             </p>
-                            <div className="flex flex-col gap-1.5">{m.tasks.filter(t => t.status === 'Completed').map(taskRow)}</div>
+                            
+                            {/* Group 1: Today */}
+                            {(() => {
+                              if (todayCompleted.length === 0) return null;
+                              const isCollapsed = collapsedCompleted[`${staff.id}_today`] === true;
+                              return (
+                                <div className="border border-outline-variant/30 rounded-xl bg-white overflow-hidden shadow-sm">
+                                  <div 
+                                    onClick={() => setCollapsedCompleted(prev => ({ ...prev, [`${staff.id}_today`]: !isCollapsed }))}
+                                    className="bg-green-50/20 px-4 py-2.5 flex items-center justify-between cursor-pointer select-none border-b border-slate-100 hover:bg-green-50/40 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="material-symbols-outlined text-[16px] text-slate-400 transition-transform duration-150" style={{ transform: isCollapsed ? 'none' : 'rotate(90deg)' }}>
+                                        chevron_right
+                                      </span>
+                                      <span className="material-symbols-outlined text-[16px] text-green-600">today</span>
+                                      <span className="text-xs font-bold text-slate-700">Today</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-800 border border-green-200">
+                                      {todayCompleted.length}
+                                    </span>
+                                  </div>
+                                  {!isCollapsed && (
+                                    <div className="p-3 bg-slate-50/30 flex flex-col gap-2">
+                                      {todayCompleted.map(taskRow)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
+                            {/* Group 2: Yesterday */}
+                            {(() => {
+                              if (yesterdayCompleted.length === 0) return null;
+                              const isCollapsed = collapsedCompleted[`${staff.id}_yesterday`] === true;
+                              return (
+                                <div className="border border-outline-variant/30 rounded-xl bg-white overflow-hidden shadow-sm">
+                                  <div 
+                                    onClick={() => setCollapsedCompleted(prev => ({ ...prev, [`${staff.id}_yesterday`]: !isCollapsed }))}
+                                    className="bg-blue-50/20 px-4 py-2.5 flex items-center justify-between cursor-pointer select-none border-b border-slate-100 hover:bg-blue-50/40 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="material-symbols-outlined text-[16px] text-slate-400 transition-transform duration-150" style={{ transform: isCollapsed ? 'none' : 'rotate(90deg)' }}>
+                                        chevron_right
+                                      </span>
+                                      <span className="material-symbols-outlined text-[16px] text-blue-600">event</span>
+                                      <span className="text-xs font-bold text-slate-700">Yesterday</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                                      {yesterdayCompleted.length}
+                                    </span>
+                                  </div>
+                                  {!isCollapsed && (
+                                    <div className="p-3 bg-slate-50/30 flex flex-col gap-2">
+                                      {yesterdayCompleted.map(taskRow)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
+                            {/* Group 3: Old */}
+                            {(() => {
+                              if (oldCompleted.length === 0) return null;
+                              const isCollapsed = collapsedCompleted[`${staff.id}_old`] === true;
+                              return (
+                                <div className="border border-outline-variant/30 rounded-xl bg-white overflow-hidden shadow-sm">
+                                  <div 
+                                    onClick={() => setCollapsedCompleted(prev => ({ ...prev, [`${staff.id}_old`]: !isCollapsed }))}
+                                    className="bg-slate-50 px-4 py-2.5 flex items-center justify-between cursor-pointer select-none border-b border-slate-100 hover:bg-slate-100 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="material-symbols-outlined text-[16px] text-slate-400 transition-transform duration-150" style={{ transform: isCollapsed ? 'none' : 'rotate(90deg)' }}>
+                                        chevron_right
+                                      </span>
+                                      <span className="material-symbols-outlined text-[16px] text-slate-500">calendar_month</span>
+                                      <span className="text-xs font-bold text-slate-700">Older</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 border border-slate-300">
+                                      {oldCompleted.length}
+                                    </span>
+                                  </div>
+                                  {!isCollapsed && (
+                                    <div className="p-3 bg-slate-50/30 flex flex-col gap-2">
+                                      {oldCompleted.map(taskRow)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
+                            {completedTasks.length === 0 && (
+                              <p className="text-xs text-on-surface-variant italic text-center py-4">No completed tasks.</p>
+                            )}
                           </div>
                         )}
                         {!expandedFilter && activeTasks.length === 0 && (

@@ -509,7 +509,12 @@ export default function ProjectsEventsPage() {
   // ── Container actions ──────────────────────────────────────────────────────
   const mkContainer = (fields) => {
     const p = { title: fields.title, type: fields.type, created_by: currentUser.id, is_active: true };
-    if (fields.source_template_id) p.source_template_id = fields.source_template_id;
+    if (fields.source_template_id) {
+      const existsInSaved = safeSavedContainers.some(sc => sc.id === fields.source_template_id);
+      if (existsInSaved) {
+        p.source_template_id = fields.source_template_id;
+      }
+    }
     return p;
   };
 
