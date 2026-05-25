@@ -10,6 +10,8 @@ import FollowUpModal from '../common/FollowUpModal';
 
 // ─── Item detail modal ────────────────────────────
 function ItemDetailModal({ item, containers, workItems, profiles, onClose, onStart, onComplete, isAdmin, onEdit, onDelete }) {
+  const { currentUser } = useDataContext();
+  const showControls = item.assignee_id === currentUser?.id;
   const container = item.container_id ? containers.find(c => c.id === item.container_id) : null;
   const parent    = item.parent_id    ? workItems.find(w => w.id === item.parent_id)     : null;
   const assignee  = item.assignee_id  ? profiles.find(p => p.id === item.assignee_id)    : null;
@@ -86,13 +88,13 @@ function ItemDetailModal({ item, containers, workItems, profiles, onClose, onSta
           )}
         </div>
         <div className="px-6 py-3 border-t border-surface-container flex flex-wrap gap-2">
-          {item.status === 'Assigned' && onStart && (
+          {showControls && item.status === 'Assigned' && onStart && (
             <button
               className="flex-1 min-w-[80px] py-2 bg-primary text-white text-sm font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all"
               onClick={() => { onStart(item.id); onClose(); }}
             >START</button>
           )}
-          {item.status === 'Ongoing' && onComplete && (
+          {showControls && item.status === 'Ongoing' && onComplete && (
             <button
               className="flex-1 min-w-[80px] py-2 bg-green-600 text-white text-sm font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all"
               onClick={() => { onComplete(item); onClose(); }}
@@ -123,6 +125,8 @@ function ItemDetailModal({ item, containers, workItems, profiles, onClose, onSta
 
 // ─── Expandable work item card ───────────────────────────────────
 function WorkItemCard({ item, containers, workItems, onStart, onComplete, onViewDetail, readOnly, isAdmin, isTodayFocus, profiles, onFollowUp }) {
+  const { currentUser } = useDataContext();
+  const showControls = item.assignee_id === currentUser?.id;
   const [expanded, setExpanded] = useState(false);
 
   const container = item.container_id ? (containers || []).find(c => c.id === item.container_id) : null;
@@ -222,7 +226,7 @@ function WorkItemCard({ item, containers, workItems, onStart, onComplete, onView
             </div>
           )}
 
-          {!readOnly && (
+          {showControls && (
             <div className="flex gap-2 pt-1">
               {item.status === 'Assigned' && onStart && (
                 <button
@@ -256,10 +260,10 @@ function WorkItemCard({ item, containers, workItems, onStart, onComplete, onView
         </div>
       )}
 
-      {!expanded && !readOnly && (
+      {!expanded && (
         <div className="px-4 pb-3">
           <div className="flex gap-2">
-            {item.status === 'Assigned' && onStart && (
+            {showControls && item.status === 'Assigned' && onStart && (
               <button
                 className="flex-1 py-1.5 bg-primary text-white text-xs font-bold rounded shadow-sm hover:opacity-90 active:scale-95 transition-all"
                 onClick={(e) => { e.stopPropagation(); onStart(item.id); }}
@@ -267,7 +271,7 @@ function WorkItemCard({ item, containers, workItems, onStart, onComplete, onView
                 START
               </button>
             )}
-            {item.status === 'Ongoing' && onComplete && (
+            {showControls && item.status === 'Ongoing' && onComplete && (
               <button
                 className="flex-1 py-1.5 bg-green-600 text-white text-xs font-bold rounded shadow-sm hover:opacity-90 active:scale-95 transition-all"
                 onClick={(e) => { e.stopPropagation(); onComplete(item); }}
@@ -275,7 +279,7 @@ function WorkItemCard({ item, containers, workItems, onStart, onComplete, onView
                 COMPLETE
               </button>
             )}
-            {item.status !== 'Assigned' && item.status !== 'Ongoing' && (
+            {!showControls && (
               <span className="text-[10px] font-bold uppercase tracking-wider text-outline px-2 py-1 bg-surface-container rounded-md">
                 {item.status}
               </span>
@@ -302,7 +306,8 @@ function DashboardDetailModal({ data, containers, workItems, profiles, currentUs
   const isAdmin = currentUser?.role === 'Admin';
 
   const toggleAssignee = (name) => {
-    setCollapsedAssignees(prev => ({ ...prev, [name]: !prev[name] }));
+    const currentlyCollapsed = collapsedAssignees[name] !== undefined ? collapsedAssignees[name] : isAdmin;
+    setCollapsedAssignees(prev => ({ ...prev, [name]: !currentlyCollapsed }));
   };
 
   return (
@@ -324,7 +329,7 @@ function DashboardDetailModal({ data, containers, workItems, profiles, currentUs
         </div>
         <div className="p-4 sm:p-6 overflow-y-auto flex flex-col gap-4 sm:gap-5 flex-1">
           {Object.entries(grouped).map(([assigneeName, groupItems]) => {
-            const isCollapsed = collapsedAssignees[assigneeName];
+            const isCollapsed = collapsedAssignees[assigneeName] !== undefined ? collapsedAssignees[assigneeName] : isAdmin;
             return (
               <div key={assigneeName} className="flex flex-col gap-2.5">
                 <div 
@@ -643,7 +648,8 @@ export default function MainDashboard() {
   })();
 
   const toggleTodayFocusAssignee = (name) => {
-    setCollapsedTodayFocus(prev => ({ ...prev, [name]: !prev[name] }));
+    const currentlyCollapsed = collapsedTodayFocus[name] !== undefined ? collapsedTodayFocus[name] : isAdmin;
+    setCollapsedTodayFocus(prev => ({ ...prev, [name]: !currentlyCollapsed }));
   };
 
   const priorityOrder = { 'Critical': 4, 'High': 3, 'Medium': 2, 'Low': 1, undefined: 0, null: 0 };
@@ -937,7 +943,7 @@ export default function MainDashboard() {
               <div className="text-center p-6 border-2 border-dashed border-slate-200 rounded-lg text-slate-400 text-xs font-medium">No tasks due today.</div>
             ) : (
               todayFocusGrouped.map(([assigneeName, items]) => {
-                const isCollapsed = collapsedTodayFocus[assigneeName];
+                const isCollapsed = collapsedTodayFocus[assigneeName] !== undefined ? collapsedTodayFocus[assigneeName] : isAdmin;
                 const ongoing = items.filter(w => w.status === 'Ongoing');
                 const assigned = items.filter(w => w.status === 'Assigned');
                 
@@ -973,7 +979,7 @@ export default function MainDashboard() {
                         <div className="bg-blue-50/20 border border-blue-100/50 rounded-lg p-3 flex flex-col gap-2.5">
                           <h4 className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Ongoing</h4>
                           {ongoing.map(w => (
-                            <WorkItemCard key={w.id} item={w} {...cardProps} isAdmin={isAdmin} isTodayFocus={true} profiles={safeProfiles} onComplete={!readOnly ? setPendingCompleteItem : undefined} />
+                            <WorkItemCard key={w.id} item={w} {...cardProps} isAdmin={isAdmin} isTodayFocus={true} profiles={safeProfiles} onComplete={setPendingCompleteItem} />
                           ))}
                           {ongoing.length === 0 && (
                             <div className="text-center p-3 text-slate-400 text-xs italic">No ongoing tasks.</div>
@@ -982,7 +988,7 @@ export default function MainDashboard() {
                         <div className="bg-amber-50/10 border border-amber-150 rounded-lg p-3 flex flex-col gap-2.5">
                           <h4 className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Assigned / New</h4>
                           {assigned.map(w => (
-                            <WorkItemCard key={w.id} item={w} {...cardProps} isAdmin={isAdmin} isTodayFocus={true} profiles={safeProfiles} onStart={!readOnly ? startWorkItem : undefined} />
+                            <WorkItemCard key={w.id} item={w} {...cardProps} isAdmin={isAdmin} isTodayFocus={true} profiles={safeProfiles} onStart={startWorkItem} />
                           ))}
                           {assigned.length === 0 && (
                             <div className="text-center p-3 text-slate-400 text-xs italic">No assigned tasks.</div>
@@ -1004,7 +1010,7 @@ export default function MainDashboard() {
                 <span className="bg-blue-100 border border-blue-200 text-blue-700 rounded-full text-[10px] px-2 py-0.5">{ongoingFocus.length}</span>
               </h3>
               {ongoingFocus.map(w => (
-                <WorkItemCard key={w.id} item={w} {...cardProps} isAdmin={isAdmin} isTodayFocus={true} profiles={safeProfiles} onComplete={!readOnly ? setPendingCompleteItem : undefined} />
+                <WorkItemCard key={w.id} item={w} {...cardProps} isAdmin={isAdmin} isTodayFocus={true} profiles={safeProfiles} onComplete={setPendingCompleteItem} />
               ))}
               {ongoingFocus.length === 0 && (
                 <div className="text-center p-6 border-2 border-dashed border-blue-100/40 rounded-lg text-blue-700/60 text-xs font-medium">No ongoing tasks.</div>
@@ -1017,7 +1023,7 @@ export default function MainDashboard() {
                 <span className="bg-amber-100 border border-amber-200 text-amber-800 rounded-full text-[10px] px-2 py-0.5">{assignedFocus.length}</span>
               </h3>
               {assignedFocus.map(w => (
-                <WorkItemCard key={w.id} item={w} {...cardProps} isAdmin={isAdmin} isTodayFocus={true} profiles={safeProfiles} onStart={!readOnly ? startWorkItem : undefined} />
+                <WorkItemCard key={w.id} item={w} {...cardProps} isAdmin={isAdmin} isTodayFocus={true} profiles={safeProfiles} onStart={startWorkItem} />
               ))}
               {assignedFocus.length === 0 && (
                 <div className="text-center p-6 border-2 border-dashed border-amber-100/40 rounded-lg text-amber-800/60 text-xs font-medium">No new assignments.</div>
@@ -1070,6 +1076,9 @@ export default function MainDashboard() {
                     <div className="flex items-center gap-3 flex-shrink-0" onClick={e => e.stopPropagation()}>
                       {/* Count badges */}
                       <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full">
+                          {milestones.filter(m => m.status !== 'Completed').length} to complete
+                        </span>
                         {urgentMilestones.length > 0 && (
                           <span className="text-[10px] font-extrabold px-2 py-0.5 bg-red-100 text-red-700 border border-red-200/50 rounded-full">
                             {urgentMilestones.length} Urgent
@@ -1219,8 +1228,8 @@ export default function MainDashboard() {
           workItems={safeWorkItems}
           profiles={safeProfiles}
           onClose={() => setSelectedItemDetail(null)}
-          onStart={!readOnly ? startWorkItem : undefined}
-          onComplete={item => { if(!readOnly) { setPendingCompleteItem(item); setSelectedItemDetail(null); } }}
+          onStart={startWorkItem}
+          onComplete={item => { setPendingCompleteItem(item); setSelectedItemDetail(null); }}
           isAdmin={isAdmin}
           onEdit={(item) => setEditingItem(item)}
           onDelete={deleteWorkItem}
@@ -1261,8 +1270,8 @@ export default function MainDashboard() {
           profiles={safeProfiles}
           currentUser={currentUser}
           onClose={() => setDetailModalData(null)}
-          onStart={!readOnly ? startWorkItem : undefined}
-          onComplete={item => { if (!readOnly) { setPendingCompleteItem(item); setDetailModalData(null); } }}
+          onStart={startWorkItem}
+          onComplete={item => { setPendingCompleteItem(item); setDetailModalData(null); }}
           onFollowUp={item => setFollowUpTarget(item)}
           onViewDetail={setSelectedItemDetail}
         />
@@ -1367,7 +1376,7 @@ function EditItemModal({ item, profiles, onClose, onSave }) {
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Assignee</label>
               <select className={cls} value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
                 <option value="">— Unassigned —</option>
-                {(profiles || []).filter(p => p.role !== 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {(profiles || []).filter(p => p.role !== 'Admin' || currentUser?.role === 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">

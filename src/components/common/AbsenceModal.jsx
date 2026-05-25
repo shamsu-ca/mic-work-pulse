@@ -13,7 +13,7 @@ export default function AbsenceModal({ onClose, targetUserId = null }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const assignees = (profiles || []).filter(p => p.role !== 'Admin');
+  const assignees = (profiles || []).filter(p => p.role !== 'Admin' || currentUser?.role === 'Admin');
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -266,7 +266,7 @@ function EditItemModal({ item, profiles, currentUser, onClose, onSave }) {
         <input className={cls} value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" />
         <select className={cls} value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
           <option value="">— Unassigned —</option>
-          {(profiles || []).filter(p => p.role !== 'Admin' || p.id === currentUser?.id).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          {(profiles || []).filter(p => p.role !== 'Admin' || currentUser?.role === 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <input type="date" className={cls} value={date} onChange={e => setDate(e.target.value)} />
         <div className="flex gap-2 justify-end">
@@ -400,7 +400,7 @@ export default function ProjectsEventsPage() {
   const deleteAnyItem = (id) =>
     savedTaskIdSet.has(id) ? deleteSavedTask(id) : deleteWorkItem(id);
   const filteredProfiles = safeProfiles.filter(p =>
-    (p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup) || p.id === currentUser?.id
+    (p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup) || p.role === 'Admin'
   );
   const milestoneAssigneeOptions = isAdmin
     ? filteredProfiles

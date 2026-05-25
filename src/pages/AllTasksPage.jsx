@@ -311,7 +311,7 @@ function EditItemModal({ item, profiles, _workItems, onClose, onSave }) {
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Assignee</label>
               <select className={cls} value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
                 <option value="">— Unassigned —</option>
-                {(profiles || []).filter(p => p.role !== 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {(profiles || []).filter(p => p.role !== 'Admin' || currentUser?.role === 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">

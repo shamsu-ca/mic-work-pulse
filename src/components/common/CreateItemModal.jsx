@@ -54,7 +54,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
     if (currentUser?.role === 'Manager') {
       return safeProfiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
     }
-    return safeProfiles.filter(p => p.role !== 'Admin');
+    return safeProfiles.filter(p => p.role !== 'Admin' || currentUser?.role === 'Admin');
   })();
 
   const buildRecurrenceRule = () => {

@@ -1126,6 +1126,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
   };
 
   // ─── Assignee View ────────────────────────────────────────────────────────
+  // ─── Assignee View ────────────────────────────────────────────────────────
   if (currentUser.role === 'Assignee') {
     // Only count items created on or before yesterday (endDate)
     const myItemsAll = safeWorkItems.filter(w => 
@@ -1183,6 +1184,135 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
       ((compOnTime.length * 1.0 + compLate.length * 0.5) / totalDue) * 100
     );
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tab calculations
+    // ─────────────────────────────────────────────────────────────────────────
+    const currentTab = ['Overview', 'Projects', 'Overdue Analysis'].includes(activeTab) ? activeTab : 'Overview';
+
+    // Projects Tab calculations
+    const myProjectsData = projectsData.filter(proj => {
+      const hasAssigneeMilestone = proj.milestones.some(m => m.assignee_id === currentUser.id);
+      const hasAssigneeTask = safeWorkItems.some(w => w.container_id === proj.id && w.assignee_id === currentUser.id);
+      return hasAssigneeMilestone || hasAssigneeTask;
+    }).map(proj => {
+      const myMilestones = proj.milestones.filter(m => m.assignee_id === currentUser.id);
+      const activeMyMilestones = myMilestones.filter(w => 
+        w.status !== 'Completed' || (w.completed_at && w.completed_at.split('T')[0] > endDate)
+      );
+      const overdueMyMilestones = myMilestones.filter(w => 
+        w.expected_date && 
+        w.expected_date <= endDate && 
+        (w.status !== 'Completed' || (w.completed_at && w.completed_at.split('T')[0] > endDate))
+      );
+      const completedMyMilestones = myMilestones.filter(w => 
+        w.status === 'Completed' && 
+        w.completed_at && 
+        w.completed_at.split('T')[0] <= endDate
+      );
+      const recentlyCompletedMyMilestones = completedMyMilestones.filter(m => {
+        const compDate = new Date(m.completed_at);
+        const limitDate = new Date(endDate);
+        limitDate.setDate(limitDate.getDate() - 7);
+        return compDate >= limitDate;
+      });
+
+      const dates = [
+        proj.created_at,
+        ...myMilestones.map(m => m.completed_at),
+        ...myMilestones.map(m => m.updated_at),
+        ...myMilestones.map(m => m.created_at)
+      ].filter(Boolean).map(d => new Date(d)).filter(d => d.toISOString().split('T')[0] <= endDate);
+      
+      const latestActivity = dates.length > 0 ? new Date(Math.max(...dates)) : new Date(proj.created_at);
+
+      return {
+        ...proj,
+        totalMilestones: myMilestones.length,
+        activeMilestones: activeMyMilestones.length,
+        overdueMilestones: overdueMyMilestones.length,
+        recentlyCompleted: recentlyCompletedMyMilestones.length,
+        assigneesCount: 1,
+        latestActivityDate: latestActivity,
+        milestones: myMilestones
+      };
+    });
+
+    const myUrgentMilestonesCount = safeWorkItems.filter(w => 
+      w.assignee_id === currentUser.id &&
+      w.type === 'Milestone' && 
+      w.status !== 'Completed' && 
+      (w.expected_date === todayStr || w.expected_date === tomorrowStr)
+    ).length;
+
+    // Overdue Analysis calculations
+    const myOldestOverdueItems = [...overdue].sort((a, b) => {
+      return (a.expected_date || '').localeCompare(b.expected_date || '');
+    });
+
+    const myPriorityOverdue = overdue.reduce((acc, item) => {
+      const prio = item.priority || 'Medium';
+      acc[prio] = (acc[prio] || 0) + 1;
+      return acc;
+    }, { Critical: 0, High: 0, Medium: 0, Low: 0 });
+
+    const myRecurringMisses = overdue.filter(item => {
+      return savedTasks?.some(t => t.title === item.title && t.is_recurring);
+    });
+
+    // Charts calculations
+    const getEfficiencyByType = (type) => {
+      const typeItems = myItems.filter(w => w.type === type);
+      const typeDue = typeItems.filter(w => 
+        w.expected_date && 
+        w.expected_date >= startDate && 
+        w.expected_date <= endDate
+      ).length;
+      
+      const typeOnTime = typeItems.filter(t => 
+        t.expected_date && 
+        t.expected_date >= startDate && 
+        t.expected_date <= endDate && 
+        t.status === 'Completed' && 
+        t.completed_at && 
+        new Date(t.completed_at).toISOString().split('T')[0] <= t.expected_date
+      ).length;
+
+      const typeLate = typeItems.filter(t => 
+        t.expected_date && 
+        t.expected_date >= startDate && 
+        t.expected_date <= endDate && 
+        t.status === 'Completed' && 
+        t.completed_at && 
+        new Date(t.completed_at).toISOString().split('T')[0] > t.expected_date
+      ).length;
+
+      return typeDue === 0 ? 100 : Math.round(
+        ((typeOnTime * 1.0 + typeLate * 0.5) / typeDue) * 100
+      );
+    };
+
+    const tasksEff = getEfficiencyByType('Task');
+    const milestonesEff = getEfficiencyByType('Milestone');
+    const checklistsEff = getEfficiencyByType('Checklist');
+
+    const getCountsByType = (type) => {
+      const typeItems = myItems.filter(w => w.type === type);
+      const completedCount = typeItems.filter(w => w.status === 'Completed' && w.completed_at && w.completed_at.split('T')[0] <= endDate).length;
+      const overdueCount = typeItems.filter(w => 
+        w.expected_date && 
+        w.expected_date >= startDate && 
+        w.expected_date <= endDate && 
+        (w.status !== 'Completed' || (w.completed_at && w.completed_at.split('T')[0] > endDate))
+      ).length;
+      const ongoingCount = typeItems.length - completedCount - overdueCount;
+      return { completedCount, ongoingCount, overdueCount };
+    };
+
+    const taskCounts = getCountsByType('Task');
+    const milestoneCounts = getCountsByType('Milestone');
+    const checklistCounts = getCountsByType('Checklist');
+
+    // Export Handlers
     const handleAssigneePdfExport = () => {
       const doc = new jsPDF();
       doc.setFont("helvetica", "bold");
@@ -1234,116 +1364,657 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
       doc.save(`${currentUser.name}_performance.pdf`);
     };
 
+    const handleAssigneeOverviewCSV = () => {
+      const headers = ['Metric', 'Value'];
+      const rows = [
+        ['Total Allocated Due Tasks', totalDue],
+        ['Completed On-Time', compOnTime.length],
+        ['Completed Late', compLate.length],
+        ['Currently Overdue', overdue.length],
+        ['Active Neutral Load', active.length],
+        ['Calculated Efficiency', `${prodScore}%`]
+      ];
+      
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${currentUser.name}_performance_summary.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    const handleAssigneeProjectsCSV = () => {
+      const headers = ['Project Title', 'Created Date', 'Total Milestones', 'Active Milestones', 'Overdue Milestones', 'Recently Completed'];
+      const rows = myProjectsData.map(p => [
+        p.title, fmtDate(p.created_at), p.totalMilestones, p.activeMilestones, p.overdueMilestones, p.recentlyCompleted
+      ]);
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${currentUser.name}_projects_summary.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    const handleAssigneeProjectsPDF = () => {
+      const doc = new jsPDF();
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("My Project Milestones Timeline Flow", 15, 20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Generated: ${new Date().toLocaleString()} | Period: ${formatFriendlyDate(startDate)} to ${formatFriendlyDate(endDate)}`, 15, 27);
+      doc.line(15, 29, 195, 29);
+      
+      let py = 38;
+      myProjectsData.forEach(p => {
+        if (py > 260) { doc.addPage(); py = 20; }
+        doc.setFont("helvetica", "bold");
+        doc.text(`Project: ${p.title} (Created: ${fmtDate(p.created_at)})`, 15, py);
+        py += 6;
+        doc.setFont("helvetica", "normal");
+        
+        const myMilestones = p.milestones || [];
+        if (myMilestones.length === 0) {
+          doc.text("  No milestones recorded for you in this workspace.", 15, py);
+          py += 6;
+        } else {
+          myMilestones.forEach(m => {
+            const msDisplayStatus = getDisplayStatus(m);
+            doc.text(`  • ${m.title} - Due: ${m.expected_date || 'None'} - Status: ${msDisplayStatus}`, 15, py);
+            py += 5;
+          });
+        }
+        py += 4;
+      });
+      doc.save(`${currentUser.name}_projects_timeline.pdf`);
+    };
+
+    const handleAssigneeOverdueCSV = () => {
+      const headers = ['Title', 'Type', 'Due Date', 'Days Overdue', 'Priority'];
+      const rows = overdue.map(o => {
+        const diff = Math.max(0, Math.round((new Date(endDate) - new Date(o.expected_date)) / 86400000));
+        return [o.title, o.type, o.expected_date || '—', `${diff} Days`, o.priority || 'Medium'];
+      });
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${currentUser.name}_overdue_report.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    const handleAssigneeOverduePDF = () => {
+      const doc = new jsPDF();
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.text("Personal Overdue Analysis Report", 15, 20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Generated: ${new Date().toLocaleString()} | Period: ${formatFriendlyDate(startDate)} to ${formatFriendlyDate(endDate)}`, 15, 27);
+      doc.line(15, 29, 195, 29);
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("My Overdue Items", 15, 38);
+      
+      let y = 46;
+      doc.setFontSize(9);
+      doc.text("Title", 15, y);
+      doc.text("Type", 95, y);
+      doc.text("Due Date", 125, y);
+      doc.text("Days Late", 150, y);
+      doc.text("Priority", 175, y);
+      y += 3;
+      doc.line(15, y, 195, y);
+      y += 5;
+
+      doc.setFont("helvetica", "normal");
+      overdue.forEach(o => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        const diff = Math.max(0, Math.round((new Date(endDate) - new Date(o.expected_date)) / 86400000));
+        doc.text(o.title.substring(0, 30), 15, y);
+        doc.text(o.type, 95, y);
+        doc.text(o.expected_date || '—', 125, y);
+        doc.text(`${diff} Days`, 150, y);
+        doc.text(o.priority || 'Medium', 175, y);
+        y += 6;
+      });
+
+      if (overdue.length === 0) {
+        doc.text("No overdue items found in the current cycle.", 15, y);
+      }
+      doc.save(`${currentUser.name}_overdue_analysis.pdf`);
+    };
+
     return (
       <div className="flex flex-col gap-6 max-w-[1200px] mx-auto pb-24">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        {/* Page Title & Context Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-surface-container-high pb-4">
           <div>
             <h1 className="text-2xl font-extrabold text-on-surface tracking-tight mb-0.5 font-headline">My Performance Center</h1>
-            <p className="text-sm text-on-surface-variant">Confidential operational scorecard</p>
+            <p className="text-xs text-on-surface-variant">Confidential operational scorecard</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs font-bold text-outline bg-slate-100 border border-outline-variant/30 px-3 py-2 rounded-xl">
               Period: {formatFriendlyDate(startDate)} to {formatFriendlyDate(endDate)}
             </span>
-            <button onClick={handleAssigneePdfExport} className="bg-white border border-outline-variant/40 rounded-xl px-4 py-2 text-sm font-bold shadow-sm hover:bg-surface transition-colors flex items-center gap-2">
-              <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span> PDF Scorecard
-            </button>
           </div>
         </div>
 
-        {/* Overview Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-primary to-secondary rounded-2xl shadow-sm text-white p-5 relative overflow-hidden">
-            <div className="absolute -right-6 -top-6 text-white/10">
-              <span className="material-symbols-outlined text-[100px]">military_tech</span>
+        {/* Tab Selector & Exports bar */}
+        <div className="flex flex-col gap-3 bg-white border border-outline-variant/30 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-between flex-wrap gap-4 border-b border-surface-container pb-3">
+            <div className="flex bg-surface-container p-1 rounded-xl gap-0.5 overflow-x-auto max-w-full">
+              {['Overview', 'Projects', 'Overdue Analysis'].map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+                    currentTab === tab ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
             </div>
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/80 mb-2">My Efficiency Score</h3>
-            <p className="text-5xl font-black font-headline">{prodScore}%</p>
-            <p className="text-xs text-white/90 font-medium mt-4">Calculated from due tasks</p>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/30 p-5 flex flex-col justify-between">
-            <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Total Assigned Work</h3>
-              <p className="text-4xl font-extrabold text-on-surface font-headline">{myItems.length}</p>
-            </div>
-            <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden mt-4">
-              <div className="h-full bg-primary" style={{ width: `${myItems.length === 0 ? 0 : Math.round((completed.length / myItems.length) * 100)}%` }} />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/30 p-5">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Completed Logs</h3>
-            <div className="flex gap-4 mt-2">
-              <div>
-                <p className="text-2xl font-black text-green-600 font-headline">{compOnTime.length}</p>
-                <p className="text-[8px] font-bold text-green-700 uppercase">On-Time</p>
-              </div>
-              <div>
-                <p className="text-2xl font-black text-amber-500 font-headline">{compLate.length}</p>
-                <p className="text-[8px] font-bold text-amber-600 uppercase">Late</p>
-              </div>
+            <div className="flex items-center gap-2">
+              {currentTab === 'Projects' && (
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-on-surface-variant cursor-pointer select-none bg-slate-50 border border-outline-variant/40 rounded-xl px-3 py-1.5 hover:bg-slate-100 transition-colors shadow-sm">
+                  <input
+                    type="checkbox"
+                    checked={showClosedProjects}
+                    onChange={e => setShowClosedProjects(e.target.checked)}
+                    className="rounded text-primary focus:ring-primary/20"
+                  />
+                  Show Closed Projects
+                </label>
+              )}
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/30 p-5">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Cycle Pending</h3>
-            <div className="flex gap-4 mt-2">
-              <div>
-                <p className="text-2xl font-black text-error font-headline">{overdue.length}</p>
-                <p className="text-[8px] font-bold text-error uppercase">Overdue</p>
-              </div>
-              <div>
-                <p className="text-2xl font-black text-blue-600 font-headline">{active.length}</p>
-                <p className="text-[8px] font-bold text-blue-700 uppercase">Neutral Active</p>
-              </div>
+          {/* Dynamic Export Controls per active tab */}
+          <div className="flex items-center justify-between flex-wrap gap-3 pt-1 text-xs">
+            <span className="font-bold text-on-surface-variant flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px] text-primary">download</span> Export {currentTab} Data:
+            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {currentTab === 'Overview' && (
+                <>
+                  <button onClick={handleAssigneeOverviewCSV} className="px-3 py-1 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-bold border border-outline-variant/30 flex items-center gap-1">CSV Summary</button>
+                  <button onClick={handleAssigneePdfExport} className="px-3 py-1 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-bold border border-outline-variant/30 flex items-center gap-1">PDF Scorecard</button>
+                </>
+              )}
+              {currentTab === 'Projects' && (
+                <>
+                  <button onClick={handleAssigneeProjectsCSV} className="px-3 py-1 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-bold border border-outline-variant/30 flex items-center gap-1">CSV Projects Summary</button>
+                  <button onClick={handleAssigneeProjectsPDF} className="px-3 py-1 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-bold border border-outline-variant/30 flex items-center gap-1">PDF Timeline Flow</button>
+                </>
+              )}
+              {currentTab === 'Overdue Analysis' && (
+                <>
+                  <button onClick={handleAssigneeOverdueCSV} className="px-3 py-1 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-bold border border-outline-variant/30 flex items-center gap-1">CSV Overdue List</button>
+                  <button onClick={handleAssigneeOverduePDF} className="px-3 py-1 rounded-lg bg-surface hover:bg-surface-container text-on-surface font-bold border border-outline-variant/30 flex items-center gap-1">PDF Analysis</button>
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Task Logs list */}
-        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/30 overflow-hidden">
-          <div className="p-5 border-b border-surface-container-high bg-surface-container-lowest">
-            <h2 className="font-bold text-base font-headline text-on-surface flex items-center gap-2">
-              <span className="material-symbols-outlined text-[20px]">assignment</span> Active Cycle Log
-            </h2>
+        {/* ── OVERVIEW TAB ── */}
+        {currentTab === 'Overview' && (
+          <div className="flex flex-col gap-6 animate-fade-in">
+            {/* Top Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="bg-white rounded-2xl border border-outline-variant/30 p-4 shadow-sm">
+                <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Total Due Work</p>
+                <h3 className="text-2xl font-black font-headline text-on-surface mt-1">{totalDue}</h3>
+              </div>
+              
+              <div className="bg-white rounded-2xl border border-outline-variant/30 p-4 shadow-sm border-l-4 border-l-green-500">
+                <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Completed On Time</p>
+                <h3 className="text-2xl font-black font-headline text-green-600 mt-1">{compOnTime.length}</h3>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-outline-variant/30 p-4 shadow-sm border-l-4 border-l-orange-400">
+                <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Completed Late</p>
+                <h3 className="text-2xl font-black font-headline text-orange-500 mt-1">{compLate.length}</h3>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-outline-variant/30 p-4 shadow-sm border-l-4 border-l-red-500">
+                <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Overdue</p>
+                <h3 className="text-2xl font-black font-headline text-error mt-1">{overdue.length}</h3>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-outline-variant/30 p-4 shadow-sm border-l-4 border-l-blue-500">
+                <p className="text-[9px] font-bold text-outline uppercase tracking-wider">Active Work</p>
+                <h3 className="text-2xl font-black font-headline text-blue-600 mt-1">{active.length}</h3>
+              </div>
+
+              <div className="bg-gradient-to-br from-primary to-secondary rounded-2xl shadow-sm text-white p-4">
+                <p className="text-[9px] font-bold text-white/80 uppercase tracking-wider">Efficiency Score</p>
+                <h3 className="text-2xl font-black font-headline mt-1">{prodScore}%</h3>
+              </div>
+            </div>
+
+            {/* SVG Charts section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Completion Status Donut Chart */}
+              <div className="bg-white border border-outline-variant/30 rounded-2xl p-5 shadow-sm flex flex-col">
+                <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider border-b pb-2 mb-4">Completion Status</h3>
+                <div className="flex flex-col sm:flex-row items-center justify-around gap-6 flex-1">
+                  {/* SVG Donut */}
+                  <div className="relative w-36 h-36">
+                    {totalDue === 0 ? (
+                      <div className="w-full h-full rounded-full bg-slate-100 flex items-center justify-center text-xs text-outline italic">No work due</div>
+                    ) : (
+                      <svg className="w-full h-full transform -rotate-95" viewBox="0 0 42 42">
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f1f5f9" strokeWidth="4"></circle>
+                        {/* On-Time Circle */}
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#22c55e" strokeWidth="4" 
+                          strokeDasharray={`${Math.round((compOnTime.length/totalDue)*100)} ${100 - Math.round((compOnTime.length/totalDue)*100)}`} 
+                          strokeDashoffset="0"></circle>
+                        {/* Late Circle */}
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f97316" strokeWidth="4" 
+                          strokeDasharray={`${Math.round((compLate.length/totalDue)*100)} ${100 - Math.round((compLate.length/totalDue)*100)}`} 
+                          strokeDashoffset={`-${Math.round((compOnTime.length/totalDue)*100)}`}></circle>
+                        {/* Overdue Circle */}
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#ef4444" strokeWidth="4" 
+                          strokeDasharray={`${Math.round((overdue.length/totalDue)*100)} ${100 - Math.round((overdue.length/totalDue)*100)}`} 
+                          strokeDashoffset={`-${Math.round(((compOnTime.length + compLate.length)/totalDue)*100)}`}></circle>
+                      </svg>
+                    )}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-xl font-black text-on-surface font-headline">{totalDue}</span>
+                      <span className="text-[8px] font-bold text-outline uppercase tracking-widest">Total Due</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2.5 text-xs font-semibold text-on-surface-variant">
+                    <div className="flex items-center gap-2"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> On Time: {compOnTime.length}</div>
+                    <div className="flex items-center gap-2"><span className="w-3 h-3 bg-orange-400 rounded-sm"></span> Completed Late: {compLate.length}</div>
+                    <div className="flex items-center gap-2"><span className="w-3 h-3 bg-red-500 rounded-sm"></span> Overdue: {overdue.length}</div>
+                    <div className="flex items-center gap-2"><span className="w-3 h-3 bg-blue-500 rounded-sm"></span> Active Neutral: {active.length}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Personal Efficiency by Type Bar Chart */}
+              <div className="bg-white border border-outline-variant/30 rounded-2xl p-5 shadow-sm flex flex-col">
+                <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider border-b pb-2 mb-4">My Productivity by Type</h3>
+                <div className="flex flex-col gap-4 max-h-56 overflow-y-auto pr-1">
+                  {[
+                    { name: 'Tasks', eff: tasksEff },
+                    { name: 'Milestones', eff: milestonesEff },
+                    { name: 'Checklists', eff: checklistsEff }
+                  ].map(s => (
+                    <div key={s.name} className="flex flex-col gap-1 text-xs">
+                      <div className="flex justify-between font-bold text-on-surface-variant">
+                        <span>{s.name}</span>
+                        <span className={s.eff >= 80 ? 'text-primary' : s.eff >= 60 ? 'text-orange-500' : 'text-error'}>{s.eff}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-300 ${
+                          s.eff >= 80 ? 'bg-primary' : s.eff >= 60 ? 'bg-orange-400' : 'bg-error'
+                        }`} style={{ width: `${s.eff}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Overdue Comparison by Priority */}
+              <div className="bg-white border border-outline-variant/30 rounded-2xl p-5 shadow-sm flex flex-col">
+                <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider border-b pb-2 mb-4 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[18px] text-error">hourglass_bottom</span> Overdue by Priority
+                </h3>
+                <div className="flex items-end gap-3 h-44 pt-4 border-b border-slate-200">
+                  {Object.entries(myPriorityOverdue).map(([prio, count]) => {
+                    const maxCount = Math.max(...Object.values(myPriorityOverdue), 1);
+                    const hPct = Math.round((count / maxCount) * 100);
+                    return (
+                      <div key={prio} className="flex-1 flex flex-col items-center group">
+                        <span className="text-[10px] font-black text-error mb-1.5 opacity-0 group-hover:opacity-100 transition-opacity">{count}</span>
+                        <div className="w-6 sm:w-8 bg-error/15 group-hover:bg-error/30 border-t-2 border-error rounded-t-sm transition-all" style={{ height: `${hPct}%` }}></div>
+                        <span className="text-[8px] font-bold text-outline mt-2 truncate w-14 text-center leading-none">{prio}</span>
+                      </div>
+                    );
+                  })}
+                  {Object.keys(myPriorityOverdue).length === 0 && (
+                    <div className="w-full h-full flex items-center justify-center text-xs text-outline italic">No overdue work in this cycle</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Work Status Distribution Chart */}
+              <div className="bg-white border border-outline-variant/30 rounded-2xl p-5 shadow-sm flex flex-col">
+                <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider border-b pb-2 mb-4 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[18px] text-primary">bar_chart</span> Work Distribution
+                </h3>
+                <div className="flex items-end gap-4 h-44 pt-4 border-b border-slate-200">
+                  {[
+                    { label: 'Tasks', ...taskCounts },
+                    { label: 'Milestones', ...milestoneCounts },
+                    { label: 'Checklists', ...checklistCounts }
+                  ].map(cat => {
+                    const maxVal = Math.max(taskCounts.completedCount + taskCounts.ongoingCount + taskCounts.overdueCount, milestoneCounts.completedCount + milestoneCounts.ongoingCount + milestoneCounts.overdueCount, checklistCounts.completedCount + checklistCounts.ongoingCount + checklistCounts.overdueCount, 1);
+                    const compPct = Math.round((cat.completedCount / maxVal) * 100);
+                    const ongPct = Math.round((cat.ongoingCount / maxVal) * 100);
+                    const ovPct = Math.round((cat.overdueCount / maxVal) * 100);
+
+                    return (
+                      <div key={cat.label} className="flex-1 flex flex-col items-center">
+                        <div className="flex items-end gap-1 w-full h-full justify-center">
+                          {/* Completed Bar (Green) */}
+                          <div title={`Completed: ${cat.completedCount}`} className="w-2 sm:w-3 bg-green-500/80 hover:bg-green-600 rounded-t-sm transition-all" style={{ height: `${compPct}%` }}></div>
+                          {/* Ongoing Bar (Blue) */}
+                          <div title={`Ongoing: ${cat.ongoingCount}`} className="w-2 sm:w-3 bg-blue-500/80 hover:bg-blue-600 rounded-t-sm transition-all" style={{ height: `${ongPct}%` }}></div>
+                          {/* Overdue Bar (Red) */}
+                          <div title={`Overdue: ${cat.overdueCount}`} className="w-2 sm:w-3 bg-red-500/80 hover:bg-red-600 rounded-t-sm transition-all" style={{ height: `${ovPct}%` }}></div>
+                        </div>
+                        <span className="text-[8px] font-bold text-outline mt-2 truncate w-14 text-center leading-none">{cat.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-2.5 justify-center mt-3 text-[8px] font-bold text-outline uppercase tracking-wider">
+                  <div className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-sm"></span> Completed</div>
+                  <div className="flex items-center gap-1"><span className="w-2 h-2 bg-blue-500 rounded-sm"></span> Ongoing</div>
+                  <div className="flex items-center gap-1"><span className="w-2 h-2 bg-red-500 rounded-sm"></span> Overdue</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Work Section (Details Grid) */}
+            <div className="bg-slate-50 border border-outline-variant/30 rounded-3xl p-6 shadow-inner">
+              <h3 className="font-extrabold text-base font-headline text-on-surface mb-5 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">analytics</span> Personal Scorecard Details
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-xs font-semibold text-on-surface-variant">
+                {/* 1. Overdue Items */}
+                <div className="flex flex-col gap-2 bg-white rounded-2xl p-4 border border-outline-variant/30 shadow-sm">
+                  <p className="font-bold uppercase tracking-wider text-[10px] text-error flex items-center gap-1 border-b pb-2 mb-1.5">
+                    <span className="material-symbols-outlined text-[14px]">warning</span> Overdue Items ({overdue.length})
+                  </p>
+                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                    {overdue.map(o => (
+                      <div key={o.id} className="p-2 bg-red-50/50 border border-red-100 rounded-lg flex flex-col">
+                        <span className="truncate font-bold text-red-900">{o.title}</span>
+                        <span className="text-[9px] text-red-600 mt-0.5">Due: {o.expected_date}</span>
+                      </div>
+                    ))}
+                    {overdue.length === 0 && <p className="text-xs text-outline italic py-6 text-center">No overdue items.</p>}
+                  </div>
+                </div>
+
+                {/* 2. Ongoing & Active */}
+                <div className="flex flex-col gap-2 bg-white rounded-2xl p-4 border border-outline-variant/30 shadow-sm">
+                  <p className="font-bold uppercase tracking-wider text-[10px] text-blue-600 flex items-center gap-1 border-b pb-2 mb-1.5">
+                    <span className="material-symbols-outlined text-[14px]">play_circle</span> Ongoing & Active ({active.length})
+                  </p>
+                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                    {active.map(a => (
+                      <div key={a.id} className="p-2 bg-blue-50/50 border border-blue-100 rounded-lg flex flex-col">
+                        <span className="truncate font-bold text-blue-900">{a.title}</span>
+                        <span className="text-[9px] text-blue-600 mt-0.5">{a.status} {a.expected_date ? `| Due: ${a.expected_date}` : ''}</span>
+                      </div>
+                    ))}
+                    {active.length === 0 && <p className="text-xs text-outline italic py-6 text-center">No active works.</p>}
+                  </div>
+                </div>
+
+                {/* 3. Recent Completions */}
+                <div className="flex flex-col gap-2 bg-white rounded-2xl p-4 border border-outline-variant/30 shadow-sm">
+                  <p className="font-bold uppercase tracking-wider text-[10px] text-green-600 flex items-center gap-1 border-b pb-2 mb-1.5">
+                    <span className="material-symbols-outlined text-[14px]">check_circle</span> Recent Completions ({completed.length})
+                  </p>
+                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                    {completed.map(c => {
+                      const isLate = c.expected_date && new Date(c.completed_at).toISOString().split('T')[0] > c.expected_date;
+                      return (
+                        <div key={c.id} className={`p-2 border rounded-lg flex flex-col ${isLate ? 'bg-orange-50/40 border-orange-100' : 'bg-green-50/40 border-green-100'}`}>
+                          <span className={`truncate font-bold ${isLate ? 'text-orange-900' : 'text-green-900'}`}>{c.title}</span>
+                          <span className="text-[9px] text-outline mt-0.5">Done: {c.completed_at ? fmtDate(c.completed_at) : '—'} {isLate ? '(Late)' : '(On Time)'}</span>
+                        </div>
+                      );
+                    })}
+                    {completed.length === 0 && <p className="text-xs text-outline italic py-6 text-center">No recent completions.</p>}
+                  </div>
+                </div>
+
+                {/* 4. Recurring Stats & Follow-ups */}
+                <div className="flex flex-col gap-4 bg-white rounded-2xl p-4 border border-outline-variant/30 shadow-sm">
+                  <div>
+                    <p className="font-bold uppercase tracking-wider text-[10px] text-purple-600 flex items-center gap-1 mb-1.5 border-b pb-2">
+                      <span className="material-symbols-outlined text-[14px]">autorenew</span> Recurring Templates
+                    </p>
+                    <div className="bg-purple-50/50 border border-purple-100 p-2.5 rounded-xl text-purple-950 flex justify-between items-center mt-1">
+                      <span className="font-medium text-[11px]">My templates:</span>
+                      <span className="text-sm font-black bg-purple-100 px-2 py-0.5 rounded-md">
+                        {savedTasks?.filter(t => t.assignee_id === currentUser.id && t.is_recurring).length || 0}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <p className="font-bold uppercase tracking-wider text-[10px] text-teal-600 flex items-center gap-1 mb-1.5 border-b pb-2">
+                      <span className="material-symbols-outlined text-[14px]">link</span> Follow-ups ({safeWorkItems.filter(w => w.assignee_id === currentUser.id && w.linked_to && w.created_at && w.created_at.split('T')[0] <= endDate).length})
+                    </p>
+                    <div className="flex flex-col gap-1 max-h-32 overflow-y-auto pr-1">
+                      {safeWorkItems.filter(w => w.assignee_id === currentUser.id && w.linked_to && w.created_at && w.created_at.split('T')[0] <= endDate).map(f => {
+                        const orig = safeWorkItems.find(x => x.id === f.linked_to);
+                        return (
+                          <div key={f.id} className="p-1.5 bg-teal-50/50 border border-teal-100 rounded-md text-[10px] flex flex-col">
+                            <span className="font-bold text-teal-900 truncate">{f.title}</span>
+                            <span className="text-[8px] text-teal-600 mt-0.5">Linked to: {orig?.title || 'Unknown'}</span>
+                          </div>
+                        );
+                      })}
+                      {safeWorkItems.filter(w => w.assignee_id === currentUser.id && w.linked_to && w.created_at && w.created_at.split('T')[0] <= endDate).length === 0 && (
+                        <p className="text-[11px] text-outline italic text-center py-4">No follow-ups logged.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-surface-container-lowest/50 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
-                <tr>
-                  <th className="px-5 py-3.5">Task Title</th>
-                  <th className="px-5 py-3.5">Type</th>
-                  <th className="px-5 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Due Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-container-low text-sm font-medium">
-                {myItems.map(w => {
-                  const ds = getDisplayStatus(w);
-                  return (
-                    <tr key={w.id} className="hover:bg-surface-container-low/50 transition-colors">
-                      <td className="px-5 py-3 text-on-surface font-semibold">{w.title}</td>
-                      <td className="px-5 py-3"><span className="px-2 py-0.5 rounded border border-outline-variant/40 text-[10px] text-on-surface-variant uppercase bg-surface">{w.type}</span></td>
-                      <td className="px-5 py-3">
-                        <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded ${
-                          ds === 'Completed' ? 'bg-green-150 text-green-800' :
-                          ds === 'Overdue' ? 'bg-red-100 text-red-700' :
-                          ds === 'Ongoing' ? 'bg-blue-100 text-blue-800' :
-                          'bg-surface-container text-on-surface-variant'
-                        }`}>{ds}</span>
-                      </td>
-                      <td className="px-5 py-3 text-right text-on-surface-variant">{w.expected_date ? fmtDate(w.expected_date) : '—'}</td>
+        )}
+
+        {/* ── PROJECTS TAB ── */}
+        {currentTab === 'Projects' && (
+          <div className="flex flex-col gap-5 animate-fade-in">
+            {/* Urgent milestones banner */}
+            {myUrgentMilestonesCount > 0 && (
+              <div className="bg-red-50 border border-red-200 text-red-900 rounded-xl p-4 flex justify-between items-center shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-red-600" style={{fontVariationSettings:"'FILL' 1"}}>crisis_alert</span>
+                  <span className="text-sm font-bold">Urgent Milestone Alert: You have {myUrgentMilestonesCount} project milestone(s) due today or tomorrow that remain incomplete.</span>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/30 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface-container-lowest/50 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
+                    <tr>
+                      <th className="px-5 py-4">Project Title</th>
+                      <th className="px-3 py-4 text-center">Created Date</th>
+                      <th className="px-3 py-4 text-center">Created By</th>
+                      <th className="px-3 py-4 text-center">Total Milestones</th>
+                      <th className="px-3 py-4 text-center">Active Milestones</th>
+                      <th className="px-3 py-4 text-center text-error">Overdue Milestones</th>
+                      <th className="px-3 py-4 text-center text-green-600">Recently Done</th>
+                      <th className="px-3 py-4 text-center">Latest Activity</th>
                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-container-low font-semibold text-on-surface-variant">
+                    {myProjectsData.map(p => {
+                      const isSelected = selectedProjectId === p.id;
+                      const closedStyle = p.status === 'Closed' ? 'bg-slate-50 opacity-75' : '';
+                      return (
+                        <React.Fragment key={p.id}>
+                          <tr 
+                            onClick={() => setSelectedProjectId(isSelected ? null : p.id)}
+                            className={`hover:bg-surface-container-low/40 cursor-pointer transition-all ${
+                              isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : ''
+                            } ${closedStyle}`}
+                          >
+                            <td className="px-5 py-4 flex items-center gap-2">
+                              <span className="material-symbols-outlined text-[18px] text-indigo-600">folder</span>
+                              <div>
+                                <span className="font-bold text-on-surface">{p.title}</span>
+                                {p.status === 'Closed' && (
+                                  <span className="text-[8px] font-black bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded border border-slate-300 ml-2 uppercase">Closed</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-4 text-center text-xs">{fmtDate(p.created_at)}</td>
+                            <td className="px-3 py-4 text-center text-xs">{safeProfiles.find(x => x.id === p.created_by)?.name || 'Admin'}</td>
+                            <td className="px-3 py-4 text-center">{p.totalMilestones}</td>
+                            <td className="px-3 py-4 text-center">{p.activeMilestones}</td>
+                            <td className="px-3 py-4 text-center text-error font-bold">{p.overdueMilestones}</td>
+                            <td className="px-3 py-4 text-center text-green-600">{p.recentlyCompleted}</td>
+                            <td className="px-3 py-4 text-center text-xs">{fmtDate(p.latestActivityDate)}</td>
+                          </tr>
+                          {isSelected && (
+                            <tr>
+                              <td colSpan="8" className="bg-slate-50/50 p-5 border-b border-surface-container-high">
+                                <p className="font-bold uppercase tracking-wider text-[10px] text-outline mb-3 flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[14px]">timeline</span> My Milestone Timeline
+                                </p>
+                                
+                                <div className="flex flex-col gap-4">
+                                  <div className="relative border-l-2 border-outline-variant/60 ml-4 pl-6 flex flex-col gap-4">
+                                    {p.milestones.map(m => {
+                                      const msDisplayStatus = getDisplayStatus(m);
+                                      let colorCls = 'text-outline bg-slate-100 border-slate-200';
+                                      if (msDisplayStatus === 'Completed') colorCls = 'text-green-700 bg-green-50 border-green-200';
+                                      else if (msDisplayStatus === 'Overdue') colorCls = 'text-red-700 bg-red-50 border-red-200';
+                                      else if (msDisplayStatus === 'Ongoing') colorCls = 'text-blue-700 bg-blue-50 border-blue-200';
+
+                                      const linkedFollowups = safeWorkItems.filter(f => f.linked_to === m.id && f.assignee_id === currentUser.id);
+
+                                      return (
+                                        <div key={m.id} className="relative flex flex-col gap-1">
+                                          <div className={`absolute -left-[33px] top-1 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white ${colorCls} text-[10px] font-black`}>
+                                            {msDisplayStatus === 'Completed' ? '✓' : '!'}
+                                          </div>
+                                          <div className="flex items-center gap-3">
+                                            <span className="text-xs font-bold text-on-surface">{m.title}</span>
+                                            <span className={`text-[8px] font-bold uppercase px-1.5 py-0.2 rounded border ${colorCls}`}>{msDisplayStatus}</span>
+                                          </div>
+                                          <div className="text-[10px] text-outline flex items-center gap-3 flex-wrap font-medium">
+                                            <span>Due: {m.expected_date || '—'}</span>
+                                            {m.completed_at && <span>Completed: {fmtDate(m.completed_at)}</span>}
+                                          </div>
+                                          {linkedFollowups.length > 0 && (
+                                            <div className="mt-1.5 pl-3 border-l border-teal-200 flex flex-col gap-1">
+                                              <span className="text-[8px] font-bold uppercase text-teal-600">Linked Follow-ups:</span>
+                                              {linkedFollowups.map(f => (
+                                                <div key={f.id} className="text-[10px] text-on-surface-variant flex items-center gap-2">
+                                                  <span className="material-symbols-outlined text-[10px] text-teal-500">subdirectory_arrow_right</span>
+                                                  <span>{f.title} ({getDisplayStatus(f)})</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    {p.milestones.length === 0 && <p className="text-xs text-outline italic ml-2">No milestones set up for you in this project workspace.</p>}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                    {myProjectsData.length === 0 && (
+                      <tr><td colSpan="8" className="px-5 py-10 text-center text-outline italic">No projects relevant to you.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── OVERDUE ANALYSIS TAB ── */}
+        {currentTab === 'Overdue Analysis' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+            {/* Oldest Overdue Works */}
+            <div className="bg-white border border-outline-variant/30 rounded-2xl p-5 shadow-sm">
+              <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider border-b pb-2 mb-4 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[18px] text-error">hourglass_bottom</span> My Oldest Overdue Works
+              </h3>
+              <div className="flex flex-col gap-2.5 max-h-72 overflow-y-auto pr-1">
+                {myOldestOverdueItems.map(o => {
+                  const diffDays = Math.max(0, Math.round((new Date(todayStr) - new Date(o.expected_date)) / 86400000));
+                  return (
+                    <div key={o.id} className="p-3 bg-red-50/50 border border-red-100 rounded-xl flex items-center justify-between gap-3 text-xs">
+                      <div className="min-w-0">
+                        <p className="font-bold text-red-900 truncate leading-snug">{o.title}</p>
+                        <p className="text-[10px] text-red-650 font-medium">Type: {o.type} | Priority: {o.priority || 'Medium'}</p>
+                      </div>
+                      <span className="text-[10px] font-black bg-red-600 text-white px-2.5 py-1 rounded-full whitespace-nowrap">{diffDays} Days Late</span>
+                    </div>
                   );
                 })}
-                {myItems.length === 0 && (
-                  <tr><td colSpan="4" className="px-5 py-8 text-center text-outline">No logs allocated in this cycle range.</td></tr>
-                )}
-              </tbody>
-            </table>
+                {myOldestOverdueItems.length === 0 && <p className="text-xs text-outline italic text-center py-12">No overdue works logged.</p>}
+              </div>
+            </div>
+
+            {/* Priority Wise Overdue */}
+            <div className="bg-white border border-outline-variant/30 rounded-2xl p-5 shadow-sm">
+              <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider border-b pb-2 mb-4 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[18px] text-primary">priority_high</span> My Priority-wise Overdue
+              </h3>
+              <div className="flex flex-col gap-3 font-semibold text-xs text-on-surface-variant">
+                {Object.entries(myPriorityOverdue).map(([prio, count]) => {
+                  let badgeCls = 'bg-slate-100 text-slate-700 border-slate-200';
+                  if (prio === 'Critical') badgeCls = 'bg-red-100 text-red-700 border-red-200';
+                  else if (prio === 'High') badgeCls = 'bg-orange-100 text-orange-700 border-orange-250';
+
+                  return (
+                    <div key={prio} className="flex justify-between items-center p-2 border-b last:border-0 border-slate-55">
+                      <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${badgeCls}`}>{prio}</span>
+                      <span className="font-black text-sm">{count} overdue</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Recurring Template Misses */}
+            <div className="bg-white border border-outline-variant/30 rounded-2xl p-5 shadow-sm md:col-span-2">
+              <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider border-b pb-2 mb-4 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[18px] text-orange-600">autorenew</span> My Recurring Template Misses
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
+                {myRecurringMisses.map(r => (
+                  <div key={r.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-on-surface truncate leading-snug">{r.title}</p>
+                      <p className="text-[10px] text-outline mt-0.5">Type: {r.type} | Priority: {r.priority || 'Medium'}</p>
+                    </div>
+                    <span className="text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-250 px-2 py-0.5 rounded uppercase whitespace-nowrap">Recurring Overdue</span>
+                  </div>
+                ))}
+                {myRecurringMisses.length === 0 && <p className="text-xs text-outline italic text-center py-8 sm:col-span-2">No recurring misses recorded.</p>}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
