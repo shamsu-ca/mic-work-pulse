@@ -112,7 +112,11 @@ export default function AppLayout({ userRole, currentUser }) {
                   <span className="material-symbols-outlined text-[17px] text-on-surface-variant">manage_accounts</span> My Profile
                 </button>
                 <button
-                  onClick={() => { setIsProfileOpen(false); supabase.auth.signOut(); }}
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    localStorage.removeItem('workpulse_session');
+                    window.dispatchEvent(new Event('workpulse_auth_change'));
+                  }}
                   className="w-full text-left px-4 py-2 text-sm text-error hover:bg-error-container/30 transition-colors flex items-center gap-2.5"
                 >
                   <span className="material-symbols-outlined text-[17px]">logout</span> Logout

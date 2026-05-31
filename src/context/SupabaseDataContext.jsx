@@ -1,6 +1,5 @@
-/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, supabaseAdmin } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 
 const DataContext = createContext();
 
@@ -21,7 +20,7 @@ export function SupabaseDataProvider({ children, session }) {
   const [staffGroup, setStaffGroup] = useState('Office Staff');
 
   useEffect(() => {
-    if (!session?.user) {
+    if (!session?.id) {
       setCurrentUser(null);
       setLoadingInitial(false);
       return;
@@ -35,23 +34,26 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: profileData } = await supabase
           .from('users')
           .select('*')
-          .eq('id', session.user.id);
+          .eq('id', session.id);
 
         if (profileData && profileData.length > 0) {
-          setCurrentUser(profileData[0]);
-        } else {
-          const { data: newProfile } = await supabase.from('users').insert([{
-            id: session.user.id,
-            name: session.user.user_metadata?.full_name || 'Unknown User',
-            username: session.user.user_metadata?.username || 'unknown',
-            role: session.user.user_metadata?.role || 'Assignee',
-          }]).select();
-
-          if (newProfile && newProfile.length > 0) {
-            setCurrentUser(newProfile[0]);
-          } else {
-            setCurrentUser({ id: session.user.id, name: 'Guest/Error', role: 'Assignee' });
+          const userObj = profileData[0];
+          if (userObj.is_active === false) {
+            // Force logout if deactivated
+            localStorage.removeItem('workpulse_session');
+            window.dispatchEvent(new Event('workpulse_auth_change'));
+            setCurrentUser(null);
+            setLoadingInitial(false);
+            return;
           }
+          setCurrentUser(userObj);
+        } else {
+          // If the profile no longer exists in the DB, log out
+          localStorage.removeItem('workpulse_session');
+          window.dispatchEvent(new Event('workpulse_auth_change'));
+          setCurrentUser(null);
+          setLoadingInitial(false);
+          return;
         }
 
         // 2. Fetch all profiles
@@ -93,7 +95,7 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: userNotifications } = await supabase
           .from('notifications')
           .select('*')
-          .eq('user_id', session.user.id)
+          .eq('user_id', session.id)
           .order('created_at', { ascending: false });
         if (userNotifications) setNotifications(userNotifications);
 
@@ -143,7 +145,7 @@ export function SupabaseDataProvider({ children, session }) {
     const notifSub = supabase.channel('public:notifications')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
         supabase.from('notifications').select('*')
-          .eq('user_id', session.user.id)
+          .eq('user_id', session.id)
           .order('created_at', { ascending: false })
           .then(({ data }) => { if (data) setNotifications(data); });
       }).subscribe();
@@ -177,7 +179,7 @@ export function SupabaseDataProvider({ children, session }) {
       supabase.removeChannel(leavesSub);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id]);
+  }, [session?.id]);
 
   // Reads from saved_tasks, spawns actual task entries into work_items
   const checkAndSpawnRecurringTasks = async (savedTasksList, currentLeaves = []) => {
@@ -409,40 +411,31 @@ export function SupabaseDataProvider({ children, session }) {
 
   const createUser = async (userData) => {
     const { username, password, full_name, role, department, manager, position, category } = userData;
-
-    if (!supabaseAdmin) {
-      return { data: null, error: new Error("Server configuration error: Admin privileges not securely enabled. Please add your VITE_SUPABASE_SERVICE_ROLE_KEY to your .env.local file to use the direct local generator!") };
-    }
-
     const cleanId = username.trim().toLowerCase();
-    const email = cleanId.includes('@') ? cleanId : `${cleanId}@erp.mic`;
+    const newId = crypto.randomUUID();
 
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password: password,
-      email_confirm: true,
-      user_metadata: { full_name, role, department, manager, position }
-    });
-
-    if (authError) return { data: null, error: authError };
-
-    const { data: insertData, error: insertError } = await supabaseAdmin.from('users').upsert({
-      id: authData.user.id,
+    const { data: insertData, error: insertError } = await supabase.from('users').insert([{
+      id: newId,
       name: full_name,
       username: cleanId,
+      password: password,
       role: role || 'Assignee',
       department: department || null,
       manager: manager || null,
       position: position || null,
       category: category || 'Office Staff',
-    }, { onConflict: 'id' }).select();
+      is_active: true,
+    }]).select();
 
-    if (insertError) return { data: null, error: insertError };
+    if (insertError) {
+      console.error('Error creating user in ERP users table:', insertError);
+      return { data: null, error: insertError };
+    }
 
     const { data: allUsers } = await supabase.from('users').select('*');
     if (allUsers) setProfiles(allUsers);
 
-    return { data: insertData, error: null };
+    return { data: insertData ? insertData[0] : null, error: null };
   };
 
   const updateProfile = async (id, updates) => {
@@ -451,7 +444,10 @@ export function SupabaseDataProvider({ children, session }) {
       console.error('updateProfile error:', error);
       return { data, error };
     }
-    if (data && data.length > 0 && id === currentUser?.id) setCurrentUser(data[0]);
+    if (data && data.length > 0 && id === currentUser?.id) {
+      setCurrentUser(data[0]);
+      localStorage.setItem('workpulse_session', JSON.stringify(data[0]));
+    }
     const { data: allProfiles } = await supabase.from('users').select('*');
     if (allProfiles) setProfiles(allProfiles);
     return { data, error };
@@ -460,40 +456,51 @@ export function SupabaseDataProvider({ children, session }) {
   const adminUpdateProfile = async (targetUserId, profileUpdates) => {
     const updates = {};
     Object.keys(profileUpdates).forEach(key => {
-      if (profileUpdates[key] !== undefined && profileUpdates[key] !== null && profileUpdates[key] !== '') {
+      if (profileUpdates[key] !== undefined && profileUpdates[key] !== null) {
         updates[key] = profileUpdates[key];
       }
     });
 
-    if (updates.username && supabaseAdmin) {
-      const cleanId = updates.username.trim().toLowerCase();
-      const email = cleanId.includes('@') ? cleanId : `${cleanId}@erp.mic`;
-      await supabaseAdmin.auth.admin.updateUserById(targetUserId, { email });
+    if (updates.username) {
+      updates.username = updates.username.trim().toLowerCase();
     }
 
     const { data, error } = await supabase.from('users').update(updates).eq('id', targetUserId).select();
     if (!error) {
       const { data: allProfiles } = await supabase.from('users').select('*');
       if (allProfiles) setProfiles(allProfiles);
+
+      if (targetUserId === currentUser?.id && data && data.length > 0) {
+        setCurrentUser(data[0]);
+        localStorage.setItem('workpulse_session', JSON.stringify(data[0]));
+      }
     }
     return { data, error };
   };
 
   const adminResetUserPassword = async (targetUserId, newPassword) => {
-    if (!supabaseAdmin) return { data: null, error: new Error("Admin configuration missing: Need Service Role key.") };
-    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, { password: newPassword });
+    const { data, error } = await supabase.from('users').update({ password: newPassword }).eq('id', targetUserId).select();
     return { data, error };
   };
 
-  const adminUpdateUser = async (targetUserId, { newPassword, newUsername }) => {
-    if (!supabaseAdmin) return { data: null, error: new Error("Admin configuration missing: Need Service Role key.") };
+  const adminUpdateUser = async (targetUserId, { newPassword, newUsername, is_active }) => {
     const updates = {};
     if (newPassword) updates.password = newPassword;
     if (newUsername) {
-      const cleanId = newUsername.trim().toLowerCase();
-      updates.email = cleanId.includes('@') ? cleanId : `${cleanId}@erp.mic`;
+      updates.username = newUsername.trim().toLowerCase();
     }
-    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, updates);
+    if (is_active !== undefined) updates.is_active = is_active;
+
+    const { data, error } = await supabase.from('users').update(updates).eq('id', targetUserId).select();
+    if (!error) {
+      const { data: allProfiles } = await supabase.from('users').select('*');
+      if (allProfiles) setProfiles(allProfiles);
+
+      if (targetUserId === currentUser?.id && data && data.length > 0) {
+        setCurrentUser(data[0]);
+        localStorage.setItem('workpulse_session', JSON.stringify(data[0]));
+      }
+    }
     return { data, error };
   };
 
@@ -636,7 +643,7 @@ export function SupabaseDataProvider({ children, session }) {
       payload.approved_date = new Date().toISOString().split('T')[0];
     }
 
-    const client = (isAdmin && supabaseAdmin) ? supabaseAdmin : supabase;
+    const client = supabase;
     let result = await client.from('leave_requests').insert([payload]).select();
     
     if (result.error && (result.error.message?.includes('approved_date') || result.error.code === 'PGRST204')) {
@@ -669,7 +676,7 @@ export function SupabaseDataProvider({ children, session }) {
     }
 
     setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
-    const client = (isAdmin && supabaseAdmin) ? supabaseAdmin : supabase;
+    const client = supabase;
     let result = await client.from('leave_requests').update(updates).eq('id', id).select();
     
     if (result.error && (result.error.message?.includes('approved_date') || result.error.code === 'PGRST204')) {
@@ -696,7 +703,7 @@ export function SupabaseDataProvider({ children, session }) {
     if (!window.confirm("Are you sure you want to cancel this leave request?")) return { error: null };
     const isAdmin = currentUser?.role === 'Admin';
     setLeaveRequests(prev => prev.filter(l => l.id !== id));
-    const client = (isAdmin && supabaseAdmin) ? supabaseAdmin : supabase;
+    const client = supabase;
     const { error } = await client.from('leave_requests').delete().eq('id', id);
     if (error) {
       console.error('Error deleting leave:', error);

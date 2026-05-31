@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS public.work_items CASCADE;
 DROP TABLE IF EXISTS public.containers CASCADE;
 DROP TABLE IF EXISTS public.notifications CASCADE;
 DROP TABLE IF EXISTS public.announcements CASCADE;
+DROP TABLE IF EXISTS public.absences CASCADE;
 DROP TABLE IF EXISTS public.profiles CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
 
@@ -15,7 +16,7 @@ DELETE FROM auth.users;
 
 -- 3. Create the simplified public.users table
 CREATE TABLE public.users (
-  id UUID references auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'Assignee',
@@ -23,6 +24,8 @@ CREATE TABLE public.users (
   manager TEXT,
   position TEXT,
   category TEXT DEFAULT 'Office Staff',
+  password TEXT NOT NULL DEFAULT 'temp123',
+  is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -116,12 +119,9 @@ ALTER TABLE public.absences DISABLE ROW LEVEL SECURITY;
 -- Disable RLS everywhere just in case
 -- (already done on creation above)
 
--- 5. Set up the superadmin account manually here.
--- Wait: Password hashing is complex in SQL. It is BEST to go to the 
--- Supabase Dashboard -> Authentication -> Users -> Add User.
--- Email: superadmin@erp.mic
--- Password: your_secure_password
--- Wait, the API insert is better if we do it here, but raw password doesn't work.
--- Instruct the user: Add it via Supabase Dashboard -> Auth. It will trigger nothing because we have no triggers.
--- Then manually insert into public.users:
--- INSERT INTO public.users (id, username, name, role) VALUES ('<id_from_auth>', 'superadmin', 'Super Admin', 'Admin');
+-- 5. Set up the superadmin and default staff accounts.
+INSERT INTO public.users (username, name, role, password, category, position)
+VALUES 
+  ('superadmin', 'Super Admin', 'Admin', 'admin123', 'Office Staff', 'System Administrator'),
+  ('shamsu', 'Shamsuddin', 'Assignee', 'temp123', 'Office Staff', 'Admin Asst')
+ON CONFLICT (username) DO NOTHING;

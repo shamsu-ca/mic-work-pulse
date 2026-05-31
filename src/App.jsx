@@ -55,16 +55,21 @@ export default function App() {
   const [isSessionLoading, setIsSessionLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    const checkSession = () => {
+      const saved = localStorage.getItem('workpulse_session');
+      setSession(saved ? JSON.parse(saved) : null);
       setIsSessionLoading(false);
-    });
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
+    checkSession();
 
-    return () => subscription.unsubscribe();
+    window.addEventListener('storage', checkSession);
+    window.addEventListener('workpulse_auth_change', checkSession);
+
+    return () => {
+      window.removeEventListener('storage', checkSession);
+      window.removeEventListener('workpulse_auth_change', checkSession);
+    };
   }, []);
 
   if (isSessionLoading) {

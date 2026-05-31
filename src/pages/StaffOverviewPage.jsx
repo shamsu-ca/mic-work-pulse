@@ -113,7 +113,7 @@ function ResetPasswordModal({ profile, onClose, onReset }) {
     setLoading(false);
     console.log('Password reset result:', result);
     if (result?.error) {
-      setError(typeof result.error === 'string' ? result.error : result.error?.message || 'Reset failed. Edge function may not be deployed.');
+      setError(typeof result.error === 'string' ? result.error : result.error?.message || 'Reset failed. Database update error.');
     } else {
       setDone(true);
     }
@@ -754,7 +754,7 @@ export default function StaffOverviewPage() {
   const {
     profiles, workItems, containers, staffGroup, currentUser,
     leaveRequests, applyLeave,
-    createUser, adminUpdateProfile, adminResetUserPassword,
+    createUser, adminUpdateProfile, adminResetUserPassword, adminUpdateUser,
   } = useDataContext();
   const safeProfiles = profiles || [];
   const safeWorkItems = workItems || [];
@@ -864,6 +864,23 @@ export default function StaffOverviewPage() {
     });
     console.log('Save result:', error);
     return { error: error?.message || error || null };
+  };
+
+  const handleToggleActive = async (profile) => {
+    if (profile.id === currentUser?.id) {
+      alert("You cannot deactivate your own account.");
+      return;
+    }
+    const isActivating = profile.is_active === false;
+    const confirmMsg = isActivating 
+      ? `Are you sure you want to activate ${profile.name}?`
+      : `Are you sure you want to deactivate ${profile.name}? Deactivated users will not be able to log in.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const { error } = await adminUpdateUser(profile.id, { is_active: isActivating });
+    if (error) {
+      alert("Failed to update status: " + (error.message || JSON.stringify(error)));
+    }
   };
 
   const inputCls = "bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-primary focus:border-primary transition-colors w-full";
@@ -1362,6 +1379,7 @@ export default function StaffOverviewPage() {
                     <th className="px-5 py-4">Name & Position</th>
                     <th className="px-5 py-4">Login ID</th>
                     <th className="px-5 py-4 text-center">Role</th>
+                    <th className="px-5 py-4 text-center">Status</th>
                     <th className="px-5 py-4">Department</th>
                     <th className="px-5 py-4">Manager</th>
                     <th className="px-5 py-4 text-right">Actions</th>
@@ -1386,12 +1404,29 @@ export default function StaffOverviewPage() {
                       <td className="px-5 py-3 text-center">
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${p.role === 'Admin' ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container text-on-surface-variant'}`}>{p.role}</span>
                       </td>
+                      <td className="px-5 py-3 text-center">
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${p.is_active !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          {p.is_active !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
                       <td className="px-5 py-3 text-xs text-on-surface-variant">{p.department || '—'}</td>
                       <td className="px-5 py-3 text-xs text-on-surface-variant">{p.manager || '—'}</td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex gap-2 justify-end">
                           <button className="text-xs font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all" onClick={() => setEditingProfile(p)}>Edit</button>
                           <button className="text-xs font-bold text-error border border-error/30 bg-error/5 hover:bg-error hover:text-white px-3 py-1.5 rounded-lg transition-all" onClick={() => setResettingProfile(p)}>Reset PW</button>
+                          {p.id !== currentUser?.id && (
+                            <button
+                              className={`text-xs font-bold border px-3 py-1.5 rounded-lg transition-all ${
+                                p.is_active !== false
+                                  ? 'text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-600 hover:text-white hover:border-amber-600'
+                                  : 'text-green-700 border-green-300 bg-green-50 hover:bg-green-600 hover:text-white hover:border-green-600'
+                              }`}
+                              onClick={() => handleToggleActive(p)}
+                            >
+                              {p.is_active !== false ? 'Deactivate' : 'Activate'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

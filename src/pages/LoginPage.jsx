@@ -18,16 +18,18 @@ export default function LoginPage() {
     
     const rawId = loginId.trim().toLowerCase();
     const cleanId = rawId.includes('@') ? rawId.split('@')[0] : rawId;
-    const email = rawId.includes('@') ? rawId : `${rawId}@erp.mic`;
 
     try {
       const { data: userRecords, error: dbError } = await supabase
         .from('users')
-        .select('id')
+        .select('*')
         .eq('username', cleanId);
 
       if (dbError) {
         console.error("Database lookup error:", dbError);
+        setError("Database lookup failed. Please try again.");
+        setLoading(false);
+        return;
       }
 
       if (!userRecords || userRecords.length === 0) {
@@ -36,10 +38,24 @@ export default function LoginPage() {
         return;
       }
 
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) {
-        setError("Password incorrect");
+      const user = userRecords[0];
+
+      if (user.is_active === false) {
+        setError("Your account has been deactivated. Please contact your administrator.");
+        setLoading(false);
+        return;
       }
+
+      if (user.password !== password) {
+        setError("Password incorrect");
+        setLoading(false);
+        return;
+      }
+
+      // Login successful: Save session to localStorage
+      localStorage.setItem('workpulse_session', JSON.stringify(user));
+      // Dispatch custom event to trigger session updates
+      window.dispatchEvent(new Event('workpulse_auth_change'));
     } catch (err) {
       console.error("Login process error:", err);
       setError("An unexpected error occurred. Please try again.");

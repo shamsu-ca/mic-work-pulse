@@ -72,7 +72,7 @@ export default function ProfileModal({ onClose, currentUser }) {
     if (newPassword !== confirmPassword) { setPwError("Passwords do not match."); return; }
     if (newPassword.length < 6) { setPwError("Password must be at least 6 characters."); return; }
     setPwLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    const { error } = await supabase.from('users').update({ password: newPassword }).eq('id', currentUser.id);
     if (error) setPwError(error.message);
     else { setMessage('Password changed successfully!'); setNewPassword(''); setConfirmPassword(''); }
     setPwLoading(false);
