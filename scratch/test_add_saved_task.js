@@ -20,7 +20,6 @@ async function testInsert() {
     is_recurring: true,
     is_active: true,
     recurrence_rule: { type: 'daily' },
-    created_by: '3be276e8-3837-43eb-b21e-3f7dbbbdbc05', // Use a valid user ID or select one
   };
 
   // Find a valid user id first

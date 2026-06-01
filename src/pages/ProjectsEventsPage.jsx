@@ -1217,84 +1217,14 @@ export default function ProjectsEventsPage() {
     const [editingRec, setEditingRec]     = useState(null);
     const [modalData, setModalData]       = useState({});
     const [saving, setSaving]             = useState(false);
-    const [expandedGroupId, setExpandedGroupId] = useState(null);
-    
-    // Group states
-    const [creatingGroup, setCreatingGroup] = useState(false);
-    const [groupTitle, setGroupTitle] = useState('');
-    const [editingGroup, setEditingGroup] = useState(null);
-    const [groupSaving, setGroupSaving] = useState(false);
-
-    // Task within Group states
-    const [addingTaskForGroup, setAddingTaskForGroup] = useState(null);
-    const [taskForm, setTaskForm] = useState({ title: '', assignee_id: '', recurrence_type: 'daily' });
-    const [taskSaving, setTaskSaving] = useState(false);
-
-    // Group shift states
-    const [shiftTargetGroup, setShiftTargetGroup] = useState(null);
-    const [shiftSelectedIds, setShiftSelectedIds] = useState(new Set());
-    const [shifting, setShifting] = useState(false);
-    
-    // Grouping / Move Target states
-    const [moveTarget, setMoveTarget] = useState(null);
-    let pressTimer;
-
-    const handlePressStart = (task) => {
-      if (!canEdit) return;
-      pressTimer = setTimeout(() => {
-        setMoveTarget(task);
-      }, 600);
-    };
-
-    const handlePressEnd = () => {
-      clearTimeout(pressTimer);
-    };
 
     const canEdit = isAdmin || currentUser?.role === 'Manager';
-
     const isAssignee = currentUser?.role !== 'Admin' && currentUser?.role !== 'Manager';
-    const rawRecurringGroups = safeSavedTasks.filter(w => w.type === 'Group');
     const rawRecurringTasks = safeSavedTasks.filter(w => w.is_recurring && w.type !== 'Group');
 
     const recurringTasks = isAssignee
       ? rawRecurringTasks.filter(t => t.assignee_id === currentUser?.id)
       : rawRecurringTasks;
-
-    const recurringGroups = isAssignee
-      ? rawRecurringGroups.filter(g => 
-          recurringTasks.some(t => t.parent_id === g.id)
-        )
-      : rawRecurringGroups;
-
-    const handleCreateGroup = async () => {
-      if (!groupTitle.trim()) return;
-      setGroupSaving(true);
-      await addSavedTask({
-        title: groupTitle.trim(), type: 'Group',
-        is_recurring: false, is_active: true
-      });
-      setGroupTitle(''); setCreatingGroup(false); setGroupSaving(false);
-    };
-
-    const handleEditGroup = async () => {
-      if (!editingGroup || !editingGroup.title.trim()) return;
-      setGroupSaving(true);
-      await updateSavedTask(editingGroup.id, { title: editingGroup.title.trim() });
-      setEditingGroup(null); setGroupSaving(false);
-    };
-
-    const handleAddTask = async (groupId) => {
-      if (!taskForm.title.trim()) return;
-      setTaskSaving(true);
-      await addSavedTask({
-        title: taskForm.title.trim(), type: 'Task',
-        parent_id: groupId, assignee_id: taskForm.assignee_id || null,
-        status: 'Assigned', is_recurring: true, is_active: true,
-        recurrence_rule: { type: taskForm.recurrence_type }
-      });
-      setTaskForm({ title: '', assignee_id: '', recurrence_type: 'daily' });
-      setTaskSaving(false); setAddingTaskForGroup(null);
-    };
 
     const openEdit = (item) => {
       setEditingRec(item);
@@ -1386,322 +1316,70 @@ export default function ProjectsEventsPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-4">
-          {canEdit && (
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-outline-variant/30">
-              <div className="flex flex-col">
-                <span className="font-bold text-on-surface">Task Groups</span>
-                <span className="text-xs text-on-surface-variant">Organize recurring tasks into groups</span>
-              </div>
-              {!creatingGroup ? (
-                <button onClick={() => setCreatingGroup(true)} className="flex items-center gap-1.5 bg-primary text-white px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90">
-                  <span className="material-symbols-outlined text-[18px]">create_new_folder</span> New Group
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input autoFocus className={fieldCls + " py-1.5 min-w-[200px]"} value={groupTitle} onChange={e => setGroupTitle(e.target.value)} placeholder="Group Name..." />
-                  <button onClick={handleCreateGroup} disabled={groupSaving || !groupTitle.trim()} className="bg-primary text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50">Save</button>
-                  <button onClick={() => setCreatingGroup(false)} className="text-on-surface-variant px-3 py-1.5 rounded-lg text-sm font-bold border border-outline-variant/40 hover:bg-surface-container">Cancel</button>
-                </div>
-              )}
-            </div>
-          )}
+        <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+          <div className="px-6 py-4 border-b border-surface-container-high flex items-center justify-between">
+            <h2 className="font-bold text-base text-on-surface flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">repeat</span> Saved Recurring Tasks
+            </h2>
+            <span className="text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-full">{recurringTasks.length} items</span>
+          </div>
 
-          {recurringGroups.map(group => {
-            const isExpanded = expandedGroupId === group.id;
-            const tasksInGroup = recurringTasks.filter(t => t.parent_id === group.id);
-            return (
-              <div key={group.id} className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-                <div className="px-4 py-3 bg-surface-container-lowest/50 border-b border-outline-variant/20 flex items-center justify-between cursor-pointer hover:bg-surface-container-low/40 transition-colors"
-                  onClick={() => setExpandedGroupId(isExpanded ? null : group.id)}>
-                  <div className="flex items-center gap-3">
-                    <span className={`material-symbols-outlined text-on-surface-variant transition-transform ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
-                    <span className="material-symbols-outlined text-primary/70">folder</span>
-                    {editingGroup?.id === group.id ? (
-                      <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                        <input autoFocus className={fieldCls + " py-1 w-48 text-xs"} value={editingGroup.title} onChange={e => setEditingGroup({...editingGroup, title: e.target.value})} />
-                        <button onClick={handleEditGroup} className="text-primary font-bold text-xs">Save</button>
-                        <button onClick={() => setEditingGroup(null)} className="text-on-surface-variant font-bold text-xs">Cancel</button>
-                      </div>
-                    ) : (
-                      <span className="font-bold text-on-surface">{group.title}</span>
-                    )}
-                    <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">{tasksInGroup.length} items</span>
-                  </div>
-                  {canEdit && (
-                    <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => setEditingGroup(group)} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>
-                      <DeleteBtn onDelete={() => deleteSavedTask(group.id)} />
-                    </div>
-                  )}
-                </div>
-                {isExpanded && (
-                  <div className="p-4 bg-surface-container-lowest">
-                    {tasksInGroup.length === 0 ? (
-                      <p className="text-xs text-center text-on-surface-variant py-4">No tasks in this group yet.</p>
-                    ) : (
-                      <table className="w-full text-left text-xs mb-3">
-                        <thead className="text-[10px] uppercase font-bold text-outline border-b border-outline-variant/30">
-                          <tr>
-                            <th className="py-2 px-3">Task Name</th>
-                            <th className="py-2 px-3">Assignee</th>
-                            <th className="py-2 px-3">Recurrence</th>
-                            <th className="py-2 px-3 text-center">Status</th>
-                            {canEdit && <th className="py-2 px-3 text-right">Actions</th>}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-outline-variant/10">
-                          {tasksInGroup.map(task => {
-                            const aName = safeProfiles.find(p => p.id === task.assignee_id)?.name ?? 'Unassigned';
-                            return (
-                              <tr key={task.id} 
-                                className="hover:bg-surface-container-low/30 select-none cursor-pointer"
-                                onMouseDown={() => handlePressStart(task)}
-                                onMouseUp={handlePressEnd}
-                                onMouseLeave={handlePressEnd}
-                                onTouchStart={() => handlePressStart(task)}
-                                onTouchEnd={handlePressEnd}
-                              >
-                                <td className="py-2 px-3 font-medium text-on-surface">{task.title}</td>
-                                <td className="py-2 px-3 text-on-surface-variant">{aName.split(' ')[0]}</td>
-                                <td className="py-2 px-3 text-on-surface-variant">{getRecurrenceLabel(task.recurrence_rule)}</td>
-                                <td className="py-2 px-3 text-center">
-                                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded ${task.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-container text-on-surface-variant'}`}>
-                                    {task.is_active ? 'Active' : 'Paused'}
-                                  </span>
-                                </td>
-                                {canEdit && (
-                                  <td className="py-2 px-3 text-right">
-                                    <div className="flex items-center gap-2 justify-end">
-                                      <button onClick={() => openEdit(task)} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>
-                                      <DeleteBtn onDelete={() => deleteSavedTask(task.id)} size="xs" />
-                                    </div>
-                                  </td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                    {canEdit && (
-                      addingTaskForGroup === group.id ? (
-                        <div className="flex items-center gap-2 bg-surface-container-low p-2 rounded-lg">
-                          <input autoFocus className={fieldCls + " py-1.5 text-xs flex-1"} placeholder="Task Title" value={taskForm.title} onChange={e => setTaskForm(f => ({...f, title: e.target.value}))} />
-                          <select className={fieldCls + " py-1.5 text-xs w-auto"} value={taskForm.assignee_id} onChange={e => setTaskForm(f => ({...f, assignee_id: e.target.value}))}>
-                            <option value="">Unassigned</option>
-                            {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                          </select>
-                          <select className={fieldCls + " py-1.5 text-xs w-auto"} value={taskForm.recurrence_type} onChange={e => setTaskForm(f => ({...f, recurrence_type: e.target.value}))}>
-                            <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
-                          </select>
-                          <button onClick={() => handleAddTask(group.id)} disabled={taskSaving || !taskForm.title.trim()} className="bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap">Save</button>
-                          <button onClick={() => setAddingTaskForGroup(null)} className="text-on-surface-variant px-3 py-1.5 border border-outline-variant/30 rounded-lg text-xs font-bold hover:bg-surface-container whitespace-nowrap">Cancel</button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-4 mt-2 px-3 flex-wrap">
-                          <button onClick={() => setAddingTaskForGroup(group.id)} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">
-                            <span className="material-symbols-outlined text-[14px]">add_circle</span> Add Recurring Task to Group
-                          </button>
-                          <button 
-                            onClick={() => { setShiftTargetGroup(group); setShiftSelectedIds(new Set()); }}
-                            className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:underline"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">drive_file_move</span> Shift/Move Items to Group
-                          </button>
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
+          <div className="p-4 bg-surface-container-lowest">
+            {recurringTasks.length === 0 ? (
+              <div className="text-center py-10">
+                <span className="material-symbols-outlined text-4xl text-outline mb-2 block">assignment_late</span>
+                <p className="text-sm text-on-surface-variant italic">No recurring tasks saved yet.</p>
               </div>
-            );
-          })}
-
-          {/* Ungrouped Tasks */}
-          {(() => {
-            const ungrouped = recurringTasks.filter(t => !t.parent_id);
-            if (ungrouped.length === 0) return null;
-            const isExpanded = expandedGroupId === 'ungrouped';
-            return (
-              <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-                <div className="px-4 py-3 bg-surface-container-lowest/50 border-b border-outline-variant/20 flex items-center justify-between cursor-pointer hover:bg-surface-container-low/40 transition-colors"
-                  onClick={() => setExpandedGroupId(isExpanded ? null : 'ungrouped')}>
-                  <div className="flex items-center gap-3">
-                    <span className={`material-symbols-outlined text-on-surface-variant transition-transform ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
-                    <span className="material-symbols-outlined text-outline">task</span>
-                    <span className="font-bold text-on-surface">Ungrouped Tasks</span>
-                    <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">{ungrouped.length} items</span>
-                  </div>
-                </div>
-                {isExpanded && (
-                  <div className="p-4 bg-surface-container-lowest">
-                    <table className="w-full text-left text-xs mb-3">
-                      <thead className="text-[10px] uppercase font-bold text-outline border-b border-outline-variant/30">
-                        <tr>
-                          <th className="py-2 px-3">Task Name</th>
-                          <th className="py-2 px-3">Assignee</th>
-                          <th className="py-2 px-3">Recurrence</th>
-                          <th className="py-2 px-3 text-center">Status</th>
-                          {canEdit && <th className="py-2 px-3 text-right">Actions</th>}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-outline-variant/10">
-                        {ungrouped.map(task => {
-                          const aName = safeProfiles.find(p => p.id === task.assignee_id)?.name ?? 'Unassigned';
-                          return (
-                            <tr key={task.id} 
-                                className="hover:bg-surface-container-low/30 select-none cursor-pointer"
-                                onMouseDown={() => handlePressStart(task)}
-                                onMouseUp={handlePressEnd}
-                                onMouseLeave={handlePressEnd}
-                                onTouchStart={() => handlePressStart(task)}
-                                onTouchEnd={handlePressEnd}
-                              >
-                              <td className="py-2 px-3 font-medium text-on-surface">{task.title}</td>
-                              <td className="py-2 px-3 text-on-surface-variant">{aName.split(' ')[0]}</td>
-                              <td className="py-2 px-3 text-on-surface-variant">{getRecurrenceLabel(task.recurrence_rule)}</td>
-                              <td className="py-2 px-3 text-center">
-                                <span className={`text-[9px] font-black uppercase px-2 py-1 rounded ${task.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-container text-on-surface-variant'}`}>
-                                  {task.is_active ? 'Active' : 'Paused'}
-                                </span>
-                              </td>
-                              {canEdit && (
-                                <td className="py-2 px-3 text-right">
-                                  <div className="flex items-center gap-2 justify-end">
-                                    <button onClick={() => openEdit(task)} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>
-                                    <DeleteBtn onDelete={() => deleteSavedTask(task.id)} size="xs" />
-                                  </div>
-                                </td>
-                              )}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+            ) : (
+              <table className="w-full text-left text-xs mb-3">
+                <thead className="text-[10px] uppercase font-bold text-outline border-b border-outline-variant/30">
+                  <tr>
+                    <th className="py-2 px-3">Task Name</th>
+                    <th className="py-2 px-3">Assignee</th>
+                    <th className="py-2 px-3">Recurrence</th>
+                    <th className="py-2 px-3 text-center">Status</th>
+                    {canEdit && <th className="py-2 px-3 text-right">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/10">
+                  {recurringTasks.map(task => {
+                    const aName = safeProfiles.find(p => p.id === task.assignee_id)?.name ?? 'Unassigned';
+                    return (
+                      <tr key={task.id} className="hover:bg-surface-container-low/30 select-none">
+                        <td className="py-2 px-3 font-medium text-on-surface">
+                          <div>
+                            <p className="font-semibold text-on-surface text-xs">{task.title}</p>
+                            {task.description && <p className="text-[10px] text-on-surface-variant mt-0.5">{task.description}</p>}
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 text-on-surface-variant">{aName.split(' ')[0]}</td>
+                        <td className="py-2 px-3 text-on-surface-variant">{getRecurrenceLabel(task.recurrence_rule)}</td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={`text-[9px] font-black uppercase px-2 py-1 rounded ${task.is_active ? 'bg-green-100 text-green-700' : 'bg-surface-container text-on-surface-variant'}`}>
+                            {task.is_active ? 'Active' : 'Paused'}
+                          </span>
+                        </td>
+                        {canEdit && (
+                          <td className="py-2 px-3 text-right">
+                            <div className="flex items-center gap-2 justify-end">
+                              <button onClick={() => openEdit(task)} className="text-on-surface-variant hover:text-primary"><span className="material-symbols-outlined text-[16px]">edit</span></button>
+                              <DeleteBtn onDelete={() => deleteSavedTask(task.id)} size="xs" />
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
-
-        {moveTarget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs" onClick={() => setMoveTarget(null)}>
-            <div className="bg-white rounded-xl shadow-xl w-72 p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
-              <h3 className="font-bold text-sm text-on-surface">Move "{moveTarget.title}" to Group</h3>
-              <div className="flex flex-col gap-1 max-h-60 overflow-y-auto">
-                <button
-                  onClick={async () => {
-                    await updateSavedTask(moveTarget.id, { parent_id: null });
-                    setMoveTarget(null);
-                  }}
-                  className="px-3 py-2 text-left text-xs font-semibold rounded-lg hover:bg-slate-100 text-on-surface-variant flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-[16px]">folder_off</span>
-                  No Group (Ungroup)
-                </button>
-                {recurringGroups.map(g => (
-                  <button
-                    key={g.id}
-                    onClick={async () => {
-                      await updateSavedTask(moveTarget.id, { parent_id: g.id });
-                      setMoveTarget(null);
-                    }}
-                    className={`px-3 py-2 text-left text-xs font-semibold rounded-lg hover:bg-slate-100 flex items-center gap-2 ${
-                      moveTarget.parent_id === g.id ? 'bg-primary/5 text-primary' : 'text-on-surface'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[16px]">folder</span>
-                    {g.title}
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={() => setMoveTarget(null)}
-                className="mt-2 py-1.5 text-xs font-bold border border-outline-variant/40 rounded-lg text-on-surface-variant hover:bg-surface-container"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {shiftTargetGroup && (
-          <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" onClick={() => setShiftTargetGroup(null)}>
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between border-b pb-2">
-                <h3 className="font-bold text-on-surface text-base flex items-center gap-2">
-                  <span className="material-symbols-outlined text-indigo-600">drive_file_move</span>
-                  Move tasks to "{shiftTargetGroup.title}"
-                </h3>
-                <button onClick={() => setShiftTargetGroup(null)} className="p-1 rounded-lg hover:bg-slate-100">
-                  <span className="material-symbols-outlined text-on-surface-variant">close</span>
-                </button>
-              </div>
-              <p className="text-xs text-on-surface-variant">Select recurring tasks from other groups or ungrouped to move to this group.</p>
-              
-              <div className="max-h-60 overflow-y-auto flex flex-col gap-2 my-2 pr-1">
-                {rawRecurringTasks.filter(t => t.parent_id !== shiftTargetGroup.id).map(task => {
-                  const currentGroup = rawRecurringGroups.find(g => g.id === task.parent_id);
-                  const isChecked = shiftSelectedIds.has(task.id);
-                  return (
-                    <label key={task.id} className="flex items-start gap-3 p-2.5 rounded-lg border border-slate-100 hover:bg-slate-50 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={isChecked}
-                        onChange={() => {
-                          setShiftSelectedIds(prev => {
-                            const next = new Set(prev);
-                            if (next.has(task.id)) next.delete(task.id);
-                            else next.add(task.id);
-                            return next;
-                          });
-                        }}
-                        className="rounded mt-0.5"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-on-surface leading-tight truncate">{task.title}</p>
-                        <p className="text-[10px] text-on-surface-variant mt-0.5">
-                          {currentGroup ? `Currently in: ${currentGroup.title}` : 'Currently: Ungrouped'}
-                        </p>
-                      </div>
-                    </label>
-                  );
-                })}
-                {rawRecurringTasks.filter(t => t.parent_id !== shiftTargetGroup.id).length === 0 && (
-                  <p className="text-xs text-on-surface-variant italic py-4 text-center">No other recurring tasks available.</p>
-                )}
-              </div>
-              
-              <div className="flex justify-end gap-2 border-t pt-3">
-                <button 
-                  onClick={() => setShiftTargetGroup(null)}
-                  className="px-4 py-2 text-xs font-bold border border-outline-variant/40 rounded-lg text-on-surface-variant hover:bg-surface-container"
-                >
-                  Cancel
-                </button>
-                <button 
-                  disabled={shifting || shiftSelectedIds.size === 0}
-                  onClick={async () => {
-                    setShifting(true);
-                    for (const taskId of shiftSelectedIds) {
-                      await updateSavedTask(taskId, { parent_id: shiftTargetGroup.id });
-                    }
-                    setShifting(false);
-                    setShiftTargetGroup(null);
-                  }}
-                  className="px-4 py-2 text-xs font-bold bg-primary text-white rounded-lg hover:opacity-90 disabled:opacity-50"
-                >
-                  {shifting ? 'Moving...' : `Move ${shiftSelectedIds.size} Items`}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </>
     );
   }
+
+
 
   // ── Saved templates panel ──────────────────────────────────────────────────
   function SavedPanel() {

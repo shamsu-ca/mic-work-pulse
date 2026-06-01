@@ -99,9 +99,11 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
       type: initialData && convertType === 'Milestone' ? 'Milestone' : 'Task',
       container_id: initialData && convertType === 'Milestone' ? selectedProjectId : null,
       ...(taskEstMins ? { estimated_hours: Number(taskEstMins) } : {}),
+      created_by: currentUser?.id || null,
     };
     if (isRecurring && (!initialData || convertType === 'Task')) {
-      await addSavedTask({ ...taskBase, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
+      const { container_id, ...savedTaskData } = taskBase;
+      await addSavedTask({ ...savedTaskData, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
     } else {
       await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
     }

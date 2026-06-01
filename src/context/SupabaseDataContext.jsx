@@ -199,7 +199,12 @@ export function SupabaseDataProvider({ children, session }) {
     // ── Phase A: parent templates ──────────────────────────────────────────
     let spawnedParents = [];
 
-    const templates = savedTasksList.filter(w => w.is_recurring && w.is_active && w.type !== 'Group');
+    const validUserIds = new Set((profiles || []).map(p => p.id));
+    const templates = savedTasksList.filter(w => {
+      if (!w.is_recurring || !w.is_active || w.type === 'Group') return false;
+      if (w.assignee_id && !validUserIds.has(w.assignee_id)) return false;
+      return true;
+    });
     const candidateTemplates = [];
 
     for (const template of templates) {
@@ -274,6 +279,13 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: insertedParents, error } = await supabase.from('work_items').insert(toInsert).select();
         if (error) {
           console.error('Failed to spawn recurring tasks:', error);
+          // Rollback last_generated_at in saved_tasks
+          for (const item of claimedList) {
+            await supabase
+              .from('saved_tasks')
+              .update({ last_generated_at: item.last_generated_at })
+              .eq('id', item.id);
+          }
         } else if (insertedParents?.length) {
           spawnedParents = insertedParents;
         }
