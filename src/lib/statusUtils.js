@@ -118,22 +118,24 @@ export function isLowestLevelActionableUnit(item, allItems = []) {
   // Milestone - always count
   if (type === 'milestone') return true;
 
-  // Checklist - count if under active phase or standalone
+  // Checklist - count if under active phase or standalone, or if completed
   if (type === 'checklist') {
+    if (item.status === 'Completed') return true;
     if (!item.parent_id) return true;
     const parentPhase = allItems.find(i => i.id === item.parent_id);
     if (parentPhase && parentPhase.type === 'Phase') {
-      return isPhaseActive(parentPhase);
+      return isPhaseActive(parentPhase) || parentPhase.status === 'Completed';
     }
     return true;
   }
 
-  // Task - always count (subtask system completely removed)
+  // Task - always count
   if (type === 'task') {
+    if (item.status === 'Completed') return true;
     if (item.parent_id) {
       const parent = allItems.find(i => i.id === item.parent_id);
       if (parent && parent.type === 'Phase') {
-        return isPhaseActive(parent);
+        return isPhaseActive(parent) || parent.status === 'Completed';
       }
     }
     return true;

@@ -995,45 +995,57 @@ export default function ReportsPage() {
         if (updErr) console.error("Error setting previously_overdue:", updErr);
       }
 
-      setArchiveProgress('Cleaning up completed tasks, checklists, and logs...');
+      setArchiveProgress('Cleaning up completed standalone tasks and logs...');
       
-      // Delete completed tasks, checklists, and follow-ups. Milestone items are KEPT.
-      const itemsToDeleteIds = completedItems
-        .filter(c => c.type !== 'Milestone')
-        .map(c => c.id);
+      // 1. Delete completed standalone tasks (no container_id, status = Completed, type = Task/Checklist)
+      const completedStandaloneTasks = safeWorkItems.filter(w => 
+        w.status === 'Completed' && 
+        !w.container_id && 
+        (w.type === 'Task' || w.type === 'Checklist')
+      );
+      const standaloneToDeleteIds = completedStandaloneTasks.map(t => t.id);
 
-      if (itemsToDeleteIds.length > 0) {
+      if (standaloneToDeleteIds.length > 0) {
         const { error: delErr } = await supabase
           .from('work_items')
           .delete()
-          .in('id', itemsToDeleteIds);
-        if (delErr) console.error("Error deleting completed work items:", delErr);
+          .in('id', standaloneToDeleteIds);
+        if (delErr) console.error("Error deleting completed standalone tasks:", delErr);
       }
 
-      // Delete old notifications
+      // 2. Delete old notifications (is_read = true)
       const { error: notifDelErr } = await supabase
         .from('notifications')
         .delete()
         .eq('is_read', true);
       if (notifDelErr) console.error("Error clearing read notifications:", notifDelErr);
 
-      // Step 4: Closed Projects Cleanup
-      setArchiveProgress('Archiving and removing Closed Projects...');
-      const closedProjects = safeContainers.filter(c => c.status === 'Closed');
-      for (const proj of closedProjects) {
-        const milestones = safeWorkItems.filter(w => w.container_id === proj.id && w.type === 'Milestone');
-        const checklists = safeWorkItems.filter(w => w.container_id === proj.id && w.type === 'Checklist');
-        const allComp = milestones.every(m => m.status === 'Completed') && checklists.every(ch => ch.status === 'Completed');
+      // 3. Closed Projects and Completed Events Cleanup
+      setArchiveProgress('Removing Closed Projects and Completed Events...');
+      const closedContainers = safeContainers.filter(c => 
+        c.status === 'Closed' && 
+        (c.type === 'Project' || c.type === 'Event')
+      );
+
+      for (const container of closedContainers) {
+        // Delete all work items nested inside the closed project or completed event
+        const nestedItems = safeWorkItems.filter(w => w.container_id === container.id);
+        const nestedIds = nestedItems.map(item => item.id);
         
-        if (allComp) {
-          // Delete project milestones and checklists
-          const relIds = [...milestones.map(m => m.id), ...checklists.map(c => c.id)];
-          if (relIds.length > 0) {
-            await supabase.from('work_items').delete().in('id', relIds);
-          }
-          // Delete closed container
-          await supabase.from('containers').delete().eq('id', proj.id);
+        if (nestedIds.length > 0) {
+          const { error: nestedDelErr } = await supabase
+            .from('work_items')
+            .delete()
+            .in('id', nestedIds);
+          if (nestedDelErr) console.error(`Error deleting items under container ${container.id}:`, nestedDelErr);
         }
+        
+        // Delete the container itself
+        const { error: containerDelErr } = await supabase
+          .from('containers')
+          .delete()
+          .eq('id', container.id);
+        if (containerDelErr) console.error(`Error deleting container ${container.id}:`, containerDelErr);
       }
 
       setArchiveProgress('Refetching updated system state...');

@@ -3,6 +3,14 @@ import { supabase } from '../lib/supabaseClient';
 
 const DataContext = createContext();
 
+const getNextWorkingDay = (dateStr) => {
+  let date = new Date(dateStr + 'T00:00:00');
+  do {
+    date.setDate(date.getDate() + 1);
+  } while (date.getDay() === 0); // Skip Sunday only
+  return date.toISOString().split('T')[0];
+};
+
 export function SupabaseDataProvider({ children, session }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [profiles, setProfiles] = useState([]);
@@ -185,113 +193,150 @@ export function SupabaseDataProvider({ children, session }) {
   const checkAndSpawnRecurringTasks = async (savedTasksList, currentLeaves = []) => {
     const today = new Date().toISOString().split('T')[0];
 
-    const isAbsentFullDayToday = (userId) => {
-      if (!userId || !currentLeaves.length) return false;
-      return currentLeaves.some(l => 
+    const getLeaveOnDate = (userId, dateStr) => {
+      if (!userId || !currentLeaves.length) return null;
+      return currentLeaves.find(l => 
         l.user_id === userId && 
         l.status === 'Approved' && 
-        l.leave_type === 'Full Day' && 
-        today >= l.from_date && today <= l.to_date
-      );
+        dateStr >= l.from_date && dateStr <= l.to_date
+      ) || null;
     };
 
 
-    // ── Phase A: parent templates ──────────────────────────────────────────
-    let spawnedParents = [];
 
+    const isScheduledDay = (dateObj, rule, template = {}) => {
+      const day = dateObj.getDay();
+      const date = dateObj.getDate();
+
+      if (rule.type === 'daily') return true;
+      if (rule.type === 'every_x_days' && rule.interval) {
+        const lastDate = template.last_generated_at ? new Date(template.last_generated_at + 'T00:00:00') : new Date(template.created_at);
+        const diffDays = Math.ceil(Math.abs(dateObj - lastDate) / (1000 * 60 * 60 * 24));
+        return diffDays >= rule.interval;
+      }
+      if (rule.type === 'weekly') {
+        if (Array.isArray(rule.weekly_days)) return rule.weekly_days.includes(day);
+        return day === (rule.day !== undefined ? rule.day : 1);
+      }
+      if (rule.type === 'monthly') {
+        const scheduledDate = rule.monthly_day || rule.date || 1;
+        return date === scheduledDate;
+      }
+      if (rule.type === 'x_monthly' && rule.x_month_interval && rule.monthly_day) {
+        const lastDate = template.last_generated_at ? new Date(template.last_generated_at + 'T00:00:00') : new Date(template.created_at);
+        const monthDiff = (dateObj.getFullYear() - lastDate.getFullYear()) * 12 + (dateObj.getMonth() - lastDate.getMonth());
+        return date === rule.monthly_day && monthDiff >= rule.x_month_interval;
+      }
+      if (rule.type === 'every_x_months' && rule.interval) {
+        const lastDate = template.last_generated_at ? new Date(template.last_generated_at + 'T00:00:00') : new Date(template.created_at);
+        const monthDiff = (dateObj.getFullYear() - lastDate.getFullYear()) * 12 + (dateObj.getMonth() - lastDate.getMonth());
+        const scheduledDate = rule.date || 1;
+        return date === scheduledDate && monthDiff >= rule.interval;
+      }
+      return false;
+    };
+
+    let spawnedParents = [];
     const validUserIds = new Set((profiles || []).map(p => p.id));
+    
+    // Only process active templates
     const templates = savedTasksList.filter(w => {
       if (!w.is_recurring || !w.is_active || w.type === 'Group') return false;
       if (w.assignee_id && !validUserIds.has(w.assignee_id)) return false;
       return true;
     });
-    const candidateTemplates = [];
 
     for (const template of templates) {
       if (!template.recurrence_rule) continue;
-      const lastGenerated = template.last_generated_at;
-      if (lastGenerated === today) continue;
-      
-      // Skip spawn if assignee has Full-Day leave today
-      if (isAbsentFullDayToday(template.assignee_id)) continue;
-
       const rule = template.recurrence_rule;
       
-      // Half Day Leave: generate all recurring tasks normally
-      let shouldGenerate = false;
-
-      if (!lastGenerated) {
-        shouldGenerate = true;
-      } else {
-        const lastDate = new Date(lastGenerated);
-        const currentDate = new Date(today);
-        const diffDays = Math.ceil(Math.abs(currentDate - lastDate) / (1000 * 60 * 60 * 24));
-
+      let startDateStr = template.last_generated_at;
+      if (!startDateStr) {
+        // For daily recurring: initialize last_generated_at to today so it spawns tomorrow
         if (rule.type === 'daily') {
-          if (diffDays >= 1) shouldGenerate = true;
-        } else if (rule.type === 'every_x_days' && rule.interval) {
-          if (diffDays >= rule.interval) shouldGenerate = true;
-        } else if (rule.type === 'weekly' && rule.day !== undefined) {
-          if (currentDate.getDay() === rule.day && diffDays >= 7) shouldGenerate = true;
-        } else if (rule.type === 'monthly' && rule.date) {
-          if (currentDate.getDate() === rule.date && currentDate.getMonth() !== lastDate.getMonth()) shouldGenerate = true;
-        } else if (rule.type === 'every_x_months' && rule.interval) {
-          const monthDiff = (currentDate.getFullYear() - lastDate.getFullYear()) * 12 + (currentDate.getMonth() - lastDate.getMonth());
-          if (monthDiff >= rule.interval) shouldGenerate = true;
-        } else if (rule.type === 'weekly' && Array.isArray(rule.weekly_days)) {
-          if (rule.weekly_days.includes(currentDate.getDay())) shouldGenerate = true;
-        } else if (rule.type === 'monthly' && rule.monthly_day) {
-          if (currentDate.getDate() === rule.monthly_day &&
-              (currentDate.getFullYear() !== lastDate.getFullYear() ||
-               currentDate.getMonth() !== lastDate.getMonth())) shouldGenerate = true;
-        } else if (rule.type === 'x_monthly' && rule.x_month_interval && rule.monthly_day) {
-          const monthDiff = (currentDate.getFullYear() - lastDate.getFullYear()) * 12
-                          + (currentDate.getMonth() - lastDate.getMonth());
-          if (currentDate.getDate() === rule.monthly_day && monthDiff >= rule.x_month_interval)
-            shouldGenerate = true;
+          await supabase.from('saved_tasks').update({ last_generated_at: today }).eq('id', template.id);
+          continue;
         }
+        // For weekly/monthly: check starting from template creation date
+        startDateStr = template.created_at.split('T')[0];
+      } else {
+        // Increment by 1 day
+        const startDateObj = new Date(startDateStr + 'T00:00:00');
+        startDateObj.setDate(startDateObj.getDate() + 1);
+        startDateStr = startDateObj.toISOString().split('T')[0];
       }
 
-      if (shouldGenerate) candidateTemplates.push(template);
-    }
+      let checkDateObj = new Date(startDateStr + 'T00:00:00');
+      const todayObj = new Date(today + 'T00:00:00');
 
-    if (candidateTemplates.length > 0) {
-      const candidateIds = candidateTemplates.map(t => t.id);
-      const { data: claimed } = await supabase
-        .from('saved_tasks')
-        .update({ last_generated_at: today })
-        .in('id', candidateIds)
-        .or(`last_generated_at.is.null,last_generated_at.neq.${today}`)
-        .select('id');
-
-      if (claimed?.length) {
-        const claimedIds = new Set(claimed.map(t => t.id));
-        const claimedList = candidateTemplates.filter(t => claimedIds.has(t.id));
-
-        const toInsert = claimedList.map(t => ({
-          title: t.title, description: t.description, type: 'Task',
-          assignee_id: t.assignee_id, container_id: null,
-          estimated_hours: t.estimated_hours, priority: t.priority,
-          status: 'Assigned', expected_date: today, is_recurring: false,
-          parent_id: null,
-        }));
-
-        const { data: insertedParents, error } = await supabase.from('work_items').insert(toInsert).select();
-        if (error) {
-          console.error('Failed to spawn recurring tasks:', error);
-          // Rollback last_generated_at in saved_tasks
-          for (const item of claimedList) {
-            await supabase
-              .from('saved_tasks')
-              .update({ last_generated_at: item.last_generated_at })
-              .eq('id', item.id);
+      while (checkDateObj <= todayObj) {
+        const checkDateStr = checkDateObj.toISOString().split('T')[0];
+        
+        if (isScheduledDay(checkDateObj, rule, template)) {
+          const leave = getLeaveOnDate(template.assignee_id, checkDateStr);
+          
+          if (leave && leave.leave_type === 'Full Day') {
+            // Full Day Leave:
+            if (rule.type === 'daily') {
+              // Daily recurring: skip entirely (do not generate).
+              await supabase.from('saved_tasks').update({ last_generated_at: checkDateStr }).eq('id', template.id);
+            } else {
+              // Weekly/Monthly recurring: generate on the first active day after leave.
+              const firstActiveDay = getNextWorkingDay(leave.to_date);
+              
+              if (today >= firstActiveDay) {
+                // Generate the task today (or it was generated when firstActiveDay arrived)
+                // We set expected_date = firstActiveDay
+                const toInsert = {
+                  title: template.title,
+                  description: template.description,
+                  type: 'Task',
+                  assignee_id: template.assignee_id,
+                  container_id: null,
+                  estimated_hours: template.estimated_hours,
+                  priority: template.priority,
+                  status: 'Assigned',
+                  expected_date: firstActiveDay,
+                  is_recurring: false,
+                  parent_id: null,
+                  source_template_item_id: template.id
+                };
+                
+                const { data: newWI } = await supabase.from('work_items').insert([toInsert]).select();
+                if (newWI?.length) spawnedParents.push(newWI[0]);
+                await supabase.from('saved_tasks').update({ last_generated_at: checkDateStr }).eq('id', template.id);
+              } else {
+                // If today is before firstActiveDay, we do NOT generate yet and stop checking further dates.
+                break;
+              }
+            }
+          } else {
+            // No leave or Half-Day leave: generate normally on the scheduled date.
+            const toInsert = {
+              title: template.title,
+              description: template.description,
+              type: 'Task',
+              assignee_id: template.assignee_id,
+              container_id: null,
+              estimated_hours: template.estimated_hours,
+              priority: template.priority,
+              status: 'Assigned',
+              expected_date: checkDateStr,
+              is_recurring: false,
+              parent_id: null,
+              source_template_item_id: template.id
+            };
+            
+            const { data: newWI } = await supabase.from('work_items').insert([toInsert]).select();
+            if (newWI?.length) spawnedParents.push(newWI[0]);
+            await supabase.from('saved_tasks').update({ last_generated_at: checkDateStr }).eq('id', template.id);
           }
-        } else if (insertedParents?.length) {
-          spawnedParents = insertedParents;
         }
+        
+        checkDateObj.setDate(checkDateObj.getDate() + 1);
       }
     }
-
+    
     return spawnedParents;
   };
 
@@ -381,7 +426,12 @@ export function SupabaseDataProvider({ children, session }) {
   // ── Saved tasks (recurring templates + items inside saved containers) ──────
 
   const addSavedTask = async (taskData) => {
-    const { data, error } = await supabase.from('saved_tasks').insert([taskData]).select();
+    const today = new Date().toISOString().split('T')[0];
+    const payload = { ...taskData };
+    if (payload.is_recurring && !payload.last_generated_at) {
+      payload.last_generated_at = today;
+    }
+    const { data, error } = await supabase.from('saved_tasks').insert([payload]).select();
     if (error) console.error('Error adding saved task:', error);
     return { data, error };
   };
@@ -419,6 +469,21 @@ export function SupabaseDataProvider({ children, session }) {
     const { data, error } = await supabase.from('containers').update(updates).eq('id', id).select();
     if (error) console.error('Error updating container:', error);
     return { data, error };
+  };
+
+  const deleteContainer = async (id) => {
+    setContainers(prev => prev.filter(c => c.id !== id));
+    setWorkItems(prev => prev.filter(w => w.container_id !== id));
+    await supabase.from('work_items').delete().eq('container_id', id);
+    const { error } = await supabase.from('containers').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting container:', error);
+      const { data: allContainers } = await supabase.from('containers').select('*');
+      if (allContainers) setContainers(allContainers);
+      const { data: allWorkItems } = await supabase.from('work_items').select('*');
+      if (allWorkItems) setWorkItems(allWorkItems);
+    }
+    return { error };
   };
 
   const createUser = async (userData) => {
@@ -611,32 +676,87 @@ export function SupabaseDataProvider({ children, session }) {
     return items || [];
   };
 
-  const deleteTodayGeneratedTasksForUser = async (userId, client = supabase) => {
-    const today = new Date().toISOString().split('T')[0];
-    const { data: templates } = await client
-      .from('saved_tasks')
-      .select('title')
-      .eq('assignee_id', userId)
-      .eq('is_recurring', true);
-    
-    if (!templates || templates.length === 0) return;
-    const titles = templates.map(t => t.title);
-    
-    const { error } = await client
+  const rescheduleTasksOnLeaveApproval = async (userId, fromDate, toDate, client = supabase) => {
+    const { data: items, error: fetchErr } = await client
       .from('work_items')
-      .delete()
+      .select('*')
       .eq('assignee_id', userId)
-      .eq('expected_date', today)
-      .eq('is_recurring', false)
       .eq('status', 'Assigned')
-      .in('title', titles);
+      .gte('expected_date', fromDate)
+      .lte('expected_date', toDate);
       
-    if (error) {
-      console.error("Error deleting auto-generated tasks on leave approval:", error);
-    } else {
-      setWorkItems(prev => prev.filter(w => 
-        !(w.assignee_id === userId && w.expected_date === today && !w.is_recurring && titles.includes(w.title) && w.status === 'Assigned')
-      ));
+    if (fetchErr) {
+      console.error("Error fetching tasks for rescheduling:", fetchErr);
+      return;
+    }
+    
+    if (!items || items.length === 0) return;
+
+    // Filter items that have source_template_item_id (meaning they are generated recurring tasks)
+    const recurringItems = items.filter(item => item.source_template_item_id);
+    if (recurringItems.length === 0) return;
+
+    // Fetch the corresponding templates to check their recurrence rule type
+    const templateIds = [...new Set(recurringItems.map(item => item.source_template_item_id))];
+    const { data: templates, error: templatesErr } = await client
+      .from('saved_tasks')
+      .select('id, recurrence_rule')
+      .in('id', templateIds);
+
+    if (templatesErr) {
+      console.error("Error fetching templates for rescheduling:", templatesErr);
+      return;
+    }
+
+    const templateMap = {};
+    if (templates) {
+      templates.forEach(t => {
+        templateMap[t.id] = t;
+      });
+    }
+
+    const deleteIds = [];
+    const rescheduleUpdates = [];
+    const nextWorkingDay = getNextWorkingDay(toDate);
+
+    recurringItems.forEach(item => {
+      const template = templateMap[item.source_template_item_id];
+      if (!template || !template.recurrence_rule) return;
+
+      const rule = template.recurrence_rule;
+      if (rule.type === 'daily') {
+        deleteIds.push(item.id);
+      } else {
+        rescheduleUpdates.push({ id: item.id, expected_date: nextWorkingDay });
+      }
+    });
+
+    if (deleteIds.length > 0) {
+      const { error: delErr } = await client
+        .from('work_items')
+        .delete()
+        .in('id', deleteIds);
+      if (delErr) {
+        console.error("Error deleting daily tasks on leave approval:", delErr);
+      } else {
+        setWorkItems(prev => prev.filter(w => !deleteIds.includes(w.id)));
+      }
+    }
+
+    if (rescheduleUpdates.length > 0) {
+      for (const update of rescheduleUpdates) {
+        const { error: updErr } = await client
+          .from('work_items')
+          .update({ expected_date: update.expected_date })
+          .eq('id', update.id);
+        if (updErr) {
+          console.error(`Error rescheduling task ${update.id} on leave approval:`, updErr);
+        }
+      }
+      setWorkItems(prev => prev.map(w => {
+        const update = rescheduleUpdates.find(u => u.id === w.id);
+        return update ? { ...w, expected_date: update.expected_date } : w;
+      }));
     }
   };
 
@@ -669,10 +789,7 @@ export function SupabaseDataProvider({ children, session }) {
     } else if (data) {
       setLeaveRequests(prev => [...prev, ...data]);
       if (payload.status === 'Approved' && payload.leave_type === 'Full Day') {
-        const today = new Date().toISOString().split('T')[0];
-        if (today >= payload.from_date && today <= payload.to_date) {
-          await deleteTodayGeneratedTasksForUser(targetUserId, client);
-        }
+        await rescheduleTasksOnLeaveApproval(targetUserId, payload.from_date, payload.to_date, client);
       }
     }
     return { data, error };
@@ -702,10 +819,7 @@ export function SupabaseDataProvider({ children, session }) {
       supabase.from('leave_requests').select('*').then(({ data: d }) => { if (d) setLeaveRequests(d); });
     } else {
       if (req && updates.status === 'Approved' && req.leave_type === 'Full Day') {
-        const today = new Date().toISOString().split('T')[0];
-        if (today >= req.from_date && today <= req.to_date) {
-          await deleteTodayGeneratedTasksForUser(req.user_id, client);
-        }
+        await rescheduleTasksOnLeaveApproval(req.user_id, req.from_date, req.to_date, client);
       }
     }
     return { data, error };
@@ -811,11 +925,13 @@ export function SupabaseDataProvider({ children, session }) {
       deleteSavedTask,
       addContainer,
       updateContainer,
+      deleteContainer,
       createUser,
       updateProfile,
       adminUpdateProfile,
       adminResetUserPassword,
       adminUpdateUser,
+      getNextWorkingDay,
     }}>
       {children}
     </DataContext.Provider>

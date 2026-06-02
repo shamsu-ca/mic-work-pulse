@@ -1084,10 +1084,12 @@ export default function StaffOverviewPage() {
                     <div className={`h-full rounded-full transition-all ${m.efficiency < 40 ? 'bg-error' : m.efficiency < 70 ? 'bg-amber-400' : 'bg-primary'}`} style={{width:`${m.efficiency}%`}}></div>
                   </div>
                   {efficiencyDetailId === staff.id && (
-                    <div className="mt-2 bg-surface-container-low border border-outline-variant/20 rounded-xl p-3 text-xs text-on-surface-variant">
+                    <div className="mt-2 bg-surface-container-low border border-outline-variant/20 rounded-xl p-3 text-xs text-on-surface-variant flex flex-col gap-1">
                       <p className="font-bold text-on-surface mb-1">Efficiency Calculation</p>
-                      <p>{m.completed} completed out of {m.total} total items</p>
-                      <p className="text-[10px] mt-1 opacity-70">Formula: (completed ÷ total) × 100 — across all assigned work items, no date filter</p>
+                      <p className="font-semibold text-primary">{m.efficiency}% Efficiency</p>
+                      <p className="text-[10px] opacity-80">Formula: <span className="font-mono bg-surface-container px-1 py-0.5 rounded">(OnTime * 1.0 + Late * 0.5) / Total Due Work * 100</span></p>
+                      <p className="text-[10px] opacity-80 mt-1">Total Due Work ({m.total}) = Completed ({m.completed}) + Overdue ({m.overdue}) + Not Started ({m.notStarted}).</p>
+                      <p className="text-[10px] opacity-80">Ongoing ({m.ongoing}) and Future/Assigned ({m.assigned}) tasks are excluded.</p>
                     </div>
                   )}
                 </div>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isPhaseActive } from '../lib/statusUtils';
 import { fmtDate } from '../lib/dateUtils';
@@ -287,13 +288,19 @@ export default function ProjectsEventsPage() {
   const {
     containers, workItems, profiles, currentUser,
     savedContainers, savedTasks,
-    addContainer, updateContainer, addWorkItem, updateWorkItem, deleteWorkItem,
+    addContainer, updateContainer, deleteContainer, addWorkItem, updateWorkItem, deleteWorkItem,
     addSavedContainer, updateSavedContainer,
     addSavedTask, updateSavedTask, deleteSavedTask,
     completeWorkItem, createFollowUpTask,
     staffGroup,
+    getNextWorkingDay,
   } = useDataContext();
 
+  const safeContainers      = containers      ?? [];
+  const safeWorkItems       = workItems       ?? [];
+  const safeProfiles        = profiles        ?? [];
+  const safeSavedContainers = savedContainers ?? [];
+  const safeSavedTasks      = savedTasks      ?? [];
 
   const [typeTab, setTypeTab]       = useState('Projects');
   const [modeTab, setModeTab]       = useState('Active');
@@ -324,6 +331,38 @@ export default function ProjectsEventsPage() {
   const [pendingCompleteItem, setPendingCompleteItem] = useState(null);
   const [expandedItemId, setExpandedItemId] = useState(null);
   const [followUpTarget, setFollowUpTarget] = useState(null);
+  const [undeployTarget, setUndeployTarget] = useState(null);
+  const [undeployConfirmText, setUndeployConfirmText] = useState('');
+  const [isUndeploying, setIsUndeploying] = useState(false);
+
+  const [deployName, setDeployName]           = useState('');
+  const [deployDesc, setDeployDesc]           = useState('');
+  const [deployStartDate, setDeployStartDate] = useState('');
+
+  const { leaveRequests } = useDataContext();
+
+  const handleOpenDeploy = (tpl) => {
+    setDeployModalTpl(tpl);
+    setDeployName(tpl.title || '');
+    setDeployDesc('');
+    setDeployStartDate(new Date().toISOString().split('T')[0]);
+    setDeployPhaseDates({});
+  };
+
+  React.useEffect(() => {
+    const activeEvents = safeContainers.filter(c => c.type === 'Event' && c.is_active !== false && c.status !== 'Closed');
+    activeEvents.forEach(async (c) => {
+      const items = safeWorkItems.filter(w => w.container_id === c.id);
+      const phasesAndChecklists = items.filter(w => w.type === 'Phase' || w.type === 'Checklist');
+      if (phasesAndChecklists.length > 0) {
+        const allCompleted = phasesAndChecklists.every(w => w.status === 'Completed');
+        if (allCompleted) {
+          console.log(`Auto-closing event: ${c.title}`);
+          await updateContainer(c.id, { status: 'Closed', is_active: false, progress: 100 });
+        }
+      }
+    });
+  }, [safeWorkItems, safeContainers, updateContainer]);
 
   const handleAddMilestoneClick = (projectId) => {
     const projectMilestones = safeSavedContainers.some(c => c.id === projectId)
@@ -379,24 +418,131 @@ export default function ProjectsEventsPage() {
     setPendingCompleteItem(null);
   };
 
-  const safeContainers      = containers      ?? [];
-  const safeWorkItems       = workItems       ?? [];
-  const safeProfiles        = profiles        ?? [];
-  const safeSavedContainers = savedContainers ?? [];
-  const safeSavedTasks      = savedTasks      ?? [];
+
   const isAdmin             = currentUser?.role === 'Admin';
 
   const canManageContainer = (containerId) => {
     if (isAdmin) return true;
     const c = safeContainers.find(con => con.id === containerId)
            ?? safeSavedContainers.find(con => con.id === containerId);
-    return c?.created_by === currentUser?.id;
+    if (!c) return false;
+    if (c.created_by === currentUser?.id) return true;
+    const creator = safeProfiles.find(p => p.id === c.created_by);
+    if (creator && creator.manager && creator.manager === currentUser?.name) return true;
+    return false;
   };
 
   // Route update/delete to the right table based on which list the item lives in
   const savedTaskIdSet = new Set(safeSavedTasks.map(t => t.id));
-  const updateAnyItem = (id, updates) =>
-    savedTaskIdSet.has(id) ? updateSavedTask(id, updates) : updateWorkItem(id, updates);
+  const propagateNewPhase = async (savedPhase) => {
+    const activeDeployed = safeContainers.filter(c => c.source_template_id === savedPhase.saved_container_id && c.is_active !== false && c.status !== 'Closed');
+    for (const c of activeDeployed) {
+      const exists = safeWorkItems.some(w => w.container_id === c.id && w.source_template_item_id === savedPhase.id);
+      if (!exists) {
+        await addWorkItem({
+          title: savedPhase.title,
+          type: 'Phase',
+          container_id: c.id,
+          status: 'Assigned',
+          created_by: currentUser.id,
+          expected_date: null,
+          source_template_item_id: savedPhase.id
+        });
+      }
+    }
+  };
+
+  const propagateNewChecklist = async (savedChecklist) => {
+    const templateId = savedChecklist.saved_container_id;
+    const activeDeployed = safeContainers.filter(c => c.source_template_id === templateId && c.is_active !== false && c.status !== 'Closed');
+    
+    for (const c of activeDeployed) {
+      const deployedPhase = safeWorkItems.find(w => w.container_id === c.id && w.type === 'Phase' && w.source_template_item_id === savedChecklist.parent_id);
+      if (deployedPhase) {
+        const exists = safeWorkItems.some(w => w.container_id === c.id && w.source_template_item_id === savedChecklist.id);
+        if (!exists) {
+          await addWorkItem({
+            title: savedChecklist.title,
+            type: 'Checklist',
+            container_id: c.id,
+            parent_id: deployedPhase.id,
+            status: 'Assigned',
+            assignee_id: savedChecklist.assignee_id || null,
+            created_by: currentUser.id,
+            expected_date: null,
+            source_template_item_id: savedChecklist.id
+          });
+        }
+      }
+    }
+  };
+
+  const updateAnyItem = async (id, updates) => {
+    if (!savedTaskIdSet.has(id)) {
+      const item = safeWorkItems.find(w => w.id === id);
+      if (item) {
+        // A. Phase expected date propagation
+        if (item.type === 'Phase' && updates.expected_date !== undefined && updates.expected_date !== item.expected_date) {
+          const newDate = updates.expected_date;
+          const childChecklists = safeWorkItems.filter(w => w.parent_id === item.id && w.type === 'Checklist');
+          for (const checklist of childChecklists) {
+            if (!checklist.is_rescheduled && checklist.status !== 'Completed') {
+              const leave = leaveRequests?.find(l => 
+                l.user_id === checklist.assignee_id && 
+                l.status === 'Approved' && 
+                l.leave_type === 'Full Day' && 
+                newDate >= l.from_date && newDate <= l.to_date
+              );
+              if (leave) {
+                const nextActiveDay = getNextWorkingDay(leave.to_date);
+                await updateWorkItem(checklist.id, { expected_date: nextActiveDay, is_rescheduled: true });
+              } else {
+                await updateWorkItem(checklist.id, { expected_date: newDate });
+              }
+            }
+          }
+        }
+        
+        // B. Checklist expected date change (leave check)
+        if (item.type === 'Checklist' && updates.expected_date !== undefined) {
+          const targetDate = updates.expected_date;
+          const assigneeId = updates.assignee_id !== undefined ? updates.assignee_id : item.assignee_id;
+          if (assigneeId) {
+            const leave = leaveRequests?.find(l => 
+              l.user_id === assigneeId && 
+              l.status === 'Approved' && 
+              l.leave_type === 'Full Day' && 
+              targetDate >= l.from_date && targetDate <= l.to_date
+            );
+            if (leave) {
+              updates.expected_date = getNextWorkingDay(leave.to_date);
+            }
+          }
+          updates.is_rescheduled = true;
+        }
+
+        // C. Checklist assignee change (leave check)
+        if (item.type === 'Checklist' && updates.assignee_id !== undefined && updates.assignee_id !== item.assignee_id) {
+          const targetDate = updates.expected_date !== undefined ? updates.expected_date : item.expected_date;
+          const newAssigneeId = updates.assignee_id;
+          if (targetDate && newAssigneeId) {
+            const leave = leaveRequests?.find(l => 
+              l.user_id === newAssigneeId && 
+              l.status === 'Approved' && 
+              l.leave_type === 'Full Day' && 
+              targetDate >= l.from_date && targetDate <= l.to_date
+            );
+            if (leave) {
+              updates.expected_date = getNextWorkingDay(leave.to_date);
+              updates.is_rescheduled = true;
+            }
+          }
+        }
+      }
+    }
+    return savedTaskIdSet.has(id) ? updateSavedTask(id, updates) : updateWorkItem(id, updates);
+  };
+
   const deleteAnyItem = (id) =>
     savedTaskIdSet.has(id) ? deleteSavedTask(id) : deleteWorkItem(id);
   const filteredProfiles = safeProfiles.filter(p =>
@@ -542,11 +688,11 @@ export default function ProjectsEventsPage() {
     setModeTab('Saved');
   };
 
-  const deployTemplate = async (tpl, phaseDates = {}) => {
+  const deployTemplate = async (tpl) => {
     setDeploying(true);
     setDeployError(null);
     try {
-      const { data: newCont, error: contErr } = await addContainer(mkContainer({ title: cName(tpl), type: tpl.type, source_template_id: tpl.id }));
+      const { data: newCont, error: contErr } = await addContainer(mkContainer({ title: deployName.trim() || cName(tpl), type: tpl.type, source_template_id: tpl.id }));
       if (contErr || !newCont?.length) {
         setDeployError(contErr?.message || 'Failed to create container. Check permissions.');
         setDeploying(false); return;
@@ -554,21 +700,71 @@ export default function ProjectsEventsPage() {
       const newId = newCont[0].id;
       if (tpl.type === 'Event') {
         for (const ph of getSavedPhases(tpl.id)) {
-          const phDate = phaseDates[ph.id] || null;
-          const { data: newPh } = await addWorkItem({ title: ph.title, type: 'Phase', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: phDate });
+          const phaseDate = deployPhaseDates[ph.id] || null;
+          const { data: newPh } = await addWorkItem({ title: ph.title, type: 'Phase', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: phaseDate, source_template_item_id: ph.id });
           for (const item of getSavedPhaseItems(ph.id)) {
-            await addWorkItem({ title: item.title, type: 'Checklist', container_id: newId, parent_id: newPh?.[0]?.id ?? null, status: 'Assigned', assignee_id: item.assignee_id ?? null, created_by: currentUser.id, expected_date: phDate });
+            let finalDate = phaseDate;
+            let isRescheduled = false;
+            if (finalDate && item.assignee_id) {
+              const leave = leaveRequests?.find(l => 
+                l.user_id === item.assignee_id && 
+                l.status === 'Approved' && 
+                l.leave_type === 'Full Day' && 
+                finalDate >= l.from_date && finalDate <= l.to_date
+              );
+              if (leave) {
+                finalDate = getNextWorkingDay(leave.to_date);
+                isRescheduled = true;
+              }
+            }
+            await addWorkItem({ 
+              title: item.title, 
+              type: 'Checklist', 
+              container_id: newId, 
+              parent_id: newPh?.[0]?.id ?? null, 
+              status: 'Assigned', 
+              assignee_id: item.assignee_id ?? null, 
+              created_by: currentUser.id, 
+              expected_date: finalDate, 
+              is_rescheduled: isRescheduled,
+              source_template_item_id: item.id 
+            });
           }
         }
       } else {
         for (const m of getSavedMilestones(tpl.id)) {
-          await addWorkItem({ title: m.title, type: 'Milestone', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: m.expected_date ?? null });
+          await addWorkItem({ title: m.title, type: 'Milestone', container_id: newId, status: 'Assigned', created_by: currentUser.id, expected_date: null });
         }
       }
-      setDeploying(false); setDeployModalTpl(null); setDeployPhaseDates({}); setModeTab('Active');
+      setDeploying(false); setDeployModalTpl(null); setModeTab('Active');
     } catch (err) {
       setDeployError(err?.message || 'Unexpected error during deploy.');
       setDeploying(false);
+    }
+  };
+
+  const handleUndeploy = async (container) => {
+    if (!isAdmin) return;
+    setIsUndeploying(true);
+    try {
+      await deleteContainer(container.id);
+
+      const todayStrVal = new Date().toLocaleDateString('en-GB');
+      const auditMsg = `Event Undeployed - Event: ${container.title} | Undeployed By: ${currentUser.name} | Date: ${todayStrVal}`;
+      
+      await supabase.from('notifications').insert([{
+        user_id: currentUser.id,
+        title: 'Event Undeployed',
+        message: auditMsg,
+        is_read: false
+      }]);
+
+      setUndeployTarget(null);
+      setUndeployConfirmText('');
+    } catch (err) {
+      console.error("Error during event undeployment:", err);
+    } finally {
+      setIsUndeploying(false);
     }
   };
 
@@ -589,7 +785,10 @@ export default function ProjectsEventsPage() {
     setSubmitting(true);
     const isSaved = safeSavedContainers.some(c => c.id === phaseTarget);
     if (isSaved) {
-      await addSavedTask({ title: phaseForm.title.trim(), type: 'Phase', saved_container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: null });
+      const { data } = await addSavedTask({ title: phaseForm.title.trim(), type: 'Phase', saved_container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: null });
+      if (data && data.length > 0) {
+        await propagateNewPhase(data[0]);
+      }
     } else {
       await addWorkItem({ title: phaseForm.title.trim(), type: 'Phase', container_id: phaseTarget, status: 'Assigned', created_by: currentUser.id, expected_date: phaseForm.date || null });
     }
@@ -602,10 +801,27 @@ export default function ProjectsEventsPage() {
     const isSavedPhase = savedTaskIdSet.has(checklistTarget.phaseId);
     if (isSavedPhase) {
       const savedContainerId = safeSavedTasks.find(w => w.id === checklistTarget.phaseId)?.saved_container_id;
-      await addSavedTask({ title: checklistForm.title.trim(), type: 'Checklist', saved_container_id: savedContainerId, parent_id: checklistTarget.phaseId, status: 'Assigned', assignee_id: checklistForm.assignee_id || null, created_by: currentUser.id, expected_date: checklistForm.date || checklistTarget.phaseDate || null });
+      const { data } = await addSavedTask({ title: checklistForm.title.trim(), type: 'Checklist', saved_container_id: savedContainerId, parent_id: checklistTarget.phaseId, status: 'Assigned', assignee_id: checklistForm.assignee_id || null, created_by: currentUser.id, expected_date: checklistForm.date || checklistTarget.phaseDate || null });
+      if (data && data.length > 0) {
+        await propagateNewChecklist(data[0]);
+      }
     } else {
       const containerId = safeWorkItems.find(w => w.id === checklistTarget.phaseId)?.container_id;
-      await addWorkItem({ title: checklistForm.title.trim(), type: 'Checklist', container_id: containerId, parent_id: checklistTarget.phaseId, status: 'Assigned', assignee_id: checklistForm.assignee_id || null, created_by: currentUser.id, expected_date: checklistForm.date || checklistTarget.phaseDate || null });
+      let finalDate = checklistForm.date || checklistTarget.phaseDate || null;
+      let isRescheduled = false;
+      if (finalDate && checklistForm.assignee_id) {
+        const leave = leaveRequests?.find(l => 
+          l.user_id === checklistForm.assignee_id && 
+          l.status === 'Approved' && 
+          l.leave_type === 'Full Day' && 
+          finalDate >= l.from_date && finalDate <= l.to_date
+        );
+        if (leave) {
+          finalDate = getNextWorkingDay(leave.to_date);
+          isRescheduled = true;
+        }
+      }
+      await addWorkItem({ title: checklistForm.title.trim(), type: 'Checklist', container_id: containerId, parent_id: checklistTarget.phaseId, status: 'Assigned', assignee_id: checklistForm.assignee_id || null, created_by: currentUser.id, expected_date: finalDate, is_rescheduled: isRescheduled });
     }
     setSubmitting(false); setChecklistTarget(null); setChecklistForm({ title: '', assignee_id: '', date: '' });
   };
@@ -1015,15 +1231,26 @@ export default function ProjectsEventsPage() {
               </div>
             )}
 
-            {isAdmin && c.is_active !== false && !isClosed && (
+            {isAdmin && c.is_active !== false && !isClosed && isProject && (
               <div className="px-5 py-3 border-t border-surface-container-low flex items-center gap-2 flex-wrap">
-                {isProject && !isFromTemplate && (
+                {!isFromTemplate && (
                   <button onClick={() => saveAsTemplate(c)} className="flex items-center gap-1.5 text-xs font-bold border border-outline-variant/40 bg-white text-on-surface px-3 py-1.5 rounded-xl hover:bg-surface-container">
                     <span className="material-symbols-outlined text-[14px]">bookmark_add</span> Save as Template
                   </button>
                 )}
                 <button onClick={() => setDeactivateTarget(c)} className="flex items-center gap-1.5 text-xs font-bold text-error border border-error/20 bg-error/5 px-3 py-1.5 rounded-xl hover:bg-error/10 ml-auto">
-                  <span className="material-symbols-outlined text-[14px]">pause_circle</span> Close {isProject ? 'Project' : 'Event'}
+                  <span className="material-symbols-outlined text-[14px]">pause_circle</span> Close Project
+                </button>
+              </div>
+            )}
+
+            {isAdmin && c.is_active !== false && !isClosed && !isProject && (
+              <div className="px-5 py-3 border-t border-surface-container-low flex items-center justify-end gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
+                <button 
+                  onClick={() => setUndeployTarget(c)} 
+                  className="flex items-center gap-1.5 text-xs font-bold text-error border border-error/20 bg-error/5 px-3 py-1.5 rounded-xl hover:bg-error/10"
+                >
+                  <span className="material-symbols-outlined text-[14px]">delete_forever</span> Undeploy Event
                 </button>
               </div>
             )}
@@ -1218,13 +1445,13 @@ export default function ProjectsEventsPage() {
     const [modalData, setModalData]       = useState({});
     const [saving, setSaving]             = useState(false);
 
-    const canEdit = isAdmin || currentUser?.role === 'Manager';
-    const isAssignee = currentUser?.role !== 'Admin' && currentUser?.role !== 'Manager';
+    const isManager = safeProfiles.some(p => p.manager === currentUser?.name);
+    const canEdit = isAdmin || isManager || currentUser?.role === 'Assignee';
     const rawRecurringTasks = safeSavedTasks.filter(w => w.is_recurring && w.type !== 'Group');
 
-    const recurringTasks = isAssignee
-      ? rawRecurringTasks.filter(t => t.assignee_id === currentUser?.id)
-      : rawRecurringTasks;
+    const recurringTasks = isAdmin
+      ? rawRecurringTasks
+      : rawRecurringTasks.filter(t => t.assignee_id === currentUser?.id || (t.assignee_id && safeProfiles.some(p => p.id === t.assignee_id && p.manager === currentUser?.name)));
 
     const openEdit = (item) => {
       setEditingRec(item);
@@ -1412,7 +1639,7 @@ export default function ProjectsEventsPage() {
                     <p className="font-bold text-on-surface text-sm leading-tight mb-2">{cName(c)}</p>
                     <div className="flex gap-2">
                       {isAdmin && (
-                        <button onClick={e => { e.stopPropagation(); setDeployModalTpl(c); setDeployPhaseDates({}); }} disabled={deploying}
+                        <button onClick={e => { e.stopPropagation(); handleOpenDeploy(c); }} disabled={deploying}
                           className="flex-1 py-1.5 text-xs font-bold bg-primary text-white rounded-xl hover:opacity-90 disabled:opacity-50">{deploying ? '…' : 'Deploy'}</button>
                       )}
                       <button onClick={e => { e.stopPropagation(); setSelectedTplId(c.id); }}
@@ -1489,7 +1716,7 @@ export default function ProjectsEventsPage() {
                 {isAdmin && (
                   <div className="px-6 py-4 border-t border-surface-container-high flex items-center justify-between">
                     <span className="text-xs text-on-surface-variant">Deploy creates a live {isProject ? 'project' : 'event'} from this template</span>
-                    <button onClick={() => { setDeployModalTpl(active); setDeployPhaseDates({}); }} disabled={deploying}
+                    <button onClick={() => { handleOpenDeploy(active); }} disabled={deploying}
                       className="bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
                       {deploying
                         ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying…</>
@@ -1532,7 +1759,7 @@ export default function ProjectsEventsPage() {
                   <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                     {isAdmin && (
                       <button 
-                        onClick={() => { setDeployModalTpl(c); setDeployPhaseDates({}); }}
+                        onClick={() => { handleOpenDeploy(c); }}
                         className="px-3 py-1 bg-primary text-white text-[11px] font-bold rounded-lg hover:opacity-90 animate-fade-in"
                       >
                         Deploy
@@ -1604,7 +1831,7 @@ export default function ProjectsEventsPage() {
                       <div className="border-t pt-3 flex justify-between items-center">
                         <span className="text-[10px] text-on-surface-variant">Deploy template to create live project/event</span>
                         <button 
-                          onClick={() => { setDeployModalTpl(c); setDeployPhaseDates({}); }}
+                          onClick={() => { handleOpenDeploy(c); }}
                           className="bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 flex items-center gap-1"
                         >
                           <span className="material-symbols-outlined text-[14px]">rocket_launch</span> Deploy Template
@@ -1961,20 +2188,35 @@ export default function ProjectsEventsPage() {
           </div>
         </Modal>
       )}
-      {deactivateTarget && (
-        <Modal title={`Close ${deactivateTarget.type}?`} onClose={() => setDeactivateTarget(null)}>
-          <p className="text-sm text-on-surface-variant">"{cName(deactivateTarget)}" will be closed and marked as read-only.</p>
-          <div className="flex flex-col gap-2">
-            {deactivateTarget.type === 'Project' && !deactivateTarget.source_template_id && (
-              <button onClick={() => doDeactivate(deactivateTarget, true)} className={btnPrimary}>
-                <span className="flex items-center gap-1.5 justify-center"><span className="material-symbols-outlined text-[16px]">bookmark_add</span> Save as Template & Close</span>
-              </button>
+      {deactivateTarget && (() => {
+        const milestones = getMilestones(deactivateTarget.id);
+        const hasIncomplete = milestones.some(m => m.status !== 'Completed');
+        return (
+          <Modal title={`Close ${deactivateTarget.type}?`} onClose={() => setDeactivateTarget(null)}>
+            {hasIncomplete ? (
+              <div className="flex flex-col gap-4">
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs font-semibold">
+                  Error: Cannot close this project. All milestones must be Completed first.
+                </div>
+                <button onClick={() => setDeactivateTarget(null)} className={btnPrimary}>OK</button>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-on-surface-variant mb-4">"{cName(deactivateTarget)}" will be closed and marked as read-only.</p>
+                <div className="flex flex-col gap-2">
+                  {deactivateTarget.type === 'Project' && !deactivateTarget.source_template_id && (
+                    <button onClick={() => doDeactivate(deactivateTarget, true)} className={btnPrimary}>
+                      <span className="flex items-center gap-1.5 justify-center"><span className="material-symbols-outlined text-[16px]">bookmark_add</span> Save as Template & Close</span>
+                    </button>
+                  )}
+                  <button onClick={() => doDeactivate(deactivateTarget, false)} className="w-full bg-error/10 text-error border border-error/20 px-4 py-2 rounded-xl text-sm font-bold hover:bg-error/20">Close Without Saving</button>
+                  <button onClick={() => setDeactivateTarget(null)} className={btnSecondary}>Cancel</button>
+                </div>
+              </>
             )}
-            <button onClick={() => doDeactivate(deactivateTarget, false)} className="w-full bg-error/10 text-error border border-error/20 px-4 py-2 rounded-xl text-sm font-bold hover:bg-error/20">Close Without Saving</button>
-            <button onClick={() => setDeactivateTarget(null)} className={btnSecondary}>Cancel</button>
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
       {editingItem && (
         <EditItemModal item={editingItem} profiles={safeProfiles} currentUser={currentUser} onClose={() => setEditingItem(null)} onSave={updateAnyItem} />
       )}
@@ -1982,9 +2224,9 @@ export default function ProjectsEventsPage() {
       {/* ── Deploy Modal ── */}
       {deployModalTpl && (() => {
         const tpl = deployModalTpl;
-        const isEvent = tpl.type === 'Event';
-        const phases = isEvent ? getSavedPhases(tpl.id) : [];
-        const canDeploy = true; // Phase dates are optional during deploy
+        const phases = getSavedPhases(tpl.id);
+        const allPhaseDatesFilled = phases.every(ph => deployPhaseDates[ph.id] && deployPhaseDates[ph.id].trim() !== '');
+        const canDeploy = deployName.trim().length > 0 && (tpl.type === 'Event' ? allPhaseDatesFilled : deployStartDate.trim().length > 0);
         return (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4" onClick={() => setDeployModalTpl(null)}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" onClick={e => e.stopPropagation()}>
@@ -1992,52 +2234,80 @@ export default function ProjectsEventsPage() {
                 <div className="flex items-center gap-3">
                   <span className="material-symbols-outlined text-primary">rocket_launch</span>
                   <div>
-                    <h2 className="font-bold text-lg font-headline">Deploy — {cName(tpl)}</h2>
-                    {isEvent && phases.length > 0 && (
-                      <p className="text-xs text-on-surface-variant">Set a due date for each phase</p>
-                    )}
+                    <h2 className="font-bold text-lg font-headline">Deploy {tpl.type}</h2>
+                    <p className="text-xs text-on-surface-variant">Configure details to deploy from template</p>
                   </div>
                 </div>
                 <button onClick={() => setDeployModalTpl(null)}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
               </div>
 
               <div className="p-6 flex flex-col gap-4 max-h-[60vh] overflow-y-auto">
-                {isEvent && phases.length === 0 && (
-                  <p className="text-sm text-on-surface-variant italic">No phases in this template. Deploy will create an empty event.</p>
-                )}
-                {isEvent && phases.map((ph, i) => (
-                  <div key={ph.id} className="flex items-center gap-3">
-                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black flex items-center justify-center flex-shrink-0">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-on-surface truncate">{ph.title}</p>
-                      <p className="text-[10px] text-on-surface-variant">{getSavedPhaseItems(ph.id).length} items</p>
-                    </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Name *</label>
+                  <input
+                    required
+                    type="text"
+                    className="bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all w-full"
+                    placeholder="Enter name"
+                    value={deployName}
+                    onChange={e => setDeployName(e.target.value)}
+                  />
+                </div>
+                
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Description</label>
+                  <textarea
+                    rows={2}
+                    className="bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all w-full resize-none"
+                    placeholder="Optional description..."
+                    value={deployDesc}
+                    onChange={e => setDeployDesc(e.target.value)}
+                  />
+                </div>
+
+                {tpl.type === 'Project' ? (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Start Date *</label>
                     <input
+                      required
                       type="date"
-                      className="border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary flex-shrink-0"
-                      value={deployPhaseDates[ph.id] || ''}
-                      onChange={e => setDeployPhaseDates(prev => ({ ...prev, [ph.id]: e.target.value }))}
+                      className="bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all w-full"
+                      value={deployStartDate}
+                      onChange={e => setDeployStartDate(e.target.value)}
                     />
                   </div>
-                ))}
-                {!isEvent && (
-                  <p className="text-sm text-on-surface-variant">Deploy will create a live project from this template.</p>
+                ) : (
+                  <div className="flex flex-col gap-3 border-t border-surface-container pt-3 mt-1">
+                    <p className="text-xs font-bold text-on-surface uppercase tracking-wider mb-1">Phase Expected Dates *</p>
+                    {phases.map(ph => (
+                      <div key={ph.id} className="flex items-center justify-between gap-4 py-1.5 border-b border-slate-100">
+                        <span className="text-xs font-bold text-slate-700 flex-1">{ph.title}</span>
+                        <input
+                          required
+                          type="date"
+                          className="bg-slate-50 border border-outline-variant rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all w-[160px]"
+                          value={deployPhaseDates[ph.id] ?? ''}
+                          onChange={e => setDeployPhaseDates(prev => ({ ...prev, [ph.id]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
               {deployError && (
                 <div className="mx-6 mb-2 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm font-medium rounded-xl">{deployError}</div>
               )}
-              {/* Optional dates warning removed */}
+              
               <div className="flex justify-end gap-3 px-6 py-4 border-t border-surface-container">
                 <button className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={() => { setDeployModalTpl(null); setDeployError(null); }} disabled={deploying}>Cancel</button>
                 <button
                   className="px-5 py-2 text-sm font-bold bg-primary text-white rounded-xl flex items-center gap-2 disabled:opacity-50"
                   disabled={!canDeploy || deploying}
-                  onClick={() => deployTemplate(tpl, deployPhaseDates)}
+                  onClick={() => deployTemplate(tpl)}
                 >
                   {deploying
-                    ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying…</>
+                    ? <><span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span> Deploying...</>
                     : <><span className="material-symbols-outlined text-[16px]">rocket_launch</span> Confirm Deploy</>
                   }
                 </button>
@@ -2046,6 +2316,43 @@ export default function ProjectsEventsPage() {
           </div>
         );
       })()}
+
+      {/* ── Undeploy Modal ── */}
+      {undeployTarget && (
+        <Modal title={`Undeploy Event: ${undeployTarget.title}`} onClose={() => { setUndeployTarget(null); setUndeployConfirmText(''); }}>
+          <div className="flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs font-semibold">
+              Warning: This action will permanently delete the active event "{undeployTarget.title}", all its phases, checklist items, and progress. Deployed templates will NOT be affected.
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Type "UNDEPLOY" to confirm *</label>
+              <input
+                autoFocus
+                type="text"
+                className="border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full"
+                placeholder="UNDEPLOY"
+                value={undeployConfirmText}
+                onChange={e => setUndeployConfirmText(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => handleUndeploy(undeployTarget)} 
+                disabled={undeployConfirmText !== 'UNDEPLOY' || isUndeploying} 
+                className="flex-1 bg-error text-white px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-40 transition-opacity"
+              >
+                {isUndeploying ? 'Undeploying...' : 'Undeploy Event'}
+              </button>
+              <button 
+                onClick={() => { setUndeployTarget(null); setUndeployConfirmText(''); }} 
+                className="flex-1 bg-white border border-outline-variant/40 text-on-surface px-4 py-2 rounded-xl text-sm font-bold hover:bg-surface-container transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {pendingCompleteItem && (
         <CompletionPanel
           item={pendingCompleteItem}

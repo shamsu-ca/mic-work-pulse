@@ -29,7 +29,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   const [xMonthInterval, setXMonthInterval] = useState('2');
   const [recurrenceMode, setRecurrenceMode] = useState('strict');
 
-  const hasLeaveOnDate = leaveRequests?.some(l =>
+  const leaveOnDate = leaveRequests?.find(l =>
     l.user_id === taskAssignee &&
     l.status === 'Approved' &&
     taskDate >= l.from_date && taskDate <= l.to_date
@@ -339,10 +339,10 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
                 </div>
               )}
 
-              {hasLeaveOnDate && (
+              {leaveOnDate && (
                 <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-xl text-xs font-semibold my-2">
                   <span className="material-symbols-outlined text-[16px] text-amber-600">warning</span>
-                  Note: Assignee is on approved leave on this date.
+                  Note: Assignee is on approved leave ({leaveOnDate.leave_type}) on this date.
                 </div>
               )}
             </div>

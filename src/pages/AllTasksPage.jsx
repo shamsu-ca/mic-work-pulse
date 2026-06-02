@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
-import { getDisplayStatus, getStatusBadgeClass } from '../lib/statusUtils';
+import { getDisplayStatus, getStatusBadgeClass, getActionableUnits, calculateUserEfficiency, isLowestLevelActionableUnit } from '../lib/statusUtils';
 import { fmtDate } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 import CompletionPanel from '../components/common/CompletionPanel';
@@ -282,7 +282,7 @@ function EditItemModal({ item, profiles, _workItems, onClose, onSave }) {
     onClose();
   };
 
-  const hasLeaveOnDate = leaveRequests?.some(l =>
+  const leaveOnDate = leaveRequests?.find(l =>
     l.user_id === assigneeId &&
     l.status === 'Approved' &&
     dueDate >= l.from_date && dueDate <= l.to_date
@@ -333,10 +333,10 @@ function EditItemModal({ item, profiles, _workItems, onClose, onSave }) {
               <input type="date" className={cls} value={dueDate} onChange={e => setDueDate(e.target.value)} />
             </div>
           </div>
-          {hasLeaveOnDate && (
+          {leaveOnDate && (
             <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-xl text-xs font-semibold my-2">
               <span className="material-symbols-outlined text-[16px] text-amber-600">warning</span>
-              Note: Assignee is on approved leave on this date.
+              Note: Assignee is on approved leave ({leaveOnDate.leave_type}) on this date.
             </div>
           )}
         </form>
@@ -742,10 +742,7 @@ export default function AllTasksPage() {
     baseRaw = baseRaw.filter(w => !w.assignee_id || targetStaffIds.has(w.assignee_id));
   }
 
-  const allBase = baseRaw.filter(w => {
-    const type = w.type?.toLowerCase();
-    return type !== 'project' && type !== 'event' && type !== 'phase' && !w.parent_id;
-  });
+  const allBase = baseRaw.filter(w => isLowestLevelActionableUnit(w, safeWorkItems));
 
   const deptList = ['All Departments', ...new Set(safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup).map(p => p.department).filter(Boolean))];
   const staffListForFilter = safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup && (!filterDept || filterDept === 'All Departments' || p.department === filterDept));
