@@ -781,53 +781,55 @@ function LeaveManagementDashboard({ leaveRequests, profiles, updateLeaveRequest,
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-7 gap-px bg-slate-100 border border-slate-200 rounded-xl overflow-hidden shadow-inner">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
-              <div key={d} className="bg-slate-50 py-2 text-center text-[10px] font-black uppercase text-on-surface-variant tracking-wider">{d}</div>
-            ))}
-            {(() => {
-              const cells = [];
-              for (let i = 0; i < firstDayIndex; i++) {
-                cells.push(<div key={`pad-${i}`} className="bg-slate-50 border border-slate-100 min-h-[80px]"></div>);
-              }
-              for (let day = 1; day <= daysInMonth; day++) {
-                const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const activeLeaves = (leaveRequests || []).filter(l => l.status === 'Approved' && dateStr >= l.from_date && dateStr <= l.to_date);
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-7 gap-px bg-slate-100 border border-slate-200 rounded-xl overflow-hidden shadow-inner min-w-[600px] md:min-w-0">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+                <div key={d} className="bg-slate-50 py-2 text-center text-[10px] font-black uppercase text-on-surface-variant tracking-wider">{d}</div>
+              ))}
+              {(() => {
+                const cells = [];
+                for (let i = 0; i < firstDayIndex; i++) {
+                  cells.push(<div key={`pad-${i}`} className="bg-slate-50 border border-slate-100 min-h-[80px]"></div>);
+                }
+                for (let day = 1; day <= daysInMonth; day++) {
+                  const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const activeLeaves = (leaveRequests || []).filter(l => l.status === 'Approved' && dateStr >= l.from_date && dateStr <= l.to_date);
 
-                cells.push(
-                  <div key={`day-${day}`} className={`bg-white border border-outline-variant/20 p-2 min-h-[90px] flex flex-col gap-1 ${dateStr === today ? 'bg-primary/5 ring-1 ring-primary/30' : ''}`}>
-                    <div className="flex justify-between items-center">
-                      <span className={`text-xs font-bold ${dateStr === today ? 'text-primary bg-primary/10 w-5 h-5 rounded-full flex items-center justify-center' : 'text-on-surface-variant'}`}>{day}</span>
+                  cells.push(
+                    <div key={`day-${day}`} className={`bg-white border border-outline-variant/20 p-2 min-h-[90px] flex flex-col gap-1 ${dateStr === today ? 'bg-primary/5 ring-1 ring-primary/30' : ''}`}>
+                      <div className="flex justify-between items-center">
+                        <span className={`text-xs font-bold ${dateStr === today ? 'text-primary bg-primary/10 w-5 h-5 rounded-full flex items-center justify-center' : 'text-on-surface-variant'}`}>{day}</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 overflow-y-auto max-h-[70px] custom-scrollbar">
+                        {activeLeaves.map(l => {
+                          const prof = getProfile(l.user_id);
+                          const initials = prof ? prof.name.split(' ')[0] : 'Unknown';
+                          let badgeCls = 'bg-red-50 text-red-700 border-red-100';
+                          if (l.leave_type === 'Half Day AM') badgeCls = 'bg-blue-50 text-blue-700 border-blue-100';
+                          if (l.leave_type === 'Half Day PM') badgeCls = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+                          
+                          return (
+                            <div 
+                              key={l.id} 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSubTab('Approved Leaves');
+                                triggerPrint(l);
+                              }}
+                              className={`text-[9px] font-bold px-1 py-0.5 rounded border truncate cursor-pointer hover:opacity-85 active:scale-95 transition-all ${badgeCls}`} 
+                              title={`${prof?.name || 'Unknown'} (${l.leave_type})`}
+                            >
+                              {initials} ({l.leave_type === 'Full Day' ? 'FD' : l.leave_type === 'Half Day AM' ? 'AM' : 'PM'})
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-0.5 overflow-y-auto max-h-[70px] custom-scrollbar">
-                      {activeLeaves.map(l => {
-                        const prof = getProfile(l.user_id);
-                        const initials = prof ? prof.name.split(' ')[0] : 'Unknown';
-                        let badgeCls = 'bg-red-50 text-red-700 border-red-100';
-                        if (l.leave_type === 'Half Day AM') badgeCls = 'bg-blue-50 text-blue-700 border-blue-100';
-                        if (l.leave_type === 'Half Day PM') badgeCls = 'bg-indigo-50 text-indigo-700 border-indigo-100';
-                        
-                        return (
-                          <div 
-                            key={l.id} 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSubTab('Approved Leaves');
-                              triggerPrint(l);
-                            }}
-                            className={`text-[9px] font-bold px-1 py-0.5 rounded border truncate cursor-pointer hover:opacity-85 active:scale-95 transition-all ${badgeCls}`} 
-                            title={`${prof?.name || 'Unknown'} (${l.leave_type})`}
-                          >
-                            {initials} ({l.leave_type === 'Full Day' ? 'FD' : l.leave_type === 'Half Day AM' ? 'AM' : 'PM'})
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              }
-              return cells;
-            })()}
+                  );
+                }
+                return cells;
+              })()}
+            </div>
           </div>
           <div className="flex items-center gap-4 text-[10px] font-bold text-on-surface-variant justify-center border-t border-surface-container pt-3">
              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-red-100 border border-red-200 block"></span> Full Day</span>

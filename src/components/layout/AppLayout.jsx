@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import { supabase } from '../../lib/supabaseClient';
 import ProfileModal from '../common/ProfileModal';
@@ -10,7 +10,9 @@ export default function AppLayout({ userRole, currentUser }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { getActiveAnnouncements, leaveRequests } = useDataContext();
   const pendingLeavesCount = userRole === 'Admin'
     ? (leaveRequests || []).filter(l => l.status === 'Pending').length
@@ -50,6 +52,10 @@ export default function AppLayout({ userRole, currentUser }) {
     : userRole === 'Manager' ? managerNav
     : assigneeNav;
 
+  const moreNavItems = navItems.filter(item =>
+    item.path !== '/' && item.path !== '/tasks' && item.path !== '/planning'
+  );
+
   const getAvatarInitials = (name) => {
     if (!name) return 'U';
     const split = name.split(' ');
@@ -57,7 +63,7 @@ export default function AppLayout({ userRole, currentUser }) {
   };
 
   return (
-    <div className="bg-background text-on-surface min-h-screen selection:bg-primary/10">
+    <div className="bg-background text-on-surface min-h-screen selection:bg-primary/10 w-full max-w-full overflow-x-hidden">
       <NotificationManager />
       {/* Top Header — padding-top accounts for PWA/standalone status bar safe area */}
       <header
@@ -179,7 +185,7 @@ export default function AppLayout({ userRole, currentUser }) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 md:ml-60 p-4 md:p-6 overflow-y-auto bg-surface architectural-grid" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+        <main className="flex-1 min-w-0 md:ml-60 p-4 md:p-6 overflow-y-auto bg-surface architectural-grid" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
           <Outlet />
         </main>
       </div>
@@ -188,45 +194,103 @@ export default function AppLayout({ userRole, currentUser }) {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-outline-variant/40 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-center py-1 px-1">
           <div className="flex flex-1 justify-around">
-            {navItems.slice(0, Math.floor(navItems.length / 2)).map((item) => (
-              <NavLink key={item.path} to={item.path}
-                className={({ isActive }) =>
-                  `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
-                    <span className="text-[8px] font-bold leading-none text-center">{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            ))}
+            <NavLink to="/"
+              className={({ isActive }) =>
+                `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>dashboard</span>
+                  <span className="text-[8px] font-bold leading-none text-center">Dashboard</span>
+                </>
+              )}
+            </NavLink>
+            <NavLink to="/tasks"
+              className={({ isActive }) =>
+                `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>assignment</span>
+                  <span className="text-[8px] font-bold leading-none text-center">Works</span>
+                </>
+              )}
+            </NavLink>
           </div>
+
           <button
             onClick={() => setIsCreateOpen(true)}
             className="w-12 h-12 -mt-5 mx-1 rounded-full bg-primary shadow-lg shadow-primary/40 flex items-center justify-center text-white active:scale-95 transition-all border-4 border-white flex-shrink-0"
           >
             <span className="material-symbols-outlined text-xl">add</span>
           </button>
+
           <div className="flex flex-1 justify-around">
-            {navItems.slice(Math.floor(navItems.length / 2)).map((item) => (
-              <NavLink key={item.path} to={item.path}
-                className={({ isActive }) =>
-                  `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
-                    <span className="text-[8px] font-bold leading-none text-center">{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            ))}
+            <NavLink to="/planning"
+              className={({ isActive }) =>
+                `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>account_tree</span>
+                  <span className="text-[8px] font-bold leading-none text-center">Planning</span>
+                </>
+              )}
+            </NavLink>
+            <button
+              onClick={() => setIsMoreOpen(true)}
+              className={`flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 transition-all ${
+                moreNavItems.some(item => location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path)))
+                  ? 'text-primary font-bold'
+                  : 'text-on-surface-variant'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: moreNavItems.some(item => location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))) ? "'FILL' 1" : "'FILL' 0" }}>more_horiz</span>
+              <span className="text-[8px] font-bold leading-none text-center">More</span>
+            </button>
           </div>
         </div>
       </nav>
+
+      {/* Mobile More Menu Sheet */}
+      {isMoreOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setIsMoreOpen(false)}>
+          <div className="bg-white rounded-t-3xl p-5 flex flex-col gap-4 shadow-2xl border-t border-outline-variant/30 max-h-[80vh] overflow-y-auto animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-surface-container pb-3">
+              <span className="text-xs font-black uppercase tracking-widest text-on-surface-variant flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[18px]">widgets</span>
+                More Menu
+              </span>
+              <button onClick={() => setIsMoreOpen(false)} className="w-8 h-8 rounded-full hover:bg-surface-container text-on-surface-variant flex items-center justify-center">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-3 py-2">
+              {moreNavItems.map(item => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setIsMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${
+                      isActive 
+                        ? 'bg-primary/10 border-primary text-primary font-bold shadow-sm'
+                        : 'bg-surface-container-lowest border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+                    }`
+                  }
+                >
+                  <span className="material-symbols-outlined text-[24px] mb-1.5">{item.icon}</span>
+                  <span className="text-[10px] font-bold text-center leading-tight truncate w-full">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {isProfileModalOpen && (
         <ProfileModal onClose={() => setIsProfileModalOpen(false)} currentUser={currentUser} />

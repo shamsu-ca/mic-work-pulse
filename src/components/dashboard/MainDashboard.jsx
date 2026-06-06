@@ -898,7 +898,7 @@ export default function MainDashboard() {
       )}
 
       {/* Alerts columns */}
-      <div className="grid grid-cols-2 gap-3 md:gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-5">
         
         {/* Overdue Alert */}
         <ExpandableUrgentCard

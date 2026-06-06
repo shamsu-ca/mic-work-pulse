@@ -461,7 +461,77 @@ function WorkTable({ items, profiles, containers, workItems, currentUser, startW
   return (
     <>
       <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile View: Cards List */}
+        <div className="block md:hidden divide-y divide-surface-container-low">
+          {items.length === 0 ? (
+            <div className="px-6 py-10 text-center text-on-surface-variant font-bold text-sm">
+              {emptyLabel ?? 'No items.'}
+            </div>
+          ) : (
+            items.map(item => {
+              const isExpanded = expandedId === item.id;
+              const ds = getDisplayStatus(item);
+              const container = item.container_id ? getContainer(item.container_id) : null;
+              const assigneeName = getAssigneeName(item.assignee_id);
+              return (
+                <div key={item.id} className="flex flex-col">
+                  <div 
+                    onClick={() => setExpandedId(prev => prev === item.id ? null : item.id)}
+                    className={`p-4 flex flex-col gap-2 transition-colors cursor-pointer ${
+                      isExpanded           ? 'bg-surface-container-low/60' :
+                      ds === 'Overdue'     ? 'bg-red-50/60 hover:bg-red-50' :
+                      ds === 'Not Started' ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                      'hover:bg-surface-container-low/40'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-on-surface leading-tight break-words">{item.title}</span>
+                        {container && (
+                          <span className={`inline-block ml-2 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                            container.type === 'Project' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                          }`}>{container.title}</span>
+                        )}
+                      </div>
+                      <span className={`material-symbols-outlined text-[18px] text-on-surface-variant transition-transform duration-150 flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        {showAssignee && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-5 h-5 rounded-full bg-surface-dim border border-outline-variant/30 flex items-center justify-center text-[8px] font-bold text-on-surface flex-shrink-0">
+                              {getAvatarInitials(assigneeName)}
+                            </div>
+                            <span className="text-xs text-on-surface-variant truncate max-w-[80px]">{assigneeName.split(' ')[0]}</span>
+                          </div>
+                        )}
+                        <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${getStatusBadgeClass(ds)}`}>{ds}</span>
+                      </div>
+                      <span className="text-xs text-on-surface-variant font-medium">
+                        Due: {item.expected_date ? fmtDate(item.expected_date) : '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t border-surface-container-high bg-surface-container-low/25">
+                      <ExpandedContent
+                        item={item} profiles={safeProfiles} containers={safeContainers} workItems={safeWorkItems}
+                        currentUser={currentUser} onEdit={() => setEditingItem(item)}
+                        onStart={startWorkItem} onComplete={completeWorkItem} onDelete={deleteWorkItem}
+                        onFollowUp={onFollowUp} onViewDetail={onViewDetail}
+                        showActions />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
               <tr>
@@ -545,7 +615,63 @@ function ActiveGroupTable({ roots, profiles, containers, workItems, currentUser,
   return (
     <>
       <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile View: Cards List */}
+        <div className="block md:hidden divide-y divide-surface-container-low">
+          {roots.length === 0 ? (
+            <div className="px-6 py-10 text-center text-on-surface-variant font-bold text-sm">
+              No items.
+            </div>
+          ) : (
+            roots.map(item => {
+              const isExpanded = expandedId === item.id;
+              const ds = getDisplayStatus(item);
+              const assigneeName = (profiles || []).find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
+              return (
+                <div key={item.id} className="flex flex-col">
+                  <div 
+                    onClick={() => setExpandedId(prev => prev === item.id ? null : item.id)}
+                    className={`p-4 flex flex-col gap-2 transition-colors cursor-pointer ${
+                      isExpanded ? 'bg-surface-container-low/60' : 'hover:bg-surface-container-low/40'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="text-sm font-semibold text-on-surface leading-tight break-words flex-1 min-w-0">{item.title}</span>
+                      <span className={`material-symbols-outlined text-[18px] text-on-surface-variant transition-transform duration-150 flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                      {showAssignee && (
+                        <div className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full bg-surface-dim border border-outline-variant/30 flex items-center justify-center text-[8px] font-bold text-on-surface flex-shrink-0">
+                            {getAvatarInitials(assigneeName)}
+                          </div>
+                          <span className="text-xs text-on-surface-variant truncate max-w-[80px]">{assigneeName.split(' ')[0]}</span>
+                        </div>
+                      )}
+                      <span className="text-xs text-on-surface-variant font-medium">
+                        Due: {item.expected_date ? fmtDate(item.expected_date) : '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t border-surface-container-high bg-surface-container-low/25">
+                      <ExpandedContent
+                        item={item} profiles={profiles || []} containers={containers || []} workItems={workItems || []}
+                        currentUser={currentUser} onEdit={() => setEditingItem(item)}
+                        onStart={startWorkItem} onComplete={completeWorkItem} onDelete={deleteWorkItem}
+                        onFollowUp={onFollowUp} onViewDetail={onViewDetail}
+                        showActions />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
               <tr>
@@ -655,7 +781,60 @@ function HistoryTable({ items, profiles, containers, workItems, currentUser, exp
   return (
     <>
       <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile View: Cards List */}
+        <div className="block md:hidden divide-y divide-surface-container-low">
+          {items.length === 0 ? (
+            <div className="px-6 py-10 text-center text-on-surface-variant font-bold text-sm">
+              No completed items yet.
+            </div>
+          ) : (
+            items.map(item => {
+              const isExpanded = expandedId === item.id;
+              const assigneeName = (profiles || []).find(p => p.id === item.assignee_id)?.name ?? 'Unassigned';
+              const resolution = getResolutionStatus(item);
+              return (
+                <div key={item.id} className="flex flex-col">
+                  <div 
+                    onClick={() => setExpandedId(prev => prev === item.id ? null : item.id)}
+                    className={`p-4 flex flex-col gap-2 transition-colors cursor-pointer ${
+                      isExpanded ? 'bg-surface-container-low/60' : 'hover:bg-surface-container-low/40'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="text-sm font-semibold text-on-surface leading-tight break-words flex-1 min-w-0">{item.title}</span>
+                      <span className={`material-symbols-outlined text-[18px] text-on-surface-variant transition-transform duration-150 flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                      {showAssignee && (
+                        <div className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full bg-surface-dim border border-outline-variant/30 flex items-center justify-center text-[8px] font-bold text-on-surface flex-shrink-0">
+                            {getAvatarInitials(assigneeName)}
+                          </div>
+                          <span className="text-xs text-on-surface-variant truncate max-w-[80px]">{assigneeName.split(' ')[0]}</span>
+                        </div>
+                      )}
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${resolution.cls}`}>{resolution.label}</span>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t border-surface-container-high bg-surface-container-low/25">
+                      <ExpandedContent
+                        item={item} profiles={profiles || []} containers={containers || []} workItems={workItems || []}
+                        currentUser={currentUser} onEdit={() => {}} onStart={() => {}} onComplete={() => {}} onDelete={() => {}}
+                        onFollowUp={onFollowUp} onViewDetail={onViewDetail}
+                        showActions={false} />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
               <tr>
