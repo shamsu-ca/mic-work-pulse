@@ -263,7 +263,7 @@ function ExpandedContent({ item, profiles, containers, workItems, currentUser, o
 }
 
 function EditItemModal({ item, profiles, _workItems, onClose, onSave }) {
-  const { leaveRequests } = useDataContext();
+  const { leaveRequests, currentUser } = useDataContext();
   const [title, setTitle]           = useState(item.title || '');
   const [desc, setDesc]             = useState(item.description || '');
   const [assigneeId, setAssigneeId] = useState(item.assignee_id || '');
@@ -273,6 +273,17 @@ function EditItemModal({ item, profiles, _workItems, onClose, onSave }) {
   const [loading, setLoading]       = useState(false);
 
   const cls = "bg-slate-50 border border-outline-variant rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary w-full";
+
+  const safeProfiles = profiles || [];
+  const assignableProfiles = (() => {
+    if (currentUser?.role === 'Assignee') {
+      return safeProfiles.filter(p => p.id === currentUser.id);
+    }
+    if (currentUser?.role === 'Manager') {
+      return safeProfiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
+    }
+    return safeProfiles.filter(p => p.id === currentUser?.id || p.role !== 'Admin');
+  })();
 
   const handleSave = async (e) => {
     e?.preventDefault();
@@ -311,7 +322,7 @@ function EditItemModal({ item, profiles, _workItems, onClose, onSave }) {
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Assignee</label>
               <select className={cls} value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
                 <option value="">— Unassigned —</option>
-                {(profiles || []).filter(p => p.role !== 'Admin' || currentUser?.role === 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {assignableProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">

@@ -23,6 +23,15 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
 
   const [loading, setLoading] = useState(false);
   const safeProfiles = profiles || [];
+  const assigneeList = (() => {
+    if (currentUser?.role === 'Assignee') {
+      return safeProfiles.filter(p => p.id === currentUser.id);
+    }
+    if (currentUser?.role === 'Manager') {
+      return safeProfiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
+    }
+    return safeProfiles.filter(p => p.id === currentUser?.id || p.role !== 'Admin');
+  })();
   const safeContainers = containers || [];
 
   if (!isOpen) return null;
@@ -123,7 +132,7 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
                   <label className="label-sm text-muted">Assignee</label>
                   <select className="input-base" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
                     <option value="">Unassigned</option>
-                    {safeProfiles.map(p => (
+                    {assigneeList.map(p => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>

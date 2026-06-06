@@ -292,13 +292,83 @@ export function SupabaseDataProvider({ children, session }) {
   // ── Saved tasks (recurring templates + items inside saved containers) ──────
 
   const addSavedTask = async (taskData) => {
-    const today = new Date().toISOString().split('T')[0];
     const payload = { ...taskData };
-    if (payload.is_recurring && !payload.last_generated_at) {
-      payload.last_generated_at = today;
+    if (payload.is_recurring) {
+      payload.last_generated_at = null; // Do not block generation today
     }
     const { data, error } = await supabase.from('saved_tasks').insert([payload]).select();
-    if (error) console.error('Error adding saved task:', error);
+    if (error) {
+      console.error('Error adding saved task:', error);
+      return { data, error };
+    }
+
+    const newTpl = data?.[0];
+    if (newTpl && newTpl.is_recurring && newTpl.is_active && newTpl.type !== 'Group') {
+      const todayStr = getISTDateString();
+      const rule = newTpl.recurrence_rule;
+      let shouldGenerate = false;
+
+      if (rule) {
+        const checkDateObj = new Date(todayStr + 'T00:00:00');
+        const day = checkDateObj.getDay();
+        const date = checkDateObj.getDate();
+
+        if (rule.type === 'daily') {
+          shouldGenerate = true;
+        } else if (rule.type === 'every_x_days') {
+          shouldGenerate = true;
+        } else if (rule.type === 'weekly') {
+          if (Array.isArray(rule.weekly_days)) {
+            if (rule.weekly_days.includes(day)) shouldGenerate = true;
+          } else {
+            const ruleDay = rule.day !== undefined ? rule.day : 1;
+            if (day === ruleDay) shouldGenerate = true;
+          }
+        } else if (rule.type === 'monthly') {
+          const scheduledDate = rule.monthly_day || rule.date || 1;
+          if (date === scheduledDate) shouldGenerate = true;
+        } else if (rule.type === 'x_monthly' || rule.type === 'every_x_months') {
+          const monthlyDay = rule.monthly_day || rule.date || 1;
+          if (date === monthlyDay) shouldGenerate = true;
+        }
+      }
+
+      if (shouldGenerate) {
+        const hasFullDayLeave = (leaveRequests || []).some(l => 
+          l.user_id === newTpl.assignee_id &&
+          l.status === 'Approved' &&
+          l.leave_type === 'Full Day' &&
+          todayStr >= l.from_date && todayStr <= l.to_date
+        );
+
+        if (hasFullDayLeave) {
+          // Skip creation but mark processed for today
+          await supabase.from('saved_tasks').update({ last_generated_at: todayStr }).eq('id', newTpl.id);
+        } else {
+          // Generate the work item
+          const { error: itemErr } = await supabase.from('work_items').insert([{
+            title: newTpl.title,
+            description: newTpl.description,
+            type: 'Task',
+            assignee_id: newTpl.assignee_id || null,
+            container_id: null,
+            estimated_hours: newTpl.estimated_hours || null,
+            priority: newTpl.priority,
+            status: 'Assigned',
+            expected_date: todayStr,
+            is_recurring: false,
+            parent_id: null,
+            source_template_item_id: newTpl.id
+          }]);
+
+          if (!itemErr) {
+            // Update last_generated_at
+            await supabase.from('saved_tasks').update({ last_generated_at: todayStr }).eq('id', newTpl.id);
+          }
+        }
+      }
+    }
+
     return { data, error };
   };
 

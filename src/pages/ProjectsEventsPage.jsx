@@ -254,6 +254,18 @@ function EditItemModal({ item, profiles, currentUser, onClose, onSave }) {
   const [date, setDate] = useState(item.expected_date || '');
   const [saving, setSaving] = useState(false);
   const cls = "border border-outline-variant/50 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary w-full";
+
+  const safeProfiles = profiles || [];
+  const assignableProfiles = (() => {
+    if (currentUser?.role === 'Assignee') {
+      return safeProfiles.filter(p => p.id === currentUser.id);
+    }
+    if (currentUser?.role === 'Manager') {
+      return safeProfiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
+    }
+    return safeProfiles.filter(p => p.id === currentUser?.id || p.role !== 'Admin');
+  })();
+
   const save = async () => {
     setSaving(true);
     await onSave(item.id, { title: title.trim() || item.title, assignee_id: assigneeId || null, expected_date: date || null });
@@ -267,7 +279,7 @@ function EditItemModal({ item, profiles, currentUser, onClose, onSave }) {
         <input className={cls} value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" />
         <select className={cls} value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
           <option value="">— Unassigned —</option>
-          {(profiles || []).filter(p => p.role !== 'Admin' || currentUser?.role === 'Admin').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          {assignableProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <input type="date" className={cls} value={date} onChange={e => setDate(e.target.value)} />
         <div className="flex gap-2 justify-end">
@@ -569,9 +581,20 @@ export default function ProjectsEventsPage() {
   const filteredProfiles = safeProfiles.filter(p =>
     (p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup) || p.role === 'Admin'
   );
-  const milestoneAssigneeOptions = isAdmin
-    ? filteredProfiles
-    : safeProfiles.filter(p => p.id === currentUser?.id || p.manager === currentUser?.name);
+
+  const assignableProfiles = (() => {
+    if (currentUser?.role === 'Assignee') {
+      return safeProfiles.filter(p => p.id === currentUser.id);
+    }
+    if (currentUser?.role === 'Manager') {
+      return safeProfiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
+    }
+    return safeProfiles.filter(p => p.id === currentUser?.id || p.role !== 'Admin');
+  })();
+
+  const milestoneAssigneeOptions = assignableProfiles.filter(p =>
+    p.role === 'Admin' || (p.category || 'Office Staff') === staffGroup
+  );
 
   const getProfile    = (id) => safeProfiles.find(p => p.id === id);
   const containerType = typeTab === 'Projects' ? 'Project' : typeTab === 'Events' ? 'Event' : null;
@@ -2211,7 +2234,7 @@ export default function ProjectsEventsPage() {
             <input autoFocus className={inputCls} placeholder="Item title…" value={checklistForm.title} onChange={e => setChecklistForm(f => ({ ...f, title: e.target.value }))} />
             <select className={inputCls} value={checklistForm.assignee_id} onChange={e => setChecklistForm(f => ({ ...f, assignee_id: e.target.value }))}>
               <option value="">— Unassigned —</option>
-              {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {milestoneAssigneeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             <button onClick={submitChecklist} disabled={submitting || !checklistForm.title.trim()} className={btnPrimary}>{submitting ? 'Adding…' : 'Add Item'}</button>
           </div>
