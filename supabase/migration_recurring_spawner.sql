@@ -177,3 +177,75 @@ SELECT cron.schedule(
   '31 18 * * *',
   $$ SELECT public.spawn_recurring_tasks_ist(); $$
 );
+
+-- 4. Trigger to auto-spawn task immediately on template creation if today matches rule
+CREATE OR REPLACE FUNCTION public.on_saved_task_created_spawn()
+RETURNS TRIGGER AS $$
+DECLARE
+  today_ist DATE := (timezone('Asia/Kolkata', now()))::DATE;
+  is_full_day_leave BOOLEAN;
+  valid_user BOOLEAN;
+  has_work_item BOOLEAN;
+BEGIN
+  IF NEW.is_recurring = TRUE AND NEW.is_active = TRUE AND NEW.type IS DISTINCT FROM 'Group' THEN
+    IF NEW.assignee_id IS NOT NULL THEN
+      SELECT EXISTS(SELECT 1 FROM public.users WHERE id = NEW.assignee_id AND is_active = TRUE) INTO valid_user;
+      IF NOT valid_user THEN
+        RETURN NEW;
+      END IF;
+    END IF;
+
+    IF public.is_scheduled_day(today_ist, NEW.recurrence_rule, NULL, NEW.created_at) THEN
+      SELECT EXISTS(
+        SELECT 1 FROM public.work_items 
+        WHERE source_template_item_id = NEW.id AND expected_date = today_ist
+      ) INTO has_work_item;
+      
+      IF NOT has_work_item THEN
+        is_full_day_leave := FALSE;
+        IF NEW.assignee_id IS NOT NULL THEN
+          SELECT EXISTS (
+            SELECT 1 FROM public.leave_requests
+            WHERE user_id = NEW.assignee_id
+              AND status = 'Approved'
+              AND leave_type = 'Full Day'
+              AND today_ist >= from_date 
+              AND today_ist <= to_date
+          ) INTO is_full_day_leave;
+        END IF;
+
+        IF is_full_day_leave THEN
+          IF NEW.last_generated_at IS DISTINCT FROM today_ist THEN
+            UPDATE public.saved_tasks
+            SET last_generated_at = today_ist
+            WHERE id = NEW.id;
+          END IF;
+        ELSE
+          INSERT INTO public.work_items (
+            title, description, type, assignee_id, container_id,
+            estimated_hours, priority, status, expected_date, is_recurring,
+            parent_id, source_template_item_id
+          ) VALUES (
+            NEW.title, NEW.description, 'Task', NEW.assignee_id, NULL,
+            NEW.estimated_hours, NEW.priority, 'Assigned', today_ist, FALSE,
+            NULL, NEW.id
+          );
+          
+          IF NEW.last_generated_at IS DISTINCT FROM today_ist THEN
+            UPDATE public.saved_tasks
+            SET last_generated_at = today_ist
+            WHERE id = NEW.id;
+          END IF;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_saved_task_created ON public.saved_tasks;
+CREATE TRIGGER trigger_saved_task_created
+  AFTER INSERT ON public.saved_tasks
+  FOR EACH ROW EXECUTE PROCEDURE public.on_saved_task_created_spawn();
+
