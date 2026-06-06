@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, getActionableUnits, calculateUserEfficiency } from '../lib/statusUtils';
-import { fmtDate } from '../lib/dateUtils';
+import { fmtDate, getISTDateString } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 
 function EditUserModal({ profile, profiles, onClose, onSave }) {
@@ -210,7 +210,7 @@ function LeaveManagementTab({ leaveRequests, profiles, updateLeaveRequest, delet
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getISTDateString();
 
   const pendingLeaves = leaveRequests.filter(l => l.status === 'Pending');
   const approvedToday = leaveRequests.filter(l => l.status === 'Approved' && today >= l.from_date && today <= l.to_date);
@@ -599,8 +599,8 @@ function LeaveManagementTab({ leaveRequests, profiles, updateLeaveRequest, delet
 
 function LeaveRequestModal({ profile, onClose, onSave }) {
   const [leaveType, setLeaveType] = useState('Full Day');
-  const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [fromDate, setFromDate] = useState(getISTDateString());
+  const [toDate, setToDate] = useState(getISTDateString());
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -949,14 +949,14 @@ export default function StaffOverviewPage() {
             const assignedTasks = activeTasks.filter(t => getDisplayStatus(t) === 'Assigned');
 
             const completedTasks = m.tasks.filter(t => t.status === 'Completed');
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getISTDateString();
             const yesterdayObj = new Date();
             yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-            const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+            const yesterdayStr = getISTDateString(yesterdayObj);
 
-            const todayCompleted = completedTasks.filter(t => t.completed_at && t.completed_at.split('T')[0] === todayStr);
-            const yesterdayCompleted = completedTasks.filter(t => t.completed_at && t.completed_at.split('T')[0] === yesterdayStr);
-            const oldCompleted = completedTasks.filter(t => !t.completed_at || (t.completed_at.split('T')[0] !== todayStr && t.completed_at.split('T')[0] !== yesterdayStr));
+            const todayCompleted = completedTasks.filter(t => t.completed_at && getISTDateString(t.completed_at) === todayStr);
+            const yesterdayCompleted = completedTasks.filter(t => t.completed_at && getISTDateString(t.completed_at) === yesterdayStr);
+            const oldCompleted = completedTasks.filter(t => !t.completed_at || (getISTDateString(t.completed_at) !== todayStr && getISTDateString(t.completed_at) !== yesterdayStr));
 
             // Recent activity: last 3 completed/started tasks
             const recentAct = [...m.tasks]

@@ -3,12 +3,19 @@ import { supabase } from '../lib/supabaseClient';
 
 const DataContext = createContext();
 
-const getNextWorkingDay = (dateStr) => {
-  let date = new Date(dateStr + 'T00:00:00');
-  do {
-    date.setDate(date.getDate() + 1);
-  } while (date.getDay() === 0); // Skip Sunday only
-  return date.toISOString().split('T')[0];
+import { getISTDateString, getNextDayString } from '../lib/dateUtils';
+
+const getNextWorkingDay = (dateStr) => getNextDayString(dateStr);
+
+const getEffectiveUser = (user, allProfiles) => {
+  if (!user) return null;
+  if (user.role === 'Assignee') {
+    const hasReports = allProfiles.some(p => p.manager && p.manager === user.name);
+    if (hasReports) {
+      return { ...user, role: 'Manager' };
+    }
+  }
+  return user;
 };
 
 export function SupabaseDataProvider({ children, session }) {
@@ -38,6 +45,10 @@ export function SupabaseDataProvider({ children, session }) {
       setLoadingInitial(true);
 
       try {
+        // 2. Fetch all profiles
+        const { data: allProfiles } = await supabase.from('users').select('*');
+        if (allProfiles) setProfiles(allProfiles);
+
         // 1. Fetch current user profile
         const { data: profileData } = await supabase
           .from('users')
@@ -54,7 +65,8 @@ export function SupabaseDataProvider({ children, session }) {
             setLoadingInitial(false);
             return;
           }
-          setCurrentUser(userObj);
+          const effectiveUser = getEffectiveUser(userObj, allProfiles || []);
+          setCurrentUser(effectiveUser);
         } else {
           // If the profile no longer exists in the DB, log out
           localStorage.removeItem('workpulse_session');
@@ -63,10 +75,6 @@ export function SupabaseDataProvider({ children, session }) {
           setLoadingInitial(false);
           return;
         }
-
-        // 2. Fetch all profiles
-        const { data: allProfiles } = await supabase.from('users').select('*');
-        if (allProfiles) setProfiles(allProfiles);
 
         // 3. Fetch all containers (active only — no templates)
         const { data: allContainers } = await supabase.from('containers').select('*');
@@ -88,14 +96,9 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: allLeaves } = await supabase.from('leave_requests').select('*');
         if (allLeaves) setLeaveRequests(allLeaves);
 
-        // 6. Fetch work items, then spawn any due recurring tasks
-        let { data: allWorkItems } = await supabase.from('work_items').select('*');
+        // 6. Fetch work items directly (recurring tasks are spawned server-side)
+        const { data: allWorkItems } = await supabase.from('work_items').select('*');
         if (allWorkItems) {
-          const newItems = await checkAndSpawnRecurringTasks(allSavedTasks ?? [], allLeaves ?? []);
-          if (newItems && newItems.length > 0) {
-            const { data: latestWorkItems } = await supabase.from('work_items').select('*');
-            if (latestWorkItems) allWorkItems = latestWorkItems;
-          }
           setWorkItems(allWorkItems);
         }
 
@@ -127,7 +130,19 @@ export function SupabaseDataProvider({ children, session }) {
     // Realtime subscriptions
     const profilesSub = supabase.channel('public:users')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
-        supabase.from('users').select('*').then(({ data }) => { if (data) setProfiles(data); });
+        supabase.from('users').select('*').then(({ data }) => {
+          if (data) {
+            setProfiles(data);
+            setCurrentUser(prev => {
+              if (!prev) return null;
+              const currentProfile = data.find(p => p.id === prev.id);
+              if (currentProfile) {
+                return getEffectiveUser(currentProfile, data);
+              }
+              return prev;
+            });
+          }
+        });
       }).subscribe();
 
     const containersSub = supabase.channel('public:containers')
@@ -189,156 +204,7 @@ export function SupabaseDataProvider({ children, session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id]);
 
-  // Reads from saved_tasks, spawns actual task entries into work_items
-  const checkAndSpawnRecurringTasks = async (savedTasksList, currentLeaves = []) => {
-    const today = new Date().toISOString().split('T')[0];
 
-    const getLeaveOnDate = (userId, dateStr) => {
-      if (!userId || !currentLeaves.length) return null;
-      return currentLeaves.find(l => 
-        l.user_id === userId && 
-        l.status === 'Approved' && 
-        dateStr >= l.from_date && dateStr <= l.to_date
-      ) || null;
-    };
-
-
-
-    const isScheduledDay = (dateObj, rule, template = {}) => {
-      const day = dateObj.getDay();
-      const date = dateObj.getDate();
-
-      if (rule.type === 'daily') return true;
-      if (rule.type === 'every_x_days' && rule.interval) {
-        const lastDate = template.last_generated_at ? new Date(template.last_generated_at + 'T00:00:00') : new Date(template.created_at);
-        const diffDays = Math.ceil(Math.abs(dateObj - lastDate) / (1000 * 60 * 60 * 24));
-        return diffDays >= rule.interval;
-      }
-      if (rule.type === 'weekly') {
-        if (Array.isArray(rule.weekly_days)) return rule.weekly_days.includes(day);
-        return day === (rule.day !== undefined ? rule.day : 1);
-      }
-      if (rule.type === 'monthly') {
-        const scheduledDate = rule.monthly_day || rule.date || 1;
-        return date === scheduledDate;
-      }
-      if (rule.type === 'x_monthly' && rule.x_month_interval && rule.monthly_day) {
-        const lastDate = template.last_generated_at ? new Date(template.last_generated_at + 'T00:00:00') : new Date(template.created_at);
-        const monthDiff = (dateObj.getFullYear() - lastDate.getFullYear()) * 12 + (dateObj.getMonth() - lastDate.getMonth());
-        return date === rule.monthly_day && monthDiff >= rule.x_month_interval;
-      }
-      if (rule.type === 'every_x_months' && rule.interval) {
-        const lastDate = template.last_generated_at ? new Date(template.last_generated_at + 'T00:00:00') : new Date(template.created_at);
-        const monthDiff = (dateObj.getFullYear() - lastDate.getFullYear()) * 12 + (dateObj.getMonth() - lastDate.getMonth());
-        const scheduledDate = rule.date || 1;
-        return date === scheduledDate && monthDiff >= rule.interval;
-      }
-      return false;
-    };
-
-    let spawnedParents = [];
-    const validUserIds = new Set((profiles || []).map(p => p.id));
-    
-    // Only process active templates
-    const templates = savedTasksList.filter(w => {
-      if (!w.is_recurring || !w.is_active || w.type === 'Group') return false;
-      if (w.assignee_id && !validUserIds.has(w.assignee_id)) return false;
-      return true;
-    });
-
-    for (const template of templates) {
-      if (!template.recurrence_rule) continue;
-      const rule = template.recurrence_rule;
-      
-      let startDateStr = template.last_generated_at;
-      if (!startDateStr) {
-        // For daily recurring: initialize last_generated_at to today so it spawns tomorrow
-        if (rule.type === 'daily') {
-          await supabase.from('saved_tasks').update({ last_generated_at: today }).eq('id', template.id);
-          continue;
-        }
-        // For weekly/monthly: check starting from template creation date
-        startDateStr = template.created_at.split('T')[0];
-      } else {
-        // Increment by 1 day
-        const startDateObj = new Date(startDateStr + 'T00:00:00');
-        startDateObj.setDate(startDateObj.getDate() + 1);
-        startDateStr = startDateObj.toISOString().split('T')[0];
-      }
-
-      let checkDateObj = new Date(startDateStr + 'T00:00:00');
-      const todayObj = new Date(today + 'T00:00:00');
-
-      while (checkDateObj <= todayObj) {
-        const checkDateStr = checkDateObj.toISOString().split('T')[0];
-        
-        if (isScheduledDay(checkDateObj, rule, template)) {
-          const leave = getLeaveOnDate(template.assignee_id, checkDateStr);
-          
-          if (leave && leave.leave_type === 'Full Day') {
-            // Full Day Leave:
-            if (rule.type === 'daily') {
-              // Daily recurring: skip entirely (do not generate).
-              await supabase.from('saved_tasks').update({ last_generated_at: checkDateStr }).eq('id', template.id);
-            } else {
-              // Weekly/Monthly recurring: generate on the first active day after leave.
-              const firstActiveDay = getNextWorkingDay(leave.to_date);
-              
-              if (today >= firstActiveDay) {
-                // Generate the task today (or it was generated when firstActiveDay arrived)
-                // We set expected_date = firstActiveDay
-                const toInsert = {
-                  title: template.title,
-                  description: template.description,
-                  type: 'Task',
-                  assignee_id: template.assignee_id,
-                  container_id: null,
-                  estimated_hours: template.estimated_hours,
-                  priority: template.priority,
-                  status: 'Assigned',
-                  expected_date: firstActiveDay,
-                  is_recurring: false,
-                  parent_id: null,
-                  source_template_item_id: template.id
-                };
-                
-                const { data: newWI } = await supabase.from('work_items').insert([toInsert]).select();
-                if (newWI?.length) spawnedParents.push(newWI[0]);
-                await supabase.from('saved_tasks').update({ last_generated_at: checkDateStr }).eq('id', template.id);
-              } else {
-                // If today is before firstActiveDay, we do NOT generate yet and stop checking further dates.
-                break;
-              }
-            }
-          } else {
-            // No leave or Half-Day leave: generate normally on the scheduled date.
-            const toInsert = {
-              title: template.title,
-              description: template.description,
-              type: 'Task',
-              assignee_id: template.assignee_id,
-              container_id: null,
-              estimated_hours: template.estimated_hours,
-              priority: template.priority,
-              status: 'Assigned',
-              expected_date: checkDateStr,
-              is_recurring: false,
-              parent_id: null,
-              source_template_item_id: template.id
-            };
-            
-            const { data: newWI } = await supabase.from('work_items').insert([toInsert]).select();
-            if (newWI?.length) spawnedParents.push(newWI[0]);
-            await supabase.from('saved_tasks').update({ last_generated_at: checkDateStr }).eq('id', template.id);
-          }
-        }
-        
-        checkDateObj.setDate(checkDateObj.getDate() + 1);
-      }
-    }
-    
-    return spawnedParents;
-  };
 
   const startWorkItem = async (itemId) => {
     setWorkItems(prev => prev.map(w => w.id === itemId ? { ...w, status: 'Ongoing', updated_at: new Date().toISOString() } : w));
@@ -521,12 +387,14 @@ export function SupabaseDataProvider({ children, session }) {
       console.error('updateProfile error:', error);
       return { data, error };
     }
-    if (data && data.length > 0 && id === currentUser?.id) {
-      setCurrentUser(data[0]);
-      localStorage.setItem('workpulse_session', JSON.stringify(data[0]));
-    }
     const { data: allProfiles } = await supabase.from('users').select('*');
     if (allProfiles) setProfiles(allProfiles);
+
+    if (data && data.length > 0 && id === currentUser?.id) {
+      const effectiveUser = getEffectiveUser(data[0], allProfiles || []);
+      setCurrentUser(effectiveUser);
+      localStorage.setItem('workpulse_session', JSON.stringify(effectiveUser));
+    }
     return { data, error };
   };
 
@@ -548,8 +416,9 @@ export function SupabaseDataProvider({ children, session }) {
       if (allProfiles) setProfiles(allProfiles);
 
       if (targetUserId === currentUser?.id && data && data.length > 0) {
-        setCurrentUser(data[0]);
-        localStorage.setItem('workpulse_session', JSON.stringify(data[0]));
+        const effectiveUser = getEffectiveUser(data[0], allProfiles || []);
+        setCurrentUser(effectiveUser);
+        localStorage.setItem('workpulse_session', JSON.stringify(effectiveUser));
       }
     }
     return { data, error };
@@ -574,8 +443,9 @@ export function SupabaseDataProvider({ children, session }) {
       if (allProfiles) setProfiles(allProfiles);
 
       if (targetUserId === currentUser?.id && data && data.length > 0) {
-        setCurrentUser(data[0]);
-        localStorage.setItem('workpulse_session', JSON.stringify(data[0]));
+        const effectiveUser = getEffectiveUser(data[0], allProfiles || []);
+        setCurrentUser(effectiveUser);
+        localStorage.setItem('workpulse_session', JSON.stringify(effectiveUser));
       }
     }
     return { data, error };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits, calculateUserEfficiency, isLowestLevelActionableUnit } from '../lib/statusUtils';
-import { isItemInDateRange, fmtDate } from '../lib/dateUtils';
+import { isItemInDateRange, fmtDate, getISTDateString } from '../lib/dateUtils';
 import { supabase } from '../lib/supabaseClient';
 import FilterBar from '../components/common/FilterBar';
 import JSZip from 'jszip';
@@ -13,7 +13,7 @@ export default function ReportsPage() {
     containers, savedTasks,
   } = useDataContext();
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getISTDateString();
   const [activeTab, setActiveTab] = useState('Overview');
   const [showClosedProjects, setShowClosedProjects] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState(null);
@@ -68,12 +68,12 @@ export default function ReportsPage() {
     let startDateVal = '';
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const endDateVal = yesterday.toISOString().split('T')[0];
+    const endDateVal = getISTDateString(yesterday);
 
     if (archivesList && archivesList.length > 0) {
       const lastArchive = archivesList[0];
       if (lastArchive.archive_date) {
-        startDateVal = new Date(lastArchive.archive_date).toISOString().split('T')[0];
+        startDateVal = getISTDateString(lastArchive.archive_date);
       }
     }
 
@@ -90,7 +90,7 @@ export default function ReportsPage() {
       } else {
         const fallback = new Date();
         fallback.setDate(fallback.getDate() - 30);
-        startDateVal = fallback.toISOString().split('T')[0];
+        startDateVal = getISTDateString(fallback);
       }
     }
 
@@ -132,7 +132,7 @@ export default function ReportsPage() {
     t.expected_date && 
     t.expected_date >= startDate && 
     t.expected_date <= endDate && 
-    new Date(t.completed_at).toISOString().split('T')[0] <= t.expected_date
+    getISTDateString(t.completed_at) <= t.expected_date
   );
 
   // Completed Late: due in period, completed after due date (but completed on or before yesterday)
@@ -140,7 +140,7 @@ export default function ReportsPage() {
     t.expected_date && 
     t.expected_date >= startDate && 
     t.expected_date <= endDate && 
-    new Date(t.completed_at).toISOString().split('T')[0] > t.expected_date
+    getISTDateString(t.completed_at) > t.expected_date
   );
 
   // Overdue: due in period (on or before yesterday) and not completed as of yesterday
@@ -148,12 +148,12 @@ export default function ReportsPage() {
     w.expected_date && 
     w.expected_date >= startDate && 
     w.expected_date <= endDate && 
-    (w.status !== 'Completed' || (w.completed_at && new Date(w.completed_at).toISOString().split('T')[0] > endDate))
+    (w.status !== 'Completed' || (w.completed_at && getISTDateString(w.completed_at) > endDate))
   );
 
   // Active Work (Neutral load): future due works or no due date, not completed as of yesterday
   const activeWorkList = actionable.filter(w => 
-    (w.status !== 'Completed' || (w.completed_at && new Date(w.completed_at).toISOString().split('T')[0] > endDate)) && 
+    (w.status !== 'Completed' || (w.completed_at && getISTDateString(w.completed_at) > endDate)) && 
     (!w.expected_date || w.expected_date > endDate)
   );
 
@@ -169,7 +169,7 @@ export default function ReportsPage() {
 
   const earlyCount = completedOnTime.filter(t => 
     t.completed_at && t.expected_date && 
-    new Date(t.completed_at).toISOString().split('T')[0] < t.expected_date
+    getISTDateString(t.completed_at) < t.expected_date
   ).length;
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ export default function ReportsPage() {
       t.expected_date <= endDate && 
       t.status === 'Completed' && 
       t.completed_at && 
-      new Date(t.completed_at).toISOString().split('T')[0] <= t.expected_date
+      getISTDateString(t.completed_at) <= t.expected_date
     ).length;
 
     const staffLate = staffAllItems.filter(t => 
@@ -201,18 +201,18 @@ export default function ReportsPage() {
       t.expected_date <= endDate && 
       t.status === 'Completed' && 
       t.completed_at && 
-      new Date(t.completed_at).toISOString().split('T')[0] > t.expected_date
+      getISTDateString(t.completed_at) > t.expected_date
     ).length;
 
     const staffOverdue = staffAllItems.filter(w => 
       w.expected_date && 
       w.expected_date >= startDate && 
       w.expected_date <= endDate && 
-      (w.status !== 'Completed' || (w.completed_at && new Date(w.completed_at).toISOString().split('T')[0] > endDate))
+      (w.status !== 'Completed' || (w.completed_at && getISTDateString(w.completed_at) > endDate))
     ).length;
 
     const staffActive = staffAllItems.filter(w => 
-      (w.status !== 'Completed' || (w.completed_at && new Date(w.completed_at).toISOString().split('T')[0] > endDate)) && 
+      (w.status !== 'Completed' || (w.completed_at && getISTDateString(w.completed_at) > endDate)) && 
       (!w.expected_date || w.expected_date > endDate)
     ).length;
 
@@ -284,7 +284,7 @@ export default function ReportsPage() {
       ...projMilestones.map(m => m.completed_at),
       ...projMilestones.map(m => m.updated_at),
       ...projMilestones.map(m => m.created_at)
-    ].filter(Boolean).map(d => new Date(d)).filter(d => d.toISOString().split('T')[0] <= endDate);
+    ].filter(Boolean).map(d => new Date(d)).filter(d => getISTDateString(d) <= endDate);
     
     const latestActivity = dates.length > 0 ? new Date(Math.max(...dates)) : new Date(proj.created_at);
 
@@ -301,7 +301,7 @@ export default function ReportsPage() {
   });
 
   // Urgent milestones count: due today/tomorrow and not completed
-  const tomorrowStr = new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0];
+  const tomorrowStr = getISTDateString(new Date(Date.now() + 86400000));
   const urgentMilestonesCount = safeWorkItems.filter(w => 
     w.type === 'Milestone' && 
     w.status !== 'Completed' && 
@@ -1161,7 +1161,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
       t.expected_date && 
       t.expected_date >= startDate && 
       t.expected_date <= endDate && 
-      new Date(t.completed_at).toISOString().split('T')[0] <= t.expected_date
+      getISTDateString(t.completed_at) <= t.expected_date
     );
 
     // Completed Late: due in period, completed after due date (but completed on or before yesterday)
@@ -1169,7 +1169,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
       t.expected_date && 
       t.expected_date >= startDate && 
       t.expected_date <= endDate && 
-      new Date(t.completed_at).toISOString().split('T')[0] > t.expected_date
+      getISTDateString(t.completed_at) > t.expected_date
     );
 
     // Overdue: due in period and not completed as of yesterday
@@ -1177,12 +1177,12 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
       w.expected_date && 
       w.expected_date >= startDate && 
       w.expected_date <= endDate && 
-      (w.status !== 'Completed' || (w.completed_at && new Date(w.completed_at).toISOString().split('T')[0] > endDate))
+      (w.status !== 'Completed' || (w.completed_at && getISTDateString(w.completed_at) > endDate))
     );
 
     // Active (Neutral load): future due or no due date, not completed as of yesterday
     const active = myItems.filter(w => 
-      (w.status !== 'Completed' || (w.completed_at && new Date(w.completed_at).toISOString().split('T')[0] > endDate)) && 
+      (w.status !== 'Completed' || (w.completed_at && getISTDateString(w.completed_at) > endDate)) && 
       (!w.expected_date || w.expected_date > endDate)
     );
 
@@ -1233,7 +1233,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
         ...myMilestones.map(m => m.completed_at),
         ...myMilestones.map(m => m.updated_at),
         ...myMilestones.map(m => m.created_at)
-      ].filter(Boolean).map(d => new Date(d)).filter(d => d.toISOString().split('T')[0] <= endDate);
+      ].filter(Boolean).map(d => new Date(d)).filter(d => getISTDateString(d) <= endDate);
       
       const latestActivity = dates.length > 0 ? new Date(Math.max(...dates)) : new Date(proj.created_at);
 
@@ -1286,7 +1286,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
         t.expected_date <= endDate && 
         t.status === 'Completed' && 
         t.completed_at && 
-        new Date(t.completed_at).toISOString().split('T')[0] <= t.expected_date
+        getISTDateString(t.completed_at) <= t.expected_date
       ).length;
 
       const typeLate = typeItems.filter(t => 
@@ -1295,7 +1295,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
         t.expected_date <= endDate && 
         t.status === 'Completed' && 
         t.completed_at && 
-        new Date(t.completed_at).toISOString().split('T')[0] > t.expected_date
+        getISTDateString(t.completed_at) > t.expected_date
       ).length;
 
       return typeDue === 0 ? 100 : Math.round(
@@ -1789,7 +1789,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
                   </p>
                   <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
                     {completed.map(c => {
-                      const isLate = c.expected_date && new Date(c.completed_at).toISOString().split('T')[0] > c.expected_date;
+                      const isLate = c.expected_date && getISTDateString(c.completed_at) > c.expected_date;
                       return (
                         <div key={c.id} className={`p-2 border rounded-lg flex flex-col ${isLate ? 'bg-orange-50/40 border-orange-100' : 'bg-green-50/40 border-green-100'}`}>
                           <span className={`truncate font-bold ${isLate ? 'text-orange-900' : 'text-green-900'}`}>{c.title}</span>
@@ -2363,7 +2363,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
                                   <span className="material-symbols-outlined text-[14px]">warning</span> Overdue Items ({s.overdue})
                                 </p>
                                 <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
-                                  {actionable.filter(w => w.assignee_id === s.id && w.expected_date && w.expected_date >= startDate && w.expected_date <= endDate && (w.status !== 'Completed' || (w.completed_at && new Date(w.completed_at).toISOString().split('T')[0] > endDate))).map(o => (
+                                  {actionable.filter(w => w.assignee_id === s.id && w.expected_date && w.expected_date >= startDate && w.expected_date <= endDate && (w.status !== 'Completed' || (w.completed_at && getISTDateString(w.completed_at) > endDate))).map(o => (
                                     <div key={o.id} className="p-2 bg-red-50/50 border border-red-100 rounded-lg flex flex-col">
                                       <span className="truncate font-bold text-red-900">{o.title}</span>
                                       <span className="text-[9px] text-red-600 mt-0.5">Due: {o.expected_date}</span>
@@ -2379,7 +2379,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
                                   <span className="material-symbols-outlined text-[14px]">play_circle</span> Ongoing & Active ({s.active})
                                 </p>
                                 <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
-                                  {actionable.filter(w => w.assignee_id === s.id && (w.status !== 'Completed' || (w.completed_at && new Date(w.completed_at).toISOString().split('T')[0] > endDate)) && (!w.expected_date || w.expected_date > endDate)).map(a => (
+                                  {actionable.filter(w => w.assignee_id === s.id && (w.status !== 'Completed' || (w.completed_at && getISTDateString(w.completed_at) > endDate)) && (!w.expected_date || w.expected_date > endDate)).map(a => (
                                     <div key={a.id} className="p-2 bg-blue-50/50 border border-blue-100 rounded-lg flex flex-col">
                                       <span className="truncate font-bold text-blue-900">{a.title}</span>
                                       <span className="text-[9px] text-blue-600 mt-0.5">{a.status} {a.expected_date ? `| Due: ${a.expected_date}` : ''}</span>
@@ -2396,7 +2396,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
                                 </p>
                                 <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
                                   {completedItems.filter(w => w.assignee_id === s.id).map(c => {
-                                    const isLate = c.expected_date && new Date(c.completed_at).toISOString().split('T')[0] > c.expected_date;
+                                    const isLate = c.expected_date && getISTDateString(c.completed_at) > c.expected_date;
                                     return (
                                       <div key={c.id} className={`p-2 border rounded-lg flex flex-col ${isLate ? 'bg-orange-50/40 border-orange-100' : 'bg-green-50/40 border-green-100'}`}>
                                         <span className={`truncate font-bold ${isLate ? 'text-orange-900' : 'text-green-900'}`}>{c.title}</span>

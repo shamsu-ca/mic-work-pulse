@@ -23,7 +23,9 @@
  * - Template phases (no date) are never auto-activated
  */
 
-const todayDateStr = () => new Date().toISOString().split('T')[0];
+import { getISTDateString } from './dateUtils';
+
+const todayDateStr = () => getISTDateString();
 
 /** True if this phase item is currently active (date reached, not completed). */
 export function isPhaseActive(phase) {
@@ -61,7 +63,7 @@ export function isNotStarted(item, todayStr = todayDateStr()) {
     dayBefore.setDate(due.getDate() - 1);
     
     const dueStr = item.expected_date;
-    const dayBeforeStr = dayBefore.toISOString().split('T')[0];
+    const dayBeforeStr = getISTDateString(dayBefore);
 
     return todayStr === dueStr || todayStr === dayBeforeStr;
   } else if (type === 'checklist') {
@@ -175,7 +177,7 @@ export function calculateUserEfficiency(tasks, leaveRequests = [], todayStr = to
       totalDueWork++;
       if (t.expected_date && t.completed_at) {
         const expected = t.expected_date;
-        const completedDate = new Date(t.completed_at).toISOString().split('T')[0];
+        const completedDate = getISTDateString(t.completed_at);
         
         if (completedDate <= expected) {
           score += 1.0;

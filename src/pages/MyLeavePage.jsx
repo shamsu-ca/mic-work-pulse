@@ -2,59 +2,107 @@ import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 
 function LeaveRequestModal({ profiles, onClose, onSave }) {
-  const { checkTodayStartedOrCompletedRecurringTasks } = useDataContext();
+  const { checkTodayStartedOrCompletedRecurringTasks, currentUser } = useDataContext();
+  const [isBulk, setIsBulk] = useState(false);
   const [targetUserId, setTargetUserId] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [deptFilter, setDeptFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [leaveType, setLeaveType] = useState('Full Day');
   const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const departments = ['All', ...new Set((profiles || []).map(p => p.department).filter(Boolean))];
+
+  const displayedProfiles = (profiles || []).filter(p => {
+    const matchesDept = deptFilter === 'All' || p.department === deptFilter;
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesDept && matchesSearch;
+  });
+
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      const ids = displayedProfiles.map(p => p.id);
+      setSelectedUserIds(prev => [...new Set([...prev, ...ids])]);
+    } else {
+      const idsToRemove = new Set(displayedProfiles.map(p => p.id));
+      setSelectedUserIds(prev => prev.filter(id => !idsToRemove.has(id)));
+    }
+  };
+
+  const handleToggleUser = (userId) => {
+    setSelectedUserIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const allDisplayedSelected = displayedProfiles.length > 0 && displayedProfiles.every(p => selectedUserIds.includes(p.id));
+
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!targetUserId) {
-      alert("Please select a staff member.");
+    const targetIds = isBulk ? selectedUserIds : [targetUserId].filter(Boolean);
+    if (targetIds.length === 0) {
+      alert(isBulk ? "Please select at least one staff member." : "Please select a staff member.");
       return;
     }
 
-    if (leaveType === 'Full Day') {
-      const todayStr = new Date().toISOString().split('T')[0];
-      if (todayStr >= fromDate && todayStr <= toDate) {
-        setLoading(true);
-        try {
-          const activeTasks = await checkTodayStartedOrCompletedRecurringTasks(targetUserId);
-          if (activeTasks.length > 0) {
-            const titles = activeTasks.map(t => `• "${t.title}" (${t.status})`).join('\n');
-            const proceed = window.confirm(
-              `Warning: The following recurring tasks for this user have already been started or completed today:\n\n${titles}\n\nThese tasks will NOT be deleted. Do you want to proceed with adding this leave?`
-            );
-            if (!proceed) {
-              setLoading(false);
-              return;
+    setLoading(true);
+    let successCount = 0;
+    let errors = [];
+
+    for (const userId of targetIds) {
+      if (leaveType === 'Full Day') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (todayStr >= fromDate && todayStr <= toDate) {
+          try {
+            const activeTasks = await checkTodayStartedOrCompletedRecurringTasks(userId);
+            if (activeTasks.length > 0) {
+              const uName = (profiles || []).find(p => p.id === userId)?.name || 'User';
+              const titles = activeTasks.map(t => `• "${t.title}" (${t.status})`).join('\n');
+              const proceed = window.confirm(
+                `Warning: The following recurring tasks for "${uName}" have already been started or completed today:\n\n${titles}\n\nThese tasks will NOT be deleted. Do you want to proceed with adding this leave?`
+              );
+              if (!proceed) {
+                continue;
+              }
             }
+          } catch (err) {
+            console.error("Error checking tasks:", err);
           }
-        } catch (err) {
-          console.error("Error checking tasks:", err);
         }
-        setLoading(false);
+      }
+
+      const { error } = await onSave({ 
+        user_id: userId, 
+        leave_type: leaveType, 
+        from_date: fromDate, 
+        to_date: toDate, 
+        reason, 
+        status: 'Approved' 
+      });
+      if (error) {
+        errors.push(error.message || error.details || JSON.stringify(error));
+      } else {
+        successCount++;
       }
     }
 
-    setLoading(true);
-    const { error } = await onSave({ user_id: targetUserId, leave_type: leaveType, from_date: fromDate, to_date: toDate, reason, status: 'Approved' });
     setLoading(false);
-    if (error) {
-      alert("Failed to add leave: " + (error.message || error.details || JSON.stringify(error)));
-    } else {
+    if (errors.length > 0) {
+      alert(`Leave addition finished with warnings. Successfully added: ${successCount}. Failed: ${errors.length}. Errors:\n` + errors.join('\n'));
+    }
+    if (successCount > 0) {
       onClose();
     }
   };
 
-  const cls = "bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary w-full";
+  const cls = "bg-slate-50 border border-outline-variant rounded-xl px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary w-full";
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-container">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-amber-500">event_busy</span>
@@ -62,16 +110,89 @@ function LeaveRequestModal({ profiles, onClose, onSave }) {
           </div>
           <button onClick={onClose}><span className="material-symbols-outlined text-on-surface-variant">close</span></button>
         </div>
-        <form onSubmit={handleSave} className="p-6 flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Select Staff member *</label>
-            <select required className={cls} value={targetUserId} onChange={e => setTargetUserId(e.target.value)}>
-              <option value="">— Select Employee —</option>
-              {(profiles || []).map(p => (
-                <option key={p.id} value={p.id}>{p.name} {p.role === 'Admin' ? '(Admin)' : ''}</option>
-              ))}
-            </select>
+        <form onSubmit={handleSave} className="p-6 flex flex-col gap-4 overflow-y-auto">
+          {/* Single vs Bulk Toggle */}
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            <button
+              type="button"
+              onClick={() => setIsBulk(false)}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${!isBulk ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant'}`}
+            >
+              Single Staff
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsBulk(true)}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${isBulk ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant'}`}
+            >
+              Bulk Staff
+            </button>
           </div>
+
+          {!isBulk ? (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Select Staff member *</label>
+              <select required className={cls} value={targetUserId} onChange={e => setTargetUserId(e.target.value)}>
+                <option value="">— Select Employee —</option>
+                {(profiles || []).map(p => (
+                  <option key={p.id} value={p.id}>{p.name} {p.role === 'Admin' ? '(Admin)' : ''}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="Search staff..."
+                  className="bg-slate-50 border border-outline-variant rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                />
+                <select
+                  className="bg-slate-50 border border-outline-variant rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  value={deptFilter}
+                  onChange={e => setDeptFilter(e.target.value)}
+                >
+                  {departments.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 px-1">
+                <input
+                  type="checkbox"
+                  id="select-all-bulk"
+                  className="rounded text-primary focus:ring-primary h-4 w-4"
+                  checked={allDisplayedSelected}
+                  onChange={e => handleSelectAll(e.target.checked)}
+                />
+                <label htmlFor="select-all-bulk" className="text-xs font-bold text-on-surface-variant cursor-pointer">
+                  Select All ({displayedProfiles.length})
+                </label>
+              </div>
+
+              <div className="max-h-40 overflow-y-auto border border-outline-variant/30 rounded-xl p-2 bg-slate-50 flex flex-col gap-1.5">
+                {displayedProfiles.length === 0 ? (
+                  <p className="text-xs text-on-surface-variant italic text-center py-4">No employees match filters.</p>
+                ) : (
+                  displayedProfiles.map(p => (
+                    <div key={p.id} className="flex items-center gap-2 hover:bg-white p-1 rounded transition-colors cursor-pointer" onClick={() => handleToggleUser(p.id)}>
+                      <input
+                        type="checkbox"
+                        className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                        checked={selectedUserIds.includes(p.id)}
+                        onChange={() => {}} // Handled by outer div onClick
+                      />
+                      <span className="text-xs font-semibold text-on-surface">{p.name} <span className="text-[10px] text-on-surface-variant">({p.department || 'No Dept'})</span></span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Leave Type</label>
             <select className={cls} value={leaveType} onChange={e => setLeaveType(e.target.value)}>
@@ -969,7 +1090,7 @@ export default function MyLeavePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">From Date</label>
-                <input required type="date" className="bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full" value={fromDate} onChange={e => { setFromDate(e.target.value); if (toDate < e.target.value) setToDate(e.target.value); }} />
+                <input required type="date" className="bg-slate-50 border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full" value={fromDate} onChange={e => { setFromDate(e.target.value); setToDate(e.target.value); }} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">To Date</label>

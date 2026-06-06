@@ -101,13 +101,18 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
       ...(taskEstMins ? { estimated_hours: Number(taskEstMins) } : {}),
       created_by: currentUser?.id || null,
     };
+    let res;
     if (isRecurring && (!initialData || convertType === 'Task')) {
       const { container_id, ...savedTaskData } = taskBase;
-      await addSavedTask({ ...savedTaskData, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
+      res = await addSavedTask({ ...savedTaskData, expected_date: null, is_recurring: true, recurrence_rule: buildRecurrenceRule(), is_active: true });
     } else {
-      await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
+      res = await addWorkItem({ ...taskBase, expected_date: taskDate || null, is_recurring: false });
     }
     setLoading(false);
+    if (res?.error) {
+      alert("Error creating task: " + res.error.message);
+      return;
+    }
     setSuccess(true);
     if (onSuccessConvert) {
       await onSuccessConvert();
@@ -118,7 +123,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   const handleCreatePlan = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await addWorkItem({
+    const res = await addWorkItem({
       title: planTitle,
       description: planDesc,
       assignee_id: planAssignee || null,
@@ -131,6 +136,10 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
       ...(planEstMins ? { estimated_hours: Number(planEstMins) } : {}),
     });
     setLoading(false);
+    if (res?.error) {
+      alert("Error creating plan: " + res.error.message);
+      return;
+    }
     setSuccess(true);
     setTimeout(() => { onClose(); navigate('/planning'); }, 1200);
   };
@@ -138,7 +147,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   const handleCreateNotification = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await addAnnouncement({
+    const res = await addAnnouncement({
       title: notifType === 'Program' ? notifForm.message : 'Text',
       message: notifType === 'Text' ? notifForm.message : '',
       event_date: notifForm.event_date,
@@ -148,6 +157,10 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
       staff_group: notifForm.staff_group
     });
     setLoading(false);
+    if (res?.error) {
+      alert("Error creating notification: " + res.error.message);
+      return;
+    }
     setSuccess(true);
     setTimeout(() => onClose(), 1200);
   };

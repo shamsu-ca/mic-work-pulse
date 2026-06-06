@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, getStatusBadgeClass, getActionableUnits, calculateUserEfficiency, isLowestLevelActionableUnit } from '../lib/statusUtils';
-import { fmtDate } from '../lib/dateUtils';
+import { fmtDate, getISTDateString } from '../lib/dateUtils';
 import FilterBar from '../components/common/FilterBar';
 import CompletionPanel from '../components/common/CompletionPanel';
 import FollowUpModal from '../components/common/FollowUpModal';
@@ -17,9 +17,9 @@ const STATUS_ORDER = { Overdue: 0, 'Not Started': 1, Assigned: 2, Ongoing: 3, Co
 const sortByStatus = (items) =>
   [...items].sort((a, b) => (STATUS_ORDER[getDisplayStatus(a)] ?? 5) - (STATUS_ORDER[getDisplayStatus(b)] ?? 5));
 
-const todayStr      = () => new Date().toISOString().split('T')[0];
-const offsetDate    = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0]; };
-const weekMondayStr = () => { const d = new Date(); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return d.toISOString().split('T')[0]; };
+const todayStr      = () => getISTDateString();
+const offsetDate    = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return getISTDateString(d); };
+const weekMondayStr = () => { const d = new Date(); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return getISTDateString(d); };
 const getCompletedDate = (item) => item.completed_at ? item.completed_at.split('T')[0] : '';
 const getAvatarInitials = (name) => {
   if (!name) return 'U';

@@ -83,3 +83,36 @@ export function getFilterLabel(dateFilter, customDateRange) {
   }
   return 'Custom';
 }
+
+/**
+ * Returns a YYYY-MM-DD date string in Asia/Kolkata timezone (IST) from a Date object or parseable date input.
+ */
+export function getISTDateString(dateInput = new Date()) {
+  const d = typeof dateInput === 'string' || typeof dateInput === 'number' ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return '';
+  
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  
+  const parts = formatter.formatToParts(d);
+  const year = parts.find(p => p.type === 'year').value;
+  const month = parts.find(p => p.type === 'month').value;
+  const day = parts.find(p => p.type === 'day').value;
+  
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Adds 1 day to the given YYYY-MM-DD date string and returns the next date as YYYY-MM-DD in IST.
+ */
+export function getNextDayString(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return getISTDateString(d);
+}
+

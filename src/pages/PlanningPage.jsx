@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useDataContext } from '../context/SupabaseDataContext';
 import CreateItemModal from '../components/common/CreateItemModal';
 import ClockTimePicker from '../components/common/ClockTimePicker';
+import { getISTDateString } from '../lib/dateUtils';
 
 // ─── PLANNING POOL TAB ────────────────────────────────────────────────────────
 
@@ -279,7 +280,7 @@ function AnnouncementsTab({ currentUser, profiles }) {
   
   const isAdmin = currentUser?.role === 'Admin';
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getISTDateString();
   const todayDate = new Date(today + 'T00:00:00');
 
   let activeNotices = [];

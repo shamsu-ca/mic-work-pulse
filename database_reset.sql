@@ -74,8 +74,9 @@ ALTER TABLE public.work_items DISABLE ROW LEVEL SECURITY;
 CREATE TABLE public.notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-  title TEXT NOT NULL,
+  title TEXT,
   message TEXT,
+  work_item_id UUID REFERENCES public.work_items(id) ON DELETE SET NULL,
   is_read BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -89,6 +90,8 @@ CREATE TABLE public.announcements (
   event_time TIME,
   type TEXT DEFAULT 'Program',
   staff_group TEXT DEFAULT 'Both', -- keeping this column so old code doesn't crash right away, though we'll remove it from UI
+  created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  is_pinned BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE public.announcements DISABLE ROW LEVEL SECURITY;
@@ -125,3 +128,26 @@ VALUES
   ('superadmin', 'Super Admin', 'Admin', 'admin123', 'Office Staff', 'System Administrator'),
   ('shamsu', 'Shamsuddin', 'Assignee', 'temp123', 'Office Staff', 'Admin Asst')
 ON CONFLICT (username) DO NOTHING;
+
+-- 6. Task Assignment Notification Trigger
+CREATE OR REPLACE FUNCTION public.notify_on_task_assignment()
+RETURNS trigger AS $$
+BEGIN
+  -- Only fire if assignee_id was just set (or changed) and is not null
+  IF NEW.assignee_id IS NOT NULL AND (OLD.assignee_id IS DISTINCT FROM NEW.assignee_id) THEN
+    INSERT INTO public.notifications (user_id, title, message, work_item_id)
+    VALUES (
+      NEW.assignee_id,
+      'Task Assigned',
+      'You have been assigned a new task: ' || NEW.title,
+      NEW.id
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_task_assigned ON public.work_items;
+CREATE TRIGGER on_task_assigned
+  AFTER INSERT OR UPDATE OF assignee_id ON public.work_items
+  FOR EACH ROW EXECUTE PROCEDURE public.notify_on_task_assignment();

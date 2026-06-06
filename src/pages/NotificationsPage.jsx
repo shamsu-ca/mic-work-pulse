@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../context/SupabaseDataContext';
 import ClockTimePicker from '../components/common/ClockTimePicker';
+import { getISTDateString } from '../lib/dateUtils';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => getISTDateString();
 
 const daysUntil = (dateStr) => {
   const today = new Date(todayStr());

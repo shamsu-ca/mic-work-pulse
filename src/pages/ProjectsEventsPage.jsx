@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useDataContext } from '../context/SupabaseDataContext';
 import { getDisplayStatus, isPhaseActive } from '../lib/statusUtils';
-import { fmtDate } from '../lib/dateUtils';
+import { fmtDate, getISTDateString } from '../lib/dateUtils';
 import { StaffToggle } from '../components/common/FilterBar';
 import CompletionPanel from '../components/common/CompletionPanel';
 import FollowUpModal from '../components/common/FollowUpModal';
@@ -156,7 +156,7 @@ function ExpandedItemDetails({ item, workItems, profiles, currentUser, onFollowU
 
 // ─── Tiny helpers ─────────────────────────────────────────────────────────────
 const cName    = (c) => c?.title ?? 'Untitled';
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => getISTDateString();
 
 const getInitials = (name) => {
   if (!name) return 'U';
@@ -287,7 +287,7 @@ const btnSecondary = "bg-white border border-outline-variant/40 text-on-surface 
 export default function ProjectsEventsPage() {
   const {
     containers, workItems, profiles, currentUser,
-    savedContainers, savedTasks,
+    savedContainers, savedTasks, leaveRequests,
     addContainer, updateContainer, deleteContainer, addWorkItem, updateWorkItem, deleteWorkItem,
     addSavedContainer, updateSavedContainer,
     addSavedTask, updateSavedTask, deleteSavedTask,
@@ -339,13 +339,11 @@ export default function ProjectsEventsPage() {
   const [deployDesc, setDeployDesc]           = useState('');
   const [deployStartDate, setDeployStartDate] = useState('');
 
-  const { leaveRequests } = useDataContext();
-
   const handleOpenDeploy = (tpl) => {
     setDeployModalTpl(tpl);
     setDeployName(tpl.title || '');
     setDeployDesc('');
-    setDeployStartDate(new Date().toISOString().split('T')[0]);
+    setDeployStartDate(getISTDateString());
     setDeployPhaseDates({});
   };
 
@@ -474,6 +472,29 @@ export default function ProjectsEventsPage() {
           });
         }
       }
+    }
+  };
+
+  const handleSavePhaseDate = async (phaseId, newDate) => {
+    await updateWorkItem(phaseId, { expected_date: newDate || null });
+    const childItems = safeWorkItems.filter(item => item.parent_id === phaseId && item.type === 'Checklist');
+    for (const item of childItems) {
+      if (item.status === 'Completed') continue;
+      let finalDate = newDate || null;
+      let isRescheduled = false;
+      if (finalDate && item.assignee_id) {
+        const leave = (leaveRequests || []).find(l => 
+          l.user_id === item.assignee_id && 
+          l.status === 'Approved' && 
+          l.leave_type === 'Full Day' && 
+          finalDate >= l.from_date && finalDate <= l.to_date
+        );
+        if (leave) {
+          finalDate = getNextWorkingDay(leave.to_date);
+          isRescheduled = true;
+        }
+      }
+      await updateWorkItem(item.id, { expected_date: finalDate, is_rescheduled: isRescheduled });
     }
   };
 
@@ -1197,7 +1218,7 @@ export default function ProjectsEventsPage() {
                                 onChange={e => setPhaseDateEdits(prev => ({ ...prev, [ph.id]: e.target.value }))}
                                 className="text-[10px] border border-outline-variant/40 rounded-lg px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white" />
                               {phaseDateEdits[ph.id] != null && phaseDateEdits[ph.id] !== (ph.expected_date ?? '') && (
-                                <button onClick={async () => { await updateWorkItem(ph.id, { expected_date: phaseDateEdits[ph.id] || null }); setPhaseDateEdits(prev => { const n = { ...prev }; delete n[ph.id]; return n; }); }}
+                                <button onClick={async () => { await handleSavePhaseDate(ph.id, phaseDateEdits[ph.id] || null); setPhaseDateEdits(prev => { const n = { ...prev }; delete n[ph.id]; return n; }); }}
                                   className="text-[9px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-lg hover:opacity-90">Save</button>
                               )}
                             </div>
@@ -1449,6 +1470,14 @@ export default function ProjectsEventsPage() {
     const canEdit = isAdmin || isManager || currentUser?.role === 'Assignee';
     const rawRecurringTasks = safeSavedTasks.filter(w => w.is_recurring && w.type !== 'Group');
 
+    const assignableProfiles = filteredProfiles.filter(p => {
+      if (isAdmin) return true;
+      if (isManager) {
+        return p.id === currentUser?.id || p.manager === currentUser?.name;
+      }
+      return p.id === currentUser?.id;
+    });
+
     const recurringTasks = isAdmin
       ? rawRecurringTasks
       : rawRecurringTasks.filter(t => t.assignee_id === currentUser?.id || (t.assignee_id && safeProfiles.some(p => p.id === t.assignee_id && p.manager === currentUser?.name)));
@@ -1505,7 +1534,7 @@ export default function ProjectsEventsPage() {
                 <textarea className={fieldCls + ' resize-none'} rows={2} value={modalData.description} onChange={e => setModalData(d => ({...d, description: e.target.value}))} placeholder="Description" />
                 <select className={fieldCls} value={modalData.assignee_id} onChange={e => setModalData(d => ({...d, assignee_id: e.target.value}))}>
                   <option value="">— Unassigned —</option>
-                  {filteredProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {assignableProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <div className="grid grid-cols-2 gap-3">
                   <select className={fieldCls} value={modalData.priority} onChange={e => setModalData(d => ({...d, priority: e.target.value}))}>
