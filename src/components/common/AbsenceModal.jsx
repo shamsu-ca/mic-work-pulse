@@ -9,6 +9,7 @@ export default function AbsenceModal({ onClose, targetUserId = null }) {
   const [userId, setUserId] = useState(targetUserId || currentUser?.id || '');
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
+  const [reasonType, setReasonType] = useState('');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -98,13 +99,35 @@ export default function AbsenceModal({ onClose, targetUserId = null }) {
           {/* Reason */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wide">Reason <span className="font-normal normal-case text-outline">(optional)</span></label>
-            <input
-              type="text"
-              placeholder="e.g. Medical leave, Training…"
-              className="border border-outline-variant/50 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400/40"
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-            />
+            <select
+              className="border border-outline-variant/50 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400/40 bg-white w-full"
+              value={reasonType}
+              onChange={e => {
+                const val = e.target.value;
+                setReasonType(val);
+                if (val !== 'Custom') {
+                  setReason(val);
+                } else {
+                  setReason('');
+                }
+              }}
+            >
+              <option value="">— Select Reason —</option>
+              <option value="Casual Leave">Casual Leave</option>
+              <option value="Duty Leave">Duty Leave</option>
+              <option value="Sick Leave">Sick Leave</option>
+              <option value="LLP">LLP</option>
+              <option value="Custom">Custom Text...</option>
+            </select>
+            {reasonType === 'Custom' && (
+              <input
+                type="text"
+                className="border border-outline-variant/50 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400/40 mt-1.5"
+                placeholder="Enter custom reason..."
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+              />
+            )}
           </div>
 
           {error && <p className="text-xs text-error font-medium">{error}</p>}

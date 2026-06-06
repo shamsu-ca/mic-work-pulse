@@ -234,7 +234,7 @@ function LeaveManagementTab({ leaveRequests, profiles, updateLeaveRequest, delet
     setTimeout(() => {
       window.print();
       setPrintingLeave(null);
-    }, 150);
+    }, 300);
   };
 
   const calculateTotalDays = (fromStr, toStr) => {
@@ -314,21 +314,36 @@ function LeaveManagementTab({ leaveRequests, profiles, updateLeaveRequest, delet
     <div className="flex flex-col gap-6">
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
+          /* Hide non-printable layout elements */
+          header, aside, nav, button, input, select, textarea, .no-print {
+            display: none !important;
           }
-          #print-leave-application, #print-leave-application * {
-            visibility: visible !important;
+          
+          /* Reset root and body layout constraints for printing */
+          html, body, #root, .app-container, .main-content-wrapper, main {
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            display: block !important;
+            position: static !important;
+            background: white !important;
+            color: black !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
           }
+
+          /* Ensure target printable content is displayed at the top */
           #print-leave-application {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            display: block !important;
+            position: relative !important;
             width: 100% !important;
             margin: 0 !important;
             padding: 20px !important;
             background: white !important;
             color: black !important;
+            box-sizing: border-box !important;
           }
         }
       `}</style>
@@ -408,7 +423,8 @@ function LeaveManagementTab({ leaveRequests, profiles, updateLeaveRequest, delet
       )}
 
       {/* Sub tabs list */}
-      <div className="flex bg-surface-container rounded-xl p-1 gap-0.5 self-start">
+      <div className="no-print flex flex-col gap-6">
+        <div className="flex bg-surface-container rounded-xl p-1 gap-0.5 self-start">
         {['Pending', 'Approved Today', 'Upcoming', 'History', 'Calendar'].map(t => (
           <button
             key={t}
@@ -595,6 +611,7 @@ function LeaveManagementTab({ leaveRequests, profiles, updateLeaveRequest, delet
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -603,6 +620,7 @@ function LeaveRequestModal({ profile, onClose, onSave }) {
   const [leaveType, setLeaveType] = useState('Full Day');
   const [fromDate, setFromDate] = useState(getISTDateString());
   const [toDate, setToDate] = useState(getISTDateString());
+  const [reasonType, setReasonType] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -648,7 +666,34 @@ function LeaveRequestModal({ profile, onClose, onSave }) {
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Reason</label>
-            <input className={cls} placeholder="Optional" value={reason} onChange={e => setReason(e.target.value)} />
+            <select
+              className={cls}
+              value={reasonType}
+              onChange={e => {
+                const val = e.target.value;
+                setReasonType(val);
+                if (val !== 'Custom') {
+                  setReason(val);
+                } else {
+                  setReason('');
+                }
+              }}
+            >
+              <option value="">— Select Reason —</option>
+              <option value="Casual Leave">Casual Leave</option>
+              <option value="Duty Leave">Duty Leave</option>
+              <option value="Sick Leave">Sick Leave</option>
+              <option value="LLP">LLP</option>
+              <option value="Custom">Custom Text...</option>
+            </select>
+            {reasonType === 'Custom' && (
+              <input
+                className={`${cls} mt-1.5`}
+                placeholder="Enter custom reason..."
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+              />
+            )}
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl" onClick={onClose}>Cancel</button>
