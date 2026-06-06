@@ -1904,7 +1904,7 @@ export default function ProjectsEventsPage() {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-5 max-w-[1200px] mx-auto pb-24 animate-fade-in">
+    <div className="flex flex-col gap-5 w-full max-w-full md:max-w-[1200px] mx-auto pb-24 animate-fade-in">
 
       {/* Header */}
       <div>

@@ -124,7 +124,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 max-w-[700px] mx-auto pb-12 animate-fade-in">
+    <div className="flex flex-col gap-5 w-full max-w-full md:max-w-[700px] mx-auto pb-12 animate-fade-in">
       <div>
         <h1 className="text-2xl font-extrabold text-on-surface tracking-tight font-headline">Notifications</h1>
         <p className="text-sm text-on-surface-variant mt-0.5">

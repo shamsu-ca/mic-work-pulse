@@ -349,7 +349,7 @@ function LeaveManagementDashboard({ leaveRequests, profiles, updateLeaveRequest,
   const printDays = printingLeave ? calculateTotalDays(printingLeave.from_date, printingLeave.to_date) : 0;
 
     return (
-    <div className="max-w-6xl mx-auto pb-12 animate-fade-in flex flex-col gap-6">
+    <div className="w-full max-w-full md:max-w-6xl mx-auto pb-12 animate-fade-in flex flex-col gap-6">
       <style>{`
         @media print {
           body * {
@@ -949,7 +949,7 @@ export default function MyLeavePage() {
   const printDays = printingLeave ? calculateTotalDays(printingLeave.from_date, printingLeave.to_date) : 0;
 
   return (
-    <div className="max-w-4xl mx-auto pb-12 animate-fade-in flex flex-col gap-6">
+    <div className="w-full max-w-full md:max-w-4xl mx-auto pb-12 animate-fade-in flex flex-col gap-6">
       <style>{`
         @media print {
           body * {

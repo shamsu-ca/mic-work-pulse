@@ -37,7 +37,7 @@ export default function DashboardPage() {
   const hasMore = notices.length > 3;
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1400px] mx-auto">
+    <div className="flex flex-col gap-6 w-full max-w-full md:max-w-[1400px] mx-auto">
       {displayNotices.length > 0 && (
         <div className="flex flex-col gap-2 animate-fade-in mb-2 mt-[-1rem]">
           {displayNotices.map(notice => (

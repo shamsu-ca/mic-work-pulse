@@ -486,7 +486,7 @@ export default function PlanningPage() {
 
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto pb-12 animate-fade-in">
+    <div className="flex flex-col gap-6 w-full max-w-full md:max-w-[1200px] mx-auto pb-12 animate-fade-in">
 
       {/* TOP HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

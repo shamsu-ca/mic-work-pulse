@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 import ProfileModal from '../common/ProfileModal';
 import CreateItemModal from '../common/CreateItemModal';
 import NotificationManager from '../common/NotificationManager';
+import './AppLayout.css';
 
 export default function AppLayout({ userRole, currentUser }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -67,7 +68,7 @@ export default function AppLayout({ userRole, currentUser }) {
       <NotificationManager />
       {/* Top Header — padding-top accounts for PWA/standalone status bar safe area */}
       <header
-        className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-outline-variant/50"
+        className="fixed top-0 left-0 right-0 w-full max-w-full z-50 bg-white/95 backdrop-blur-md border-b border-outline-variant/50"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
       <div className="h-14 flex justify-between items-center px-4 md:px-6">
@@ -134,7 +135,7 @@ export default function AppLayout({ userRole, currentUser }) {
       </div>
       </header>
 
-      <div className="flex" style={{ minHeight: '100dvh', paddingTop: 'calc(56px + env(safe-area-inset-top))' }}>
+      <div className="flex w-full max-w-full min-w-0 overflow-x-hidden" style={{ minHeight: '100dvh', paddingTop: 'calc(56px + env(safe-area-inset-top))' }}>
         {/* Sidebar */}
         <aside className="hidden md:flex flex-col w-60 fixed left-0 bg-white border-r border-outline-variant/40 py-5 z-40" style={{ top: 'calc(56px + env(safe-area-inset-top))', height: 'calc(100dvh - 56px - env(safe-area-inset-top))' }}>
           <div className="px-4 mb-6">
@@ -185,7 +186,7 @@ export default function AppLayout({ userRole, currentUser }) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0 md:ml-60 p-4 md:p-6 overflow-y-auto bg-surface architectural-grid" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+        <main className="flex-1 min-w-0 w-full max-w-full overflow-x-hidden md:ml-60 p-4 md:p-6 overflow-y-auto bg-surface architectural-grid" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
           <Outlet />
         </main>
       </div>

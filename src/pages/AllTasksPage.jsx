@@ -1052,7 +1052,7 @@ export default function AllTasksPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-5 max-w-[1400px] mx-auto pb-12 animate-fade-in">
+    <div className="flex flex-col gap-5 w-full max-w-full md:max-w-[1400px] mx-auto pb-12 animate-fade-in">
 
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>

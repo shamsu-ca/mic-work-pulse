@@ -1506,7 +1506,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
     };
 
     return (
-      <div className="flex flex-col gap-6 max-w-[1200px] mx-auto pb-24">
+      <div className="flex flex-col gap-6 w-full max-w-full md:max-w-[1200px] mx-auto pb-24">
         {/* Page Title & Context Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-surface-container-high pb-4">
           <div>
@@ -2035,7 +2035,7 @@ Overall Efficiency: ${summary.metrics?.efficiency ?? 0}%
   // ADMIN VIEW RENDER
   // ───────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-6 max-w-[1200px] mx-auto pb-24">
+    <div className="flex flex-col gap-6 w-full max-w-full md:max-w-[1200px] mx-auto pb-24">
       {/* Page Title & Archive Reset Actions */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-surface-container-high pb-4">
         <div>

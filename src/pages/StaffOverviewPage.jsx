@@ -888,7 +888,7 @@ export default function StaffOverviewPage() {
   const inputCls = "bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-primary focus:border-primary transition-colors w-full";
 
   return (
-    <div className="flex flex-col gap-5 max-w-[1200px] mx-auto pb-20">
+    <div className="flex flex-col gap-5 w-full max-w-full md:max-w-[1200px] mx-auto pb-20">
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
