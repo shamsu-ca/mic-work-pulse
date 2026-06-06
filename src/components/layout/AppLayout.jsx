@@ -11,7 +11,6 @@ export default function AppLayout({ userRole, currentUser }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { getActiveAnnouncements, leaveRequests } = useDataContext();
@@ -195,30 +194,20 @@ export default function AppLayout({ userRole, currentUser }) {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-outline-variant/40 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-center py-1 px-1">
           <div className="flex flex-1 justify-around">
-            <NavLink to="/"
-              className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>dashboard</span>
-                  <span className="text-[8px] font-bold leading-none text-center">Dashboard</span>
-                </>
-              )}
-            </NavLink>
-            <NavLink to="/tasks"
-              className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>assignment</span>
-                  <span className="text-[8px] font-bold leading-none text-center">Works</span>
-                </>
-              )}
-            </NavLink>
+            {navItems.slice(0, Math.floor(navItems.length / 2)).map((item) => (
+              <NavLink key={item.path} to={item.path}
+                className={({ isActive }) =>
+                  `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
+                    <span className="text-[8px] font-bold leading-none text-center">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
           </div>
 
           <button
@@ -229,69 +218,23 @@ export default function AppLayout({ userRole, currentUser }) {
           </button>
 
           <div className="flex flex-1 justify-around">
-            <NavLink to="/planning"
-              className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>account_tree</span>
-                  <span className="text-[8px] font-bold leading-none text-center">Planning</span>
-                </>
-              )}
-            </NavLink>
-            <button
-              onClick={() => setIsMoreOpen(true)}
-              className={`flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 transition-all ${
-                moreNavItems.some(item => location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path)))
-                  ? 'text-primary font-bold'
-                  : 'text-on-surface-variant'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: moreNavItems.some(item => location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))) ? "'FILL' 1" : "'FILL' 0" }}>more_horiz</span>
-              <span className="text-[8px] font-bold leading-none text-center">More</span>
-            </button>
+            {navItems.slice(Math.floor(navItems.length / 2)).map((item) => (
+              <NavLink key={item.path} to={item.path}
+                className={({ isActive }) =>
+                  `flex flex-col items-center gap-0.5 px-2 py-1.5 flex-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
+                    <span className="text-[8px] font-bold leading-none text-center">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
           </div>
         </div>
       </nav>
-
-      {/* Mobile More Menu Sheet */}
-      {isMoreOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setIsMoreOpen(false)}>
-          <div className="bg-white rounded-t-3xl p-5 flex flex-col gap-4 shadow-2xl border-t border-outline-variant/30 max-h-[80vh] overflow-y-auto animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center border-b border-surface-container pb-3">
-              <span className="text-xs font-black uppercase tracking-widest text-on-surface-variant flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px]">widgets</span>
-                More Menu
-              </span>
-              <button onClick={() => setIsMoreOpen(false)} className="w-8 h-8 rounded-full hover:bg-surface-container text-on-surface-variant flex items-center justify-center">
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-3 py-2">
-              {moreNavItems.map(item => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setIsMoreOpen(false)}
-                  className={({ isActive }) =>
-                    `flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${
-                      isActive 
-                        ? 'bg-primary/10 border-primary text-primary font-bold shadow-sm'
-                        : 'bg-surface-container-lowest border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
-                    }`
-                  }
-                >
-                  <span className="material-symbols-outlined text-[24px] mb-1.5">{item.icon}</span>
-                  <span className="text-[10px] font-bold text-center leading-tight truncate w-full">{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {isProfileModalOpen && (
         <ProfileModal onClose={() => setIsProfileModalOpen(false)} currentUser={currentUser} />

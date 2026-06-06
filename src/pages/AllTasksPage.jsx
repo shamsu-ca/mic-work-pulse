@@ -876,6 +876,7 @@ export default function AllTasksPage() {
   const [historyDateTo, setHistoryDateTo]   = useState('');
   const [expandedId, setExpandedId]         = useState(null);
   const [followUpTarget, setFollowUpTarget] = useState(null);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
 
   const handleViewDetail = (item) => {
     if (!item) return;
@@ -1089,11 +1090,22 @@ export default function AllTasksPage() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
+            <div className="relative hidden md:block">
               <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[15px]">search</span>
               <input type="text" placeholder="Search…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                 className="bg-white border border-outline-variant/40 rounded-full pl-8 pr-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-32 md:w-44 transition-all" />
             </div>
+            <button
+              onClick={() => setShowMobileSearch(!showMobileSearch)}
+              className={`block md:hidden p-1.5 rounded-full border transition-all ${
+                showMobileSearch 
+                  ? 'bg-primary/10 border-primary text-primary shadow-sm' 
+                  : 'bg-white border-outline-variant/30 text-on-surface-variant hover:bg-surface-container'
+              }`}
+              title="Search"
+            >
+              <span className="material-symbols-outlined text-[18px]">search</span>
+            </button>
             <div className="relative hidden sm:block">
               <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
                 className="appearance-none bg-white border border-outline-variant/40 rounded-full px-3 py-1.5 pr-7 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
@@ -1125,6 +1137,28 @@ export default function AllTasksPage() {
           </div>
         )}
       </div>
+
+      {showMobileSearch && (
+        <div className="block md:hidden relative w-full mb-2 animate-fade-in">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px]">search</span>
+          <input 
+            type="text" 
+            placeholder="Search works..." 
+            value={searchQuery} 
+            onChange={e => setSearchQuery(e.target.value)}
+            className="bg-white border border-outline-variant rounded-xl pl-9 pr-8 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 w-full"
+            autoFocus
+          />
+          {searchQuery && (
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+            >
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {activeTab === 'Today' && (
         <StatusGroupedView items={todayItems} {...sharedProps} />
