@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check-db": "node scratch/check_db.js"
+    "check-db": "node scratch/check_db.js",
+    "ping-db": "node scratch/ping_supabase.js",
+    "generate-recurring": "node scratch/trigger_recurring_tasks.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

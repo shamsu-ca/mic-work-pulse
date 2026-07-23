@@ -1,0 +1,29 @@
+name: Supabase Auto Wake-Up & Keep Alive
+
+on:
+  schedule:
+    # Runs every 3 days at 00:00 UTC to prevent Supabase free tier 7-day auto-pause
+    - cron: '0 0 */3 * *'
+  workflow_dispatch: # Allows manual run anytime from GitHub Actions tab
+
+jobs:
+  keep-alive:
+    name: Ping Supabase Project
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install @supabase/supabase-js
+
+      - name: Ping Supabase Database
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://jmkgkokkncwnnykqpoih.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impta2drb2trbmN3bm55a3Fwb2loIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NTAxNDgsImV4cCI6MjA5MTQyNjE0OH0._nD2JWsWRS7hVz6AdiBsHN3gNEntK1wHqWZ_AgB_Lpk' }}
+        run: node scratch/ping_supabase.js
