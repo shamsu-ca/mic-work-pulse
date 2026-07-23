@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
+import { getISTDateString } from '../../lib/dateUtils';
 
 export default function NotificationManager() {
   const { currentUser, workItems, announcements, getDynamicNotificationText } = useDataContext();
@@ -55,7 +56,7 @@ export default function NotificationManager() {
       const now = new Date();
       const currentHour = now.getHours();
       const isPast10AM = currentHour >= 10;
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = getISTDateString(now);
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
 
       // 1. Task Assigned (active polling for new tasks)

@@ -1,4 +1,5 @@
 import { useDataContext } from '../../context/SupabaseDataContext';
+import { getISTDateString } from '../../lib/dateUtils';
 
 const DATE_OPTIONS = [
   { key: 'today',      label: 'Today' },
@@ -7,7 +8,7 @@ const DATE_OPTIONS = [
   { key: 'custom',     label: 'Custom Range' },
 ];
 
-const todayISO = () => new Date().toISOString().split('T')[0];
+const todayISO = () => getISTDateString();
 
 // Standalone Staff group toggle — import and drop anywhere
 export function StaffToggle() {

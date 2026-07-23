@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDataContext } from '../context/SupabaseDataContext';
+import { getISTDateString } from '../lib/dateUtils';
 
 function LeaveRequestModal({ profiles, onClose, onSave }) {
   const { checkTodayStartedOrCompletedRecurringTasks, currentUser } = useDataContext();
@@ -9,8 +10,8 @@ function LeaveRequestModal({ profiles, onClose, onSave }) {
   const [deptFilter, setDeptFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [leaveType, setLeaveType] = useState('Full Day');
-  const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [fromDate, setFromDate] = useState(getISTDateString());
+  const [toDate, setToDate] = useState(getISTDateString());
   const [reasonType, setReasonType] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -55,7 +56,7 @@ function LeaveRequestModal({ profiles, onClose, onSave }) {
 
     for (const userId of targetIds) {
       if (leaveType === 'Full Day') {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getISTDateString();
         if (todayStr >= fromDate && todayStr <= toDate) {
           try {
             const activeTasks = await checkTodayStartedOrCompletedRecurringTasks(userId);
@@ -267,7 +268,7 @@ function LeaveManagementDashboard({ leaveRequests, profiles, updateLeaveRequest,
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getISTDateString();
 
   const pendingLeaves = (leaveRequests || []).filter(l => l.status === 'Pending');
   const approvedLeaves = (leaveRequests || []).filter(l => l.status === 'Approved');
@@ -283,7 +284,7 @@ function LeaveManagementDashboard({ leaveRequests, profiles, updateLeaveRequest,
     const leave = leaveRequests.find(l => l.id === id);
 
     if (status === 'Approved' && leave && leave.leave_type === 'Full Day') {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getISTDateString();
       if (todayStr >= leave.from_date && todayStr <= leave.to_date) {
         try {
           const activeTasks = await checkTodayStartedOrCompletedRecurringTasks(leave.user_id);
@@ -902,8 +903,8 @@ export default function MyLeavePage() {
   const [editingLeave, setEditingLeave] = useState(null);
   
   const [leaveType, setLeaveType] = useState('Full Day');
-  const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [fromDate, setFromDate] = useState(getISTDateString());
+  const [toDate, setToDate] = useState(getISTDateString());
   const [reasonType, setReasonType] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -924,7 +925,7 @@ export default function MyLeavePage() {
     );
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getISTDateString();
   const myLeaves = (leaveRequests || [])
     .filter(l => l.user_id === currentUser?.id)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));

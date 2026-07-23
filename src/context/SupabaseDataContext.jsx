@@ -461,7 +461,7 @@ export function SupabaseDataProvider({ children, session }) {
   const getUnreadNotifications = () => notifications.filter(n => !n.is_read);
 
   const getActiveAnnouncements = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getISTDateString();
     const todayDate = new Date(today + 'T00:00:00');
     return announcements.filter(a => {
       const eventDate = new Date(a.event_date + 'T00:00:00');
@@ -480,7 +480,7 @@ export function SupabaseDataProvider({ children, session }) {
       return '';
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getISTDateString();
     const todayDate = new Date(today + 'T00:00:00');
     const eventDate = new Date(ann.event_date + 'T00:00:00');
 
@@ -527,7 +527,7 @@ export function SupabaseDataProvider({ children, session }) {
   };
 
   const checkTodayStartedOrCompletedRecurringTasks = async (userId) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getISTDateString();
     const { data: templates } = await supabase
       .from('saved_tasks')
       .select('title')
@@ -645,7 +645,7 @@ export function SupabaseDataProvider({ children, session }) {
     };
 
     if (payload.status === 'Approved') {
-      payload.approved_date = new Date().toISOString().split('T')[0];
+      payload.approved_date = getISTDateString();
     }
 
     const client = supabase;
@@ -673,7 +673,7 @@ export function SupabaseDataProvider({ children, session }) {
     const isAdmin = currentUser?.role === 'Admin';
 
     if (updates.status === 'Approved') {
-      updates.approved_date = new Date().toISOString().split('T')[0];
+      updates.approved_date = getISTDateString();
       updates.approved_by = currentUser?.id;
     }
 

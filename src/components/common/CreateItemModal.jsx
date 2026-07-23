@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
+import { getISTDateString } from '../../lib/dateUtils';
 import ClockTimePicker from './ClockTimePicker';
 
 export default function CreateItemModal({ onClose, initialData, onSuccessConvert, defaultTab = 'choose' }) {
@@ -20,7 +21,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
   const [taskDesc, setTaskDesc] = useState(initialData?.description || '');
   const [taskAssignee, setTaskAssignee] = useState(selfOnly ? (currentUser?.id || '') : '');
   const [taskPriority, setTaskPriority] = useState('Medium');
-  const [taskDate, setTaskDate] = useState(new Date().toISOString().split('T')[0]);
+  const [taskDate, setTaskDate] = useState(getISTDateString());
   const [taskEstMins] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState('daily');
@@ -82,7 +83,7 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getISTDateString();
     if (taskDate === todayStr && !isRecurring && !forceConfirm && convertType === 'Task') {
        setConfirmDateOpen(true);
        return;

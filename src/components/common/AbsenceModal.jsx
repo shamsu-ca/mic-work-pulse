@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useDataContext } from '../../context/SupabaseDataContext';
+import { getISTDateString } from '../../lib/dateUtils';
 
 export default function AbsenceModal({ onClose, targetUserId = null }) {
   const { currentUser, profiles, addAbsence } = useDataContext();
-  const today = new Date().toISOString().split('T')[0];
+  const today = getISTDateString();
 
   const isAdmin = currentUser?.role === 'Admin';
   const [userId, setUserId] = useState(targetUserId || currentUser?.id || '');

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataContext } from '../../context/SupabaseDataContext';
 import { getDisplayStatus, isOverdue, getActionableUnits, isNotStarted } from '../../lib/statusUtils';
-import { fmtDate } from '../../lib/dateUtils';
+import { fmtDate, getISTDateString } from '../../lib/dateUtils';
 import CompletionPanel from '../common/CompletionPanel';
 import AbsenceModal from '../common/AbsenceModal';
 import FilterBar from '../common/FilterBar';
@@ -537,7 +537,7 @@ export default function MainDashboard() {
   const assistants = safeProfiles.filter(p => p.manager === currentUser?.name);
   const isManager = assistants.length > 0;
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getISTDateString();
 
   const isAbsentToday = leaveRequests?.some(
     l => l.user_id === currentUser?.id && l.status === 'Approved' && l.leave_type === 'Full Day' && today >= l.from_date && today <= l.to_date
