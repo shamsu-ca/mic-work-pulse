@@ -5,203 +5,12 @@ import CreateItemModal from '../components/common/CreateItemModal';
 import ClockTimePicker from '../components/common/ClockTimePicker';
 import { getISTDateString } from '../lib/dateUtils';
 
-// ─── PLANNING POOL TAB ────────────────────────────────────────────────────────
+import NotesFilterToolbar from '../components/planning/NotesFilterToolbar';
+import NoteCard, { calculateAge, parseNoteTitleAndBody } from '../components/planning/NoteCard';
+import NoteListRow from '../components/planning/NoteListRow';
+import NoteEditorModal from '../components/planning/NoteEditorModal';
 
-const calculateAge = (dateStr) => {
-  if (!dateStr) return 'New';
-  const createdDate = new Date(dateStr);
-  const today = new Date();
-  const diffTime = today - createdDate;
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return 'New';
-  if (diffDays <= 3) return `Aging (${diffDays}d)`;
-  return 'Aged';
-};
-
-const getAgeClass = (ageStr) => {
-  if (ageStr === 'New') return 'bg-green-100 text-green-700';
-  if (ageStr.startsWith('Aging')) return 'bg-amber-100 text-amber-700';
-  return 'bg-red-100 text-red-700';
-};
-
-// AssignmentModal removed in favor of CreateItemModal directly
-
-function EditPoolModal({ item, onClose, onSave }) {
-  const [title, setTitle] = useState(item.title || '');
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    if (!title.trim()) return;
-    setSaving(true);
-    await onSave(item.id, { title: title.trim() });
-    setSaving(false);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-on-surface mb-4">Edit Pool Item</h2>
-        <div className="flex flex-col gap-1.5 mb-6">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-outline">Task Title</label>
-          <input 
-            autoFocus
-            className="w-full bg-surface-container-low border border-outline-variant/50 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" 
-            value={title} 
-            onChange={e => setTitle(e.target.value)} 
-            placeholder="Item title..."
-          />
-        </div>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl">Cancel</button>
-          <button 
-            onClick={handleSave}
-            disabled={saving || !title.trim()}
-            className="flex-1 py-2.5 text-sm font-bold bg-primary text-white rounded-xl hover:opacity-90 flex items-center justify-center disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PlanningPoolTab({ poolItems, onAssignClick, profiles, currentUser, searchQuery, poolSubTab }) {
-  const [expandedRowId, setExpandedRowId] = useState(null);
-
-  // Filter based on search
-  const filtered = poolItems.filter(item => {
-    if (searchQuery && !item.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true; 
-  });
-
-  const showCreatedBy = currentUser?.role === 'Admin' && poolSubTab !== 'Self';
-  const totalCols = 3 + (showCreatedBy ? 1 : 0) + 1; // Sl, Title, Age, Creator, Actions
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="bg-surface-container-lowest/80 border-b border-surface-container-high text-[10px] uppercase font-bold tracking-widest text-outline">
-            <tr>
-              <th className="px-4 py-3 w-12 text-center">Sl.</th>
-              <th className="px-5 py-3">Task Title</th>
-              <th className="px-5 py-3 w-32">Aging Status</th>
-              {showCreatedBy && <th className="px-5 py-3 hidden md:table-cell">Created By</th>}
-              <th className="px-5 py-3 text-right pr-4 w-48 hidden md:table-cell">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-surface-container-low text-sm font-medium">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={totalCols} className="px-6 py-14 text-center text-on-surface-variant">
-                  <span className="material-symbols-outlined text-4xl text-outline mb-2 block">done_all</span>
-                  <p>Pool is empty.</p>
-                </td>
-              </tr>
-            ) : filtered.map((item, idx) => {
-              const ageStr = calculateAge(item.created_at);
-              const creator = profiles.find(p => p.id === item.created_by)?.name || 'Unknown';
-              const isExpanded = expandedRowId === item.id;
-
-              return (
-                <React.Fragment key={item.id}>
-                  <tr 
-                    onClick={() => setExpandedRowId(isExpanded ? null : item.id)}
-                    className="hover:bg-surface-container-low/40 transition-colors cursor-pointer md:cursor-default"
-                  >
-                    <td className="px-4 py-4 text-center text-on-surface-variant text-xs">{idx + 1}</td>
-                    <td className="px-5 py-4 text-on-surface font-semibold">{item.title}</td>
-                    <td className="px-5 py-4">
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded ${getAgeClass(ageStr)}`}>
-                        {ageStr}
-                      </span>
-                    </td>
-                    {showCreatedBy && (
-                      <td className="px-5 py-4 text-on-surface-variant text-xs hidden md:table-cell">{creator}</td>
-                    )}
-                    <td className="px-5 py-4 text-right pr-4 hidden md:table-cell" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-2">
-                        {currentUser?.role === 'Admin' || currentUser?.id === item.created_by ? (
-                          <>
-                            <button
-                              onClick={() => onAssignClick(item, 'edit')}
-                              className="text-on-surface-variant hover:text-primary transition-colors p-1"
-                              title="Edit"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">edit</span>
-                            </button>
-                            <button
-                              onClick={() => onAssignClick(item, 'delete')}
-                              className="text-on-surface-variant hover:text-error transition-colors p-1"
-                              title="Delete"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">delete</span>
-                            </button>
-                          </>
-                        ) : null}
-                        <button
-                          onClick={() => onAssignClick(item, 'assign')}
-                          className="flex items-center gap-1 ml-2 text-[11px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">person_add</span>
-                          Assign
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr className="md:hidden bg-slate-50/50">
-                      <td colSpan={3} className="px-5 py-3 border-t border-b border-slate-100">
-                        <div className="flex flex-col gap-2.5">
-                          {showCreatedBy && (
-                            <div className="text-xs text-on-surface-variant">
-                              <span className="font-semibold text-slate-500">Created By:</span> <span className="font-bold text-on-surface">{creator}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 mt-1" onClick={e => e.stopPropagation()}>
-                            {currentUser?.role === 'Admin' || currentUser?.id === item.created_by ? (
-                              <>
-                                <button
-                                  onClick={() => { onAssignClick(item, 'edit'); setExpandedRowId(null); }}
-                                  className="flex items-center gap-1 text-[11px] font-bold text-on-surface-variant border border-outline-variant/40 bg-white hover:bg-slate-100 px-3 py-1.5 rounded-lg"
-                                >
-                                  <span className="material-symbols-outlined text-[14px]">edit</span>
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => { onAssignClick(item, 'delete'); setExpandedRowId(null); }}
-                                  className="flex items-center gap-1 text-[11px] font-bold text-error border border-error/20 bg-error/5 hover:bg-error/10 px-3 py-1.5 rounded-lg"
-                                >
-                                  <span className="material-symbols-outlined text-[14px]">delete</span>
-                                  Delete
-                                </button>
-                              </>
-                            ) : null}
-                            <button
-                              onClick={() => { onAssignClick(item, 'assign'); setExpandedRowId(null); }}
-                              className="flex items-center gap-1 text-[11px] font-bold text-primary border border-primary/30 bg-primary/5 hover:bg-primary hover:text-white px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">person_add</span>
-                              Assign
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ─── NOTIFICATIONS TAB ───────────────────────────────────────────────────────
+// ─── ANNOUNCEMENTS MODALS & TAB ────────────────────────────────────────────────
 
 function EditNoticeModal({ notice, onClose, onSave, isAdmin }) {
   const isText = notice.type === 'Text';
@@ -292,7 +101,6 @@ function AnnouncementsTab({ currentUser, profiles }) {
     else expiredNotices.push(a);
   });
 
-  // Sorting Active Notices: Admin Pinned > Admin Unpinned > Assignees
   activeNotices.sort((a, b) => {
     const cA = profiles?.find(p => p.id === a.created_by);
     const cB = profiles?.find(p => p.id === b.created_by);
@@ -314,7 +122,7 @@ function AnnouncementsTab({ currentUser, profiles }) {
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/30 overflow-hidden">
         <div className="px-5 py-4 border-b border-surface-container-high bg-surface-container-lowest flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h2 className="font-bold text-base font-headline text-on-surface flex items-center gap-2">
@@ -332,7 +140,7 @@ function AnnouncementsTab({ currentUser, profiles }) {
 
         <div className="divide-y divide-surface-container-low">
           {noticesToRender.length === 0 ? (
-            <p className="px-5 py-10 text-center text-on-surface-variant text-sm">No {subTab.toLowerCase()} announcements.</p>
+            <p className="px-5 py-10 text-center text-on-surface-variant text-sm font-medium">No {subTab.toLowerCase()} announcements.</p>
           ) : (
             noticesToRender.map(notice => (
               <NoticeCard 
@@ -417,167 +225,496 @@ function NoticeCard({ notice, isAdmin, _currentUser, profiles, getDynamicNotific
   );
 }
 
-// ─── MAIN PLANNING PAGE ────────────────────────────────────────────────────────
+// ─── MAIN PLANNING PAGE (V2 NOTES WORKSPACE) ───────────────────────────────────
 
 export default function PlanningPage() {
-  const { workItems, currentUser, profiles, updateWorkItem, deleteWorkItem } = useDataContext();
+  const { workItems, currentUser, profiles, addWorkItem, updateWorkItem, deleteWorkItem } = useDataContext();
   const location = useLocation();
-  
+
+  // Navigation & Primary Tabs
+  const [activeTab, setActiveTab] = useState(
+    location.state?.activeTab === 'Notifications' || location.state?.activeTab === 'Announcements'
+      ? 'Announcements'
+      : (location.state?.activeTab || 'Notes')
+  );
+
+  // View & Filter States
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'list' | 'comfortable'
+  const [sortBy, setSortBy] = useState('recently_edited');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState(location.state?.activeTab === 'Notifications' || location.state?.activeTab === 'Announcements' ? 'Announcements' : (location.state?.activeTab || 'Pool'));
-  const [prevLocationState, setPrevLocationState] = useState(location.state);
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [agingFilter, setAgingFilter] = useState('');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Admin & Manager Subtabs & Filters
   const [poolSubTab, setPoolSubTab] = useState('Self'); // 'Self' | 'Admins' | 'Assignees'
   const [assigneeFilterCategory, setAssigneeFilterCategory] = useState('');
-  const [assigneeFilterName, setAssigneeFilterName]         = useState('');
-  const [assignmentItem, setAssignmentItem] = useState(null);
-  const [editingPoolItem, setEditingPoolItem] = useState(null);
+  const [assigneeFilterName, setAssigneeFilterName] = useState('');
 
-  if (location.state !== prevLocationState) {
-    if (location.state?.activeTab) {
-      setActiveTab(location.state.activeTab);
-    }
-    setPrevLocationState(location.state);
-  }
+  // Multi-Selection Batch State
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  // Modals
+  const [editingNote, setEditingNote] = useState(null);
+  const [isCreatingNote, setIsCreatingNote] = useState(location.state?.openNewNote || false);
+  const [assignmentItem, setAssignmentItem] = useState(null);
 
   const isSuperAdmin = currentUser?.role === 'Admin';
+  const isManager = currentUser?.role === 'Manager';
 
+  // 1. Fetch raw planning items
   let poolItems = (workItems || []).filter(w => w.in_planning_pool && !w.is_recurring);
 
+  // 2. Role-based filtering
   if (!isSuperAdmin) {
-    poolItems = poolItems.filter(w => w.created_by === currentUser?.id);
+    if (isManager) {
+      poolItems = poolItems.filter(w => {
+        if (w.created_by === currentUser?.id || w.assignee_id === currentUser?.id) return true;
+        const creator = profiles?.find(p => p.id === w.created_by);
+        return creator?.manager === currentUser?.name;
+      });
+    } else {
+      poolItems = poolItems.filter(w => w.created_by === currentUser?.id || w.assignee_id === currentUser?.id);
+    }
   } else {
     poolItems = poolItems.filter(w => {
       const creator = profiles?.find(p => p.id === w.created_by);
-      if (poolSubTab === 'Self') return w.created_by === currentUser?.id;
-      if (poolSubTab === 'Admins') return creator?.role === 'Admin' && w.created_by !== currentUser?.id;
-      if (poolSubTab === 'Assignees') return creator?.role !== 'Admin';
+      if (poolSubTab === 'Self') return w.created_by === currentUser?.id || w.assignee_id === currentUser?.id;
+      if (poolSubTab === 'Admins') return (creator?.role === 'Admin' && w.created_by !== currentUser?.id) || w.assignee_id === currentUser?.id;
+      if (poolSubTab === 'Assignees') return creator?.role !== 'Admin' || w.assignee_id === currentUser?.id;
       return true;
     });
+
     if (poolSubTab === 'Assignees') {
       if (assigneeFilterCategory) {
         poolItems = poolItems.filter(w => {
           const creator = profiles?.find(p => p.id === w.created_by);
-          return (creator?.category || 'Office Staff') === assigneeFilterCategory;
+          const assignee = profiles?.find(p => p.id === w.assignee_id);
+          return (creator?.category || 'Office Staff') === assigneeFilterCategory || (assignee?.category || '') === assigneeFilterCategory;
         });
       }
       if (assigneeFilterName) {
-        poolItems = poolItems.filter(w => w.created_by === assigneeFilterName);
+        poolItems = poolItems.filter(w => w.created_by === assigneeFilterName || w.assignee_id === assigneeFilterName);
       }
     }
   }
 
-  const assigneeProfiles = (profiles || []).filter(p => p.role !== 'Admin');
-  const assigneeCategories = [...new Set(assigneeProfiles.map(p => p.category || 'Office Staff'))];
-  const filteredByCategory = assigneeFilterCategory
-    ? assigneeProfiles.filter(p => (p.category || 'Office Staff') === assigneeFilterCategory)
-    : assigneeProfiles;
+  // Dynamic user-specific tags extracted strictly from notes visible to this user
+  const availableTags = [...new Set(
+    poolItems.flatMap(w => Array.isArray(w.tags) ? w.tags : [])
+  )].filter(Boolean).sort();
 
-  // handleAssignTask and handleAssignProject removed as they are no longer used directly.
+  // 3. Apply Archived filter
+  poolItems = poolItems.filter(w => showArchived ? w.is_archived : !w.is_archived);
 
-  const handlePoolAction = async (item, action) => {
-    if (action === 'edit') {
-      setEditingPoolItem(item);
-    } else if (action === 'delete') {
-      await deleteWorkItem(item.id);
+  // 4. Apply Starred / Favorites filter
+  if (showFavoritesOnly) {
+    poolItems = poolItems.filter(w => w.is_favorite);
+  }
+
+  // 5. Apply Priority filter
+  if (priorityFilter) {
+    poolItems = poolItems.filter(w => w.priority === priorityFilter);
+  }
+
+  // 6. Apply Aging filter
+  if (agingFilter) {
+    poolItems = poolItems.filter(w => calculateAge(w.created_at).startsWith(agingFilter));
+  }
+
+  // 7. Apply Multi-Tags filter
+  if (selectedTags.length > 0) {
+    poolItems = poolItems.filter(w => {
+      const itemTags = Array.isArray(w.tags) ? w.tags : [];
+      const itemDesc = (w.description || '').toLowerCase();
+      return selectedTags.every(st => {
+        const cleanTag = st.toLowerCase();
+        return itemTags.some(t => t.toLowerCase() === cleanTag) || itemDesc.includes(cleanTag);
+      });
+    });
+  }
+
+  // 8. Apply Search Query
+  if (searchQuery.trim()) {
+    const q = searchQuery.toLowerCase();
+    poolItems = poolItems.filter(w => {
+      const t = (w.title || '').toLowerCase();
+      const d = (w.description || '').toLowerCase();
+      const itemTags = Array.isArray(w.tags) ? w.tags.join(' ').toLowerCase() : '';
+      return t.includes(q) || d.includes(q) || itemTags.includes(q);
+    });
+  }
+
+  // 9. Sort Notes
+  poolItems.sort((a, b) => {
+    // Pinned notes always stay at top
+    if (a.is_pinned && !b.is_pinned) return -1;
+    if (!a.is_pinned && b.is_pinned) return 1;
+
+    if (sortBy === 'recently_edited') {
+      const timeA = new Date(a.updated_at || a.created_at).getTime();
+      const timeB = new Date(b.updated_at || b.created_at).getTime();
+      return timeB - timeA;
+    }
+    if (sortBy === 'recently_created') {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    if (sortBy === 'oldest') {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }
+    if (sortBy === 'alphabetical') {
+      return (a.title || '').localeCompare(b.title || '');
+    }
+    if (sortBy === 'priority') {
+      const pOrder = { High: 1, Medium: 2, Low: 3 };
+      return (pOrder[a.priority] || 2) - (pOrder[b.priority] || 2);
+    }
+    if (sortBy === 'aging') {
+      const ageA = calculateAge(a.created_at);
+      const ageB = calculateAge(b.created_at);
+      const ageOrder = (str) => str === 'Aged' ? 1 : str.startsWith('Aging') ? 2 : 3;
+      return ageOrder(ageA) - ageOrder(ageB);
+    }
+    return 0;
+  });
+
+  // Separate pinned & unpinned for UI rendering
+  const pinnedNotes = poolItems.filter(w => w.is_pinned);
+  const unpinnedNotes = poolItems.filter(w => !w.is_pinned);
+
+  // Multi-Selection Handlers
+  const toggleSelectNote = (id) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(i => i !== id));
     } else {
-      setAssignmentItem(item);
+      setSelectedIds([...selectedIds, id]);
     }
   };
 
+  const handleSelectAll = () => {
+    if (selectedIds.length === poolItems.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(poolItems.map(w => w.id));
+    }
+  };
+
+  // Quick Card Handlers
+  const handleTogglePin = async (note) => {
+    await updateWorkItem(note.id, { is_pinned: !note.is_pinned, updated_at: new Date().toISOString() });
+  };
+
+  const handleToggleFavorite = async (note) => {
+    await updateWorkItem(note.id, { is_favorite: !note.is_favorite, updated_at: new Date().toISOString() });
+  };
+
+  const handleChangeColor = async (id, newColor) => {
+    await updateWorkItem(id, { color: newColor, updated_at: new Date().toISOString() });
+  };
+
+  const handleDuplicate = async (note) => {
+    const { title, body } = parseNoteTitleAndBody(note);
+    await addWorkItem({
+      title: `${title} (Copy)`,
+      description: body || note.description || '',
+      priority: note.priority || 'Medium',
+      color: note.color || 'default',
+      tags: Array.isArray(note.tags) ? [...note.tags] : [],
+      in_planning_pool: true,
+      created_by: currentUser?.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+  };
+
+  const handleArchive = async (note) => {
+    await updateWorkItem(note.id, { is_archived: !note.is_archived, updated_at: new Date().toISOString() });
+  };
+
+  // Batch Handlers
+  const handleBatchDelete = async () => {
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} notes?`)) return;
+    for (const id of selectedIds) {
+      await deleteWorkItem(id);
+    }
+    setSelectedIds([]);
+  };
+
+  const handleBatchArchive = async () => {
+    for (const id of selectedIds) {
+      await updateWorkItem(id, { is_archived: true, updated_at: new Date().toISOString() });
+    }
+    setSelectedIds([]);
+  };
+
+  const handleBatchChangePriority = async () => {
+    const p = window.prompt("Set priority for selected notes (High, Medium, Low):", "High");
+    if (!p || !['High', 'Medium', 'Low'].includes(p)) return;
+    for (const id of selectedIds) {
+      await updateWorkItem(id, { priority: p, updated_at: new Date().toISOString() });
+    }
+    setSelectedIds([]);
+  };
+
+  const handleBatchAddTag = async () => {
+    const tag = window.prompt("Enter tag to add to selected notes (e.g. #Meeting):", "#FollowUp");
+    if (!tag) return;
+    const cleanTag = tag.startsWith('#') ? tag : `#${tag}`;
+    for (const id of selectedIds) {
+      const item = poolItems.find(w => w.id === id);
+      const existing = Array.isArray(item?.tags) ? item.tags : [];
+      if (!existing.includes(cleanTag)) {
+        await updateWorkItem(id, { tags: [...existing, cleanTag], updated_at: new Date().toISOString() });
+      }
+    }
+    setSelectedIds([]);
+  };
+
+  const handleBatchAssign = () => {
+    const firstSelected = poolItems.find(w => w.id === selectedIds[0]);
+    if (firstSelected) {
+      setAssignmentItem(firstSelected);
+    }
+  };
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-full md:max-w-[1200px] mx-auto pb-12 animate-fade-in">
+    <div className="flex flex-col gap-6 w-full max-w-full md:max-w-[1280px] mx-auto pb-24 animate-fade-in relative min-h-screen">
+      
+      {/* TOP CONTROL & FILTER TOOLBAR */}
+      <NotesFilterToolbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        selectedTags={selectedTags}
+        setSelectedTags={setSelectedTags}
+        availableTags={availableTags}
+        priorityFilter={priorityFilter}
+        setPriorityFilter={setPriorityFilter}
+        agingFilter={agingFilter}
+        setAgingFilter={setAgingFilter}
+        showFavoritesOnly={showFavoritesOnly}
+        setShowFavoritesOnly={setShowFavoritesOnly}
+        showArchived={showArchived}
+        setShowArchived={setShowArchived}
+        currentUser={currentUser}
+        profiles={profiles}
+        poolSubTab={poolSubTab}
+        setPoolSubTab={setPoolSubTab}
+        assigneeFilterCategory={assigneeFilterCategory}
+        setAssigneeFilterCategory={setAssigneeFilterCategory}
+        assigneeFilterName={assigneeFilterName}
+        setAssigneeFilterName={setAssigneeFilterName}
+        // Multi-select props
+        selectedIds={selectedIds}
+        onClearSelection={() => setSelectedIds([])}
+        onSelectAll={handleSelectAll}
+        totalCount={poolItems.length}
+        onBatchAssign={handleBatchAssign}
+        onBatchDelete={handleBatchDelete}
+        onBatchArchive={handleBatchArchive}
+        onBatchChangePriority={handleBatchChangePriority}
+        onBatchAddTag={handleBatchAddTag}
+        onOpenNewNote={() => setIsCreatingNote(true)}
+      />
 
-      {/* TOP HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Admin Sub-Tabs */}
-        <div className="flex flex-col gap-2">
-          {isSuperAdmin && activeTab === 'Pool' ? (
-            <>
-              <div className="flex bg-surface-container rounded-xl p-1 gap-0.5">
-                <button onClick={() => setPoolSubTab('Self')} className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${poolSubTab === 'Self' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>Self</button>
-                <button onClick={() => setPoolSubTab('Admins')} className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${poolSubTab === 'Admins' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>Admins</button>
-                <button onClick={() => { setPoolSubTab('Assignees'); setAssigneeFilterCategory(''); setAssigneeFilterName(''); }} className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${poolSubTab === 'Assignees' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>Assignees</button>
+      {/* TABS CONTENT */}
+      {activeTab === 'Notes' && (
+        <div className="flex flex-col gap-6">
+          
+          {/* EMPTY STATE */}
+          {poolItems.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 border border-outline-variant/30 shadow-sm flex flex-col items-center justify-center text-center my-6">
+              <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-3xl">edit_note</span>
               </div>
-              {poolSubTab === 'Assignees' && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <select value={assigneeFilterCategory} onChange={e => { setAssigneeFilterCategory(e.target.value); setAssigneeFilterName(''); }}
-                    className="border border-outline-variant/40 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
-                    <option value="">All Categories</option>
-                    {assigneeCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <select value={assigneeFilterName} onChange={e => setAssigneeFilterName(e.target.value)}
-                    className="border border-outline-variant/40 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
-                    <option value="">All Names</option>
-                    {filteredByCategory.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+              <h3 className="font-bold text-lg font-headline text-on-surface mb-1">
+                {showArchived ? 'No archived notes found' : 'Your Notes Workspace is Empty'}
+              </h3>
+              <p className="text-xs text-on-surface-variant max-w-sm mb-6 leading-relaxed">
+                Capture quick ideas, meeting notes, project specs, or task drafts naturally. Click the (+) button below to create your first note.
+              </p>
+              <button
+                onClick={() => setIsCreatingNote(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white font-bold text-xs rounded-xl shadow-md hover:opacity-90 transition-all uppercase tracking-wider"
+              >
+                <span className="material-symbols-outlined text-base">add</span>
+                Create First Note
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* PINNED NOTES SECTION */}
+              {pinnedNotes.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <h3 className="text-xs font-extrabold uppercase tracking-widest text-outline flex items-center gap-1.5 pl-1">
+                    <span className="material-symbols-outlined text-amber-500 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>keep</span>
+                    Pinned Notes ({pinnedNotes.length})
+                  </h3>
+
+                  {viewMode === 'list' ? (
+                    <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm divide-y divide-surface-container-low overflow-hidden">
+                      {pinnedNotes.map(note => (
+                        <NoteListRow
+                          key={note.id}
+                          note={note}
+                          profiles={profiles}
+                          currentUser={currentUser}
+                          isSelected={selectedIds.includes(note.id)}
+                          onToggleSelect={toggleSelectNote}
+                          onEdit={setEditingNote}
+                          onAssign={setAssignmentItem}
+                          onTogglePin={handleTogglePin}
+                          onToggleFavorite={handleToggleFavorite}
+                          onArchive={handleArchive}
+                          onDelete={deleteWorkItem}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={`grid gap-4 ${
+                      viewMode === 'comfortable' 
+                        ? 'grid-cols-1 md:grid-cols-2' 
+                        : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+                    }`}>
+                      {pinnedNotes.map(note => (
+                        <NoteCard
+                          key={note.id}
+                          note={note}
+                          profiles={profiles}
+                          currentUser={currentUser}
+                          isSelected={selectedIds.includes(note.id)}
+                          onToggleSelect={toggleSelectNote}
+                          onEdit={setEditingNote}
+                          onAssign={setAssignmentItem}
+                          onTogglePin={handleTogglePin}
+                          onToggleFavorite={handleToggleFavorite}
+                          onChangeColor={handleChangeColor}
+                          onDuplicate={handleDuplicate}
+                          onArchive={handleArchive}
+                          onDelete={deleteWorkItem}
+                          viewMode={viewMode}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* UNPINNED NOTES SECTION */}
+              {unpinnedNotes.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  {pinnedNotes.length > 0 && (
+                    <h3 className="text-xs font-extrabold uppercase tracking-widest text-outline pl-1 pt-2">
+                      Others ({unpinnedNotes.length})
+                    </h3>
+                  )}
+
+                  {viewMode === 'list' ? (
+                    <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm divide-y divide-surface-container-low overflow-hidden">
+                      {unpinnedNotes.map(note => (
+                        <NoteListRow
+                          key={note.id}
+                          note={note}
+                          profiles={profiles}
+                          currentUser={currentUser}
+                          isSelected={selectedIds.includes(note.id)}
+                          onToggleSelect={toggleSelectNote}
+                          onEdit={setEditingNote}
+                          onAssign={setAssignmentItem}
+                          onTogglePin={handleTogglePin}
+                          onToggleFavorite={handleToggleFavorite}
+                          onArchive={handleArchive}
+                          onDelete={deleteWorkItem}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={`grid gap-4 ${
+                      viewMode === 'comfortable' 
+                        ? 'grid-cols-1 md:grid-cols-2' 
+                        : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+                    }`}>
+                      {unpinnedNotes.map(note => (
+                        <NoteCard
+                          key={note.id}
+                          note={note}
+                          profiles={profiles}
+                          currentUser={currentUser}
+                          isSelected={selectedIds.includes(note.id)}
+                          onToggleSelect={toggleSelectNote}
+                          onEdit={setEditingNote}
+                          onAssign={setAssignmentItem}
+                          onTogglePin={handleTogglePin}
+                          onToggleFavorite={handleToggleFavorite}
+                          onChangeColor={handleChangeColor}
+                          onDuplicate={handleDuplicate}
+                          onArchive={handleArchive}
+                          onDelete={deleteWorkItem}
+                          viewMode={viewMode}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>
-          ) : <div className="hidden md:block w-4" />}
+          )}
         </div>
-
-        {/* Global Search & Action Tabs */}
-        <div className="flex items-center gap-3">
-          <div className="relative group">
-            <input 
-              type="text" 
-              placeholder="Search 🔍" 
-              value={searchQuery} 
-              onChange={e => setSearchQuery(e.target.value)}
-              className="bg-white border border-outline-variant/40 rounded-full py-1.5 pl-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 w-48 transition-all"
-            />
-          </div>
-          
-          {/* Tabs for all roles */}
-          <div className="flex bg-surface-container rounded-xl p-1 gap-0.5">
-            <button 
-              onClick={() => setActiveTab('Pool')} 
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'Pool' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
-            >
-              Pool
-            </button>
-            <button 
-              onClick={() => setActiveTab('Announcements')} 
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeTab === 'Announcements' ? 'bg-white shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
-            >
-              Announcements
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* TABS CONTENT */}
-      {activeTab === 'Pool' && (
-        <PlanningPoolTab 
-          poolItems={poolItems} 
-          onAssignClick={handlePoolAction} 
-          profiles={profiles} 
-          currentUser={currentUser}
-          searchQuery={searchQuery}
-          poolSubTab={poolSubTab}
-        />
       )}
 
+      {/* ANNOUNCEMENTS TAB */}
       {activeTab === 'Announcements' && (
         <AnnouncementsTab currentUser={currentUser} profiles={profiles} />
       )}
 
-      {assignmentItem && (
-        <CreateItemModal
-          initialData={assignmentItem}
-          onClose={() => setAssignmentItem(null)}
-          onSuccessConvert={async () => {
-             await deleteWorkItem(assignmentItem.id);
+      {/* APPLE NOTES EDITOR MODAL (New or Edit) */}
+      {(isCreatingNote || editingNote) && (
+        <NoteEditorModal
+          note={editingNote}
+          profiles={profiles}
+          currentUser={currentUser}
+          onClose={() => {
+            setIsCreatingNote(false);
+            setEditingNote(null);
+          }}
+          onSave={async (idOrData, updates) => {
+            if (typeof idOrData === 'string') {
+              return await updateWorkItem(idOrData, updates);
+            } else {
+              return await addWorkItem({
+                ...idOrData,
+                created_by: currentUser?.id,
+                created_at: new Date().toISOString()
+              });
+            }
+          }}
+          onAssign={(noteToAssign) => {
+            setAssignmentItem(noteToAssign);
           }}
         />
       )}
 
-      {editingPoolItem && (
-        <EditPoolModal 
-          item={editingPoolItem}
-          onClose={() => setEditingPoolItem(null)}
-          onSave={updateWorkItem}
+      {/* ASSIGN / CONVERT ITEM MODAL (Promotes Note to Task/Project/Event) */}
+      {assignmentItem && (
+        <CreateItemModal
+          initialData={{
+            ...assignmentItem,
+            title: assignmentItem.title || 'New Task',
+            description: assignmentItem.description || ''
+          }}
+          onClose={() => setAssignmentItem(null)}
+          onSuccessConvert={async () => {
+            // Note converted to active work item - automatically remove original note
+            await deleteWorkItem(assignmentItem.id);
+            setAssignmentItem(null);
+          }}
         />
       )}
     </div>

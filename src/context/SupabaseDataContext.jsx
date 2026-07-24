@@ -235,7 +235,11 @@ export function SupabaseDataProvider({ children, session }) {
 
   const addWorkItem = async (itemData) => {
     const { data, error } = await supabase.from('work_items').insert([itemData]).select();
-    if (error) console.error('Error adding work item:', error);
+    if (error) {
+      console.error('Error adding work item:', error);
+    } else if (data && data.length > 0) {
+      setWorkItems(prev => [...prev, ...data]);
+    }
     return { data, error };
   };
 

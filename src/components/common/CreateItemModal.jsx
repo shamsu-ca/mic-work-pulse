@@ -192,43 +192,37 @@ export default function CreateItemModal({ onClose, initialData, onSuccessConvert
             <div className="p-6 grid grid-cols-2 gap-4">
               <button
                 onClick={() => setStep('task')}
-                className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-outline-variant/30 hover:border-primary hover:bg-primary/5 transition-all group"
+                className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-outline-variant/30 hover:border-primary hover:bg-primary/5 transition-all group"
               >
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                   <span className="material-symbols-outlined text-primary text-2xl" style={{fontVariationSettings:"'FILL' 1"}}>assignment</span>
                 </div>
-                <div className="text-center">
-                  <p className="font-bold text-on-surface text-sm">Task</p>
-                  <p className="text-[10px] text-on-surface-variant">Assign to work pipeline</p>
-                </div>
+                <p className="font-bold text-on-surface text-sm">Task</p>
               </button>
               <button
-                onClick={() => setStep('plan')}
-                className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-outline-variant/30 hover:border-indigo-500 hover:bg-indigo-50 transition-all group"
+                onClick={() => {
+                  onClose();
+                  navigate('/planning', { state: { activeTab: 'Notes', openNewNote: true } });
+                }}
+                className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-outline-variant/30 hover:border-indigo-500 hover:bg-indigo-50 transition-all group"
               >
                 <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
                   <span className="material-symbols-outlined text-indigo-600 text-2xl" style={{fontVariationSettings:"'FILL' 1"}}>account_tree</span>
                 </div>
-                <div className="text-center">
-                  <p className="font-bold text-on-surface text-sm">Plan</p>
-                  <p className="text-[10px] text-on-surface-variant">Add to planning pool</p>
-                </div>
+                <p className="font-bold text-on-surface text-sm">Planning Note</p>
               </button>
               <div className="col-span-2 mt-2">
                 <button
                   onClick={() => setStep('notification')}
-                  className="w-full flex items-center justify-between p-3 rounded-xl border border-outline-variant/30 hover:border-pink-300 hover:bg-pink-50 transition-all group"
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl border border-outline-variant/30 hover:border-pink-300 hover:bg-pink-50 transition-all group"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-pink-50 flex items-center justify-center group-hover:bg-pink-100 transition-colors">
                       <span className="material-symbols-outlined text-pink-600 text-[20px]" style={{fontVariationSettings:"'FILL' 1"}}>campaign</span>
                     </div>
-                    <div className="text-left">
-                      <p className="font-bold text-on-surface text-sm leading-none">
-                        {currentUser?.role === 'Admin' ? 'Broadcast Notification' : 'Create Announcement'}
-                      </p>
-                      <p className="text-[10px] text-on-surface-variant mt-1.5 leading-none">Alert staff immediately</p>
-                    </div>
+                    <p className="font-bold text-on-surface text-sm">
+                      {currentUser?.role === 'Admin' ? 'Broadcast Notification' : 'Create Announcement'}
+                    </p>
                   </div>
                   <span className="material-symbols-outlined text-outline group-hover:text-pink-500 transition-colors text-[20px]">chevron_right</span>
                 </button>
