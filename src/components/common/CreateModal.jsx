@@ -30,7 +30,7 @@ export default function CreateModal({ isOpen, onClose, defaultType = 'Task' }) {
     if (currentUser?.role === 'Manager') {
       return safeProfiles.filter(p => p.id === currentUser.id || p.manager === currentUser.name);
     }
-    return safeProfiles.filter(p => p.id === currentUser?.id || p.role !== 'Admin');
+    return safeProfiles;
   })();
   const safeContainers = containers || [];
 

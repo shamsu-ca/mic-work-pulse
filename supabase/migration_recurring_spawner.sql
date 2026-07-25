@@ -145,11 +145,11 @@ BEGIN
           INSERT INTO public.work_items (
             title, description, type, assignee_id, container_id,
             estimated_hours, priority, status, expected_date, is_recurring,
-            parent_id, source_template_item_id
+            parent_id, source_template_item_id, created_by
           ) VALUES (
             template.title, template.description, 'Task', template.assignee_id, NULL,
             template.estimated_hours, template.priority, 'Assigned', today_ist, FALSE,
-            NULL, template.id
+            NULL, template.id, COALESCE(template.created_by, template.assignee_id)
           );
           
           -- Only update last_generated_at if insertion succeeded

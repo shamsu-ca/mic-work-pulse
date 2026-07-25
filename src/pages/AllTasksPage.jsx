@@ -929,14 +929,19 @@ export default function AllTasksPage() {
     baseRaw = baseRaw.filter(w => w.assignee_id === currentUser.id);
   } else {
     // Admin sees filtered group plus any unassigned works
-    const targetStaffIds = new Set(safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup).map(p => p.id));
+    const getTargetStaffIds = () => {
+      if (staffGroup === 'Self') return new Set([currentUser?.id]);
+      if (staffGroup === 'Admin') return new Set(safeProfiles.filter(p => p.role === 'Admin').map(p => p.id));
+      return new Set(safeProfiles.filter(p => (p.category || 'Office Staff') === staffGroup || p.id === currentUser?.id).map(p => p.id));
+    };
+    const targetStaffIds = getTargetStaffIds();
     baseRaw = baseRaw.filter(w => !w.assignee_id || targetStaffIds.has(w.assignee_id));
   }
 
   const allBase = baseRaw.filter(w => isLowestLevelActionableUnit(w, safeWorkItems));
 
-  const deptList = ['All Departments', ...new Set(safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup).map(p => p.department).filter(Boolean))];
-  const staffListForFilter = safeProfiles.filter(p => p.role !== 'Admin' && p.category === staffGroup && (!filterDept || filterDept === 'All Departments' || p.department === filterDept));
+  const deptList = ['All Departments', ...new Set(safeProfiles.filter(p => (p.category || 'Office Staff') === staffGroup || staffGroup === 'Admin').map(p => p.department).filter(Boolean))];
+  const staffListForFilter = safeProfiles.filter(p => ((p.category || 'Office Staff') === staffGroup || staffGroup === 'Admin' || (staffGroup === 'Self' && p.id === currentUser?.id)) && (!filterDept || filterDept === 'All Departments' || p.department === filterDept));
 
   const applyFilters = (items) => {
     let r = items;

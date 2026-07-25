@@ -54,11 +54,11 @@ BEGIN
           INSERT INTO public.work_items (
             title, description, type, assignee_id, container_id,
             estimated_hours, priority, status, expected_date, is_recurring,
-            parent_id, source_template_item_id
+            parent_id, source_template_item_id, created_by
           ) VALUES (
             NEW.title, NEW.description, 'Task', NEW.assignee_id, NULL,
             NEW.estimated_hours, NEW.priority, 'Assigned', today_ist, FALSE,
-            NULL, NEW.id
+            NULL, NEW.id, COALESCE(NEW.created_by, NEW.assignee_id)
           );
           
           -- Update last_generated_at on the template to today

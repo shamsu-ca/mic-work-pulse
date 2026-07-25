@@ -498,9 +498,11 @@ export default function MainDashboard() {
   const [milestoneForm, setMilestoneForm] = useState({ title: '', date: '', assignee_id: '' });
   const [isMilestoneSubmitting, setIsMilestoneSubmitting] = useState(false);
 
-  const filteredProfiles = safeProfiles.filter(p =>
-    (p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup) || p.id === currentUser?.id
-  );
+  const filteredProfiles = safeProfiles.filter(p => {
+    if (staffGroup === 'Self') return p.id === currentUser?.id;
+    if (staffGroup === 'Admin') return p.role === 'Admin';
+    return (p.category || 'Office Staff') === staffGroup || p.id === currentUser?.id;
+  });
   const milestoneAssigneeOptions = isAdmin
     ? filteredProfiles
     : safeProfiles.filter(p => p.id === currentUser?.id || p.manager === currentUser?.name);
@@ -545,7 +547,13 @@ export default function MainDashboard() {
 
   const getTargetUserIds = () => {
     if (isAdmin) {
-      return new Set(safeProfiles.filter(p => p.role !== 'Admin' && (p.category || 'Office Staff') === staffGroup).map(p => p.id));
+      if (staffGroup === 'Self') {
+        return new Set([currentUser?.id]);
+      }
+      if (staffGroup === 'Admin') {
+        return new Set(safeProfiles.filter(p => p.role === 'Admin').map(p => p.id));
+      }
+      return new Set(safeProfiles.filter(p => (p.category || 'Office Staff') === staffGroup || p.id === currentUser?.id).map(p => p.id));
     }
     if (isManager && viewMode === 'assistants') {
       return new Set(assistants.map(p => p.id));

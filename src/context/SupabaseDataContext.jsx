@@ -96,7 +96,14 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: allLeaves } = await supabase.from('leave_requests').select('*');
         if (allLeaves) setLeaveRequests(allLeaves);
 
-        // 6. Fetch work items directly (recurring tasks are spawned server-side)
+        // 5.7 Fallback: Run idempotent recurring tasks spawner (ensures tasks spawn even if pg_cron missed due to project sleep/pause)
+        try {
+          await supabase.rpc('spawn_recurring_tasks_ist');
+        } catch (rpcErr) {
+          console.warn('Fallback spawn_recurring_tasks_ist warning:', rpcErr);
+        }
+
+        // 6. Fetch work items directly
         const { data: allWorkItems } = await supabase.from('work_items').select('*');
         if (allWorkItems) {
           setWorkItems(allWorkItems);
@@ -305,7 +312,12 @@ export function SupabaseDataProvider({ children, session }) {
       console.error('Error adding saved task:', error);
       return { data, error };
     }
-
+    if (data && data.length > 0) {
+      setSavedTasks(prev => [...prev, ...data]);
+      // Re-fetch work items so any auto-spawned work item from DB trigger immediately reflects in UI state
+      const { data: freshWi } = await supabase.from('work_items').select('*');
+      if (freshWi) setWorkItems(freshWi);
+    }
     return { data, error };
   };
 
@@ -754,6 +766,21 @@ export function SupabaseDataProvider({ children, session }) {
     return { error };
   };
 
+  const triggerRecurringSpawn = async () => {
+    try {
+      const { error } = await supabase.rpc('spawn_recurring_tasks_ist');
+      if (error) throw error;
+      const { data: refreshedItems } = await supabase.from('work_items').select('*');
+      if (refreshedItems) setWorkItems(refreshedItems);
+      const { data: refreshedSaved } = await supabase.from('saved_tasks').select('*');
+      if (refreshedSaved) setSavedTasks(refreshedSaved);
+      return { success: true };
+    } catch (err) {
+      console.error('Error triggering recurring spawn:', err);
+      return { success: false, error: err };
+    }
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser,
@@ -809,6 +836,7 @@ export function SupabaseDataProvider({ children, session }) {
       adminResetUserPassword,
       adminUpdateUser,
       getNextWorkingDay,
+      triggerRecurringSpawn,
     }}>
       {children}
     </DataContext.Provider>

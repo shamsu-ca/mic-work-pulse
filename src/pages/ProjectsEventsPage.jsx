@@ -306,6 +306,7 @@ export default function ProjectsEventsPage() {
     completeWorkItem, createFollowUpTask,
     staffGroup,
     getNextWorkingDay,
+    triggerRecurringSpawn,
   } = useDataContext();
 
   const safeContainers      = containers      ?? [];
@@ -1488,6 +1489,22 @@ export default function ProjectsEventsPage() {
     const [editingRec, setEditingRec]     = useState(null);
     const [modalData, setModalData]       = useState({});
     const [saving, setSaving]             = useState(false);
+    const [syncing, setSyncing]           = useState(false);
+    const [syncMsg, setSyncMsg]           = useState(null);
+
+    const handleSyncRecurring = async () => {
+      if (!triggerRecurringSpawn) return;
+      setSyncing(true);
+      setSyncMsg(null);
+      const res = await triggerRecurringSpawn();
+      setSyncing(false);
+      if (res?.success) {
+        setSyncMsg("Successfully synced & spawned today's recurring tasks!");
+        setTimeout(() => setSyncMsg(null), 4000);
+      } else {
+        setSyncMsg("Error syncing recurring tasks: " + (res?.error?.message || "Unknown error"));
+      }
+    };
 
     const isManager = safeProfiles.some(p => p.manager === currentUser?.name);
     const canEdit = isAdmin || isManager || currentUser?.role === 'Assignee';
@@ -1596,12 +1613,32 @@ export default function ProjectsEventsPage() {
         )}
 
         <div className="bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-          <div className="px-6 py-4 border-b border-surface-container-high flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-surface-container-high flex items-center justify-between flex-wrap gap-2">
             <h2 className="font-bold text-base text-on-surface flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">repeat</span> Saved Recurring Tasks
             </h2>
-            <span className="text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-full">{recurringTasks.length} items</span>
+            <div className="flex items-center gap-3">
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={handleSyncRecurring}
+                  disabled={syncing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 rounded-xl transition-all border border-primary/20 disabled:opacity-50"
+                  title="Run spawner check for today's recurring tasks"
+                >
+                  <span className={`material-symbols-outlined text-[16px] ${syncing ? 'animate-spin' : ''}`}>sync</span>
+                  {syncing ? 'Syncing…' : 'Sync Today\'s Spawns'}
+                </button>
+              )}
+              <span className="text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-full">{recurringTasks.length} items</span>
+            </div>
           </div>
+          {syncMsg && (
+            <div className="px-6 py-2 bg-primary/10 text-primary text-xs font-bold border-b border-primary/20 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">info</span>
+              {syncMsg}
+            </div>
+          )}
 
           <div className="p-4 bg-surface-container-lowest">
             {recurringTasks.length === 0 ? (
