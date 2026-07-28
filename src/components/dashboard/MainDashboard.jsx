@@ -951,7 +951,7 @@ export default function MainDashboard() {
               <div className="text-center p-6 border-2 border-dashed border-slate-200 rounded-lg text-slate-400 text-xs font-medium">No tasks due today.</div>
             ) : (
               todayFocusGrouped.map(([assigneeName, items]) => {
-                const isCollapsed = collapsedTodayFocus[assigneeName] !== undefined ? collapsedTodayFocus[assigneeName] : isAdmin;
+                const isCollapsed = collapsedTodayFocus[assigneeName] !== undefined ? collapsedTodayFocus[assigneeName] : false;
                 const ongoing = items.filter(w => w.status === 'Ongoing');
                 const assigned = items.filter(w => w.status === 'Assigned');
                 

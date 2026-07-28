@@ -96,13 +96,6 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: allLeaves } = await supabase.from('leave_requests').select('*');
         if (allLeaves) setLeaveRequests(allLeaves);
 
-        // 5.7 Fallback: Run idempotent recurring tasks spawner (ensures tasks spawn even if pg_cron missed due to project sleep/pause)
-        try {
-          await supabase.rpc('spawn_recurring_tasks_ist');
-        } catch (rpcErr) {
-          console.warn('Fallback spawn_recurring_tasks_ist warning:', rpcErr);
-        }
-
         // 6. Fetch work items directly
         const { data: allWorkItems } = await supabase.from('work_items').select('*');
         if (allWorkItems) {
@@ -197,7 +190,27 @@ export function SupabaseDataProvider({ children, session }) {
         supabase.from('leave_requests').select('*').then(({ data }) => { if (data) setLeaveRequests(data); });
       }).subscribe();
 
+    // Auto-sync on window focus / tab visibility change (e.g. waking computer or returning to tab)
+    const handleFocusSync = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAllData();
+      }
+    };
+    window.addEventListener('focus', handleFocusSync);
+    document.addEventListener('visibilitychange', handleFocusSync);
+
+    // Background 30-second polling fallback to ensure state stays in sync even if WebSocket drops
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        supabase.from('work_items').select('*').then(({ data }) => { if (data) setWorkItems(data); });
+        supabase.from('saved_tasks').select('*').then(({ data }) => { if (data) setSavedTasks(data); });
+      }
+    }, 30000);
+
     return () => {
+      window.removeEventListener('focus', handleFocusSync);
+      document.removeEventListener('visibilitychange', handleFocusSync);
+      clearInterval(pollInterval);
       supabase.removeChannel(profilesSub);
       supabase.removeChannel(containersSub);
       supabase.removeChannel(savedContainersSub);
@@ -246,6 +259,7 @@ export function SupabaseDataProvider({ children, session }) {
       console.error('Error adding work item:', error);
     } else if (data && data.length > 0) {
       setWorkItems(prev => [...prev, ...data]);
+      supabase.from('work_items').select('*').then(({ data: d }) => { if (d) setWorkItems(d); });
     }
     return { data, error };
   };

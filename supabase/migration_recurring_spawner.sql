@@ -7,7 +7,10 @@ CREATE OR REPLACE FUNCTION public.is_scheduled_day(
   rule JSONB,
   last_generated DATE,
   created_at TIMESTAMPTZ
-) RETURNS BOOLEAN AS $$
+) RETURNS BOOLEAN 
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   rule_type TEXT := rule->>'type';
   interval_val INT;
@@ -19,6 +22,10 @@ DECLARE
   dow INT;
   dom INT;
 BEGIN
+  IF rule IS NULL OR rule_type IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
   -- Determine the reference date
   IF last_generated IS NOT NULL THEN
     last_date := last_generated;
@@ -30,9 +37,12 @@ BEGIN
     RETURN TRUE;
   END IF;
 
-  IF rule_type = 'every_x_days' THEN
-    interval_val := (rule->>'interval')::INT;
+  IF rule_type = 'every_x_days' OR rule_type = 'x_days' THEN
+    interval_val := COALESCE((rule->>'interval')::INT, (rule->>'x_day_interval')::INT);
     IF interval_val IS NOT NULL AND interval_val > 0 THEN
+      IF last_generated IS NULL AND check_date = last_date THEN
+        RETURN TRUE;
+      END IF;
       RETURN (check_date - last_date) >= interval_val;
     END IF;
     RETURN FALSE;
@@ -61,14 +71,17 @@ BEGIN
   IF rule_type = 'x_monthly' OR rule_type = 'every_x_months' THEN
     dom := EXTRACT(DAY FROM check_date)::INT;
     IF rule_type = 'x_monthly' THEN
-      interval_val := (rule->>'x_month_interval')::INT;
-      monthly_day := (rule->>'monthly_day')::INT;
+      interval_val := COALESCE((rule->>'x_month_interval')::INT, (rule->>'interval')::INT);
+      monthly_day := COALESCE((rule->>'monthly_day')::INT, (rule->>'date')::INT, 1);
     ELSE
-      interval_val := (rule->>'interval')::INT;
-      monthly_day := COALESCE((rule->>'date')::INT, 1);
+      interval_val := COALESCE((rule->>'interval')::INT, (rule->>'x_month_interval')::INT);
+      monthly_day := COALESCE((rule->>'date')::INT, (rule->>'monthly_day')::INT, 1);
     END IF;
 
     IF dom = monthly_day THEN
+      IF last_generated IS NULL THEN
+        RETURN TRUE;
+      END IF;
       month_diff := (EXTRACT(YEAR FROM check_date)::INT - EXTRACT(YEAR FROM last_date)::INT) * 12 
                   + (EXTRACT(MONTH FROM check_date)::INT - EXTRACT(MONTH FROM last_date)::INT);
       RETURN month_diff >= interval_val;
@@ -80,9 +93,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
+GRANT EXECUTE ON FUNCTION public.is_scheduled_day(DATE, JSONB, DATE, TIMESTAMPTZ) TO postgres, anon, authenticated, service_role;
+
 -- 2. Spawner function running server-side
 CREATE OR REPLACE FUNCTION public.spawn_recurring_tasks_ist()
-RETURNS VOID AS $$
+RETURNS VOID 
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   today_ist DATE := (timezone('Asia/Kolkata', now()))::DATE;
   template RECORD;
@@ -165,6 +183,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+GRANT EXECUTE ON FUNCTION public.spawn_recurring_tasks_ist() TO postgres, anon, authenticated, service_role;
+
 -- 3. Enable pg_cron and schedule the job
 CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
 
@@ -180,7 +200,10 @@ SELECT cron.schedule(
 
 -- 4. Trigger to auto-spawn task immediately on template creation if today matches rule
 CREATE OR REPLACE FUNCTION public.on_saved_task_created_spawn()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   today_ist DATE := (timezone('Asia/Kolkata', now()))::DATE;
   is_full_day_leave BOOLEAN;
@@ -224,11 +247,11 @@ BEGIN
           INSERT INTO public.work_items (
             title, description, type, assignee_id, container_id,
             estimated_hours, priority, status, expected_date, is_recurring,
-            parent_id, source_template_item_id
+            parent_id, source_template_item_id, created_by
           ) VALUES (
             NEW.title, NEW.description, 'Task', NEW.assignee_id, NULL,
             NEW.estimated_hours, NEW.priority, 'Assigned', today_ist, FALSE,
-            NULL, NEW.id
+            NULL, NEW.id, COALESCE(NEW.created_by, NEW.assignee_id)
           );
           
           IF NEW.last_generated_at IS DISTINCT FROM today_ist THEN
@@ -248,4 +271,3 @@ DROP TRIGGER IF EXISTS trigger_saved_task_created ON public.saved_tasks;
 CREATE TRIGGER trigger_saved_task_created
   AFTER INSERT ON public.saved_tasks
   FOR EACH ROW EXECUTE PROCEDURE public.on_saved_task_created_spawn();
-

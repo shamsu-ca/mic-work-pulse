@@ -2,7 +2,10 @@
 -- Run this in the Supabase SQL Editor.
 
 CREATE OR REPLACE FUNCTION public.on_saved_task_created_spawn()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   today_ist DATE := (timezone('Asia/Kolkata', now()))::DATE;
   is_full_day_leave BOOLEAN;
