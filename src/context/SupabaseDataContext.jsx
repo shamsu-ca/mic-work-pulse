@@ -34,6 +34,33 @@ export function SupabaseDataProvider({ children, session }) {
   const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
   const [staffGroup, setStaffGroup] = useState('Office Staff');
 
+  const fetchAllFromTable = async (tableName, orderCol = 'created_at', ascending = false) => {
+    let allData = [];
+    let from = 0;
+    const step = 1000;
+    let keepFetching = true;
+
+    while (keepFetching) {
+      let query = supabase.from(tableName).select('*');
+      if (orderCol) {
+        query = query.order(orderCol, { ascending });
+      }
+      const { data, error } = await query.range(from, from + step - 1);
+
+      if (error || !data || data.length === 0) {
+        keepFetching = false;
+      } else {
+        allData = allData.concat(data);
+        if (data.length < step) {
+          keepFetching = false;
+        } else {
+          from += step;
+        }
+      }
+    }
+    return allData;
+  };
+
   useEffect(() => {
     if (!session?.id) {
       setCurrentUser(null);
@@ -96,8 +123,8 @@ export function SupabaseDataProvider({ children, session }) {
         const { data: allLeaves } = await supabase.from('leave_requests').select('*');
         if (allLeaves) setLeaveRequests(allLeaves);
 
-        // 6. Fetch work items directly
-        const { data: allWorkItems } = await supabase.from('work_items').select('*');
+        // 6. Fetch work items directly (paginated to ensure >1000 items load)
+        const allWorkItems = await fetchAllFromTable('work_items', 'created_at', false);
         if (allWorkItems) {
           setWorkItems(allWorkItems);
         }
@@ -162,7 +189,7 @@ export function SupabaseDataProvider({ children, session }) {
 
     const workItemsSub = supabase.channel('public:work_items')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_items' }, () => {
-        supabase.from('work_items').select('*').then(({ data }) => { if (data) setWorkItems(data); });
+        fetchAllFromTable('work_items', 'created_at', false).then(data => { if (data) setWorkItems(data); });
       }).subscribe();
 
     const notifSub = supabase.channel('public:notifications')
@@ -202,10 +229,11 @@ export function SupabaseDataProvider({ children, session }) {
     // Background 30-second polling fallback to ensure state stays in sync even if WebSocket drops
     const pollInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        supabase.from('work_items').select('*').then(({ data }) => { if (data) setWorkItems(data); });
+        fetchAllFromTable('work_items', 'created_at', false).then(data => { if (data) setWorkItems(data); });
         supabase.from('saved_tasks').select('*').then(({ data }) => { if (data) setSavedTasks(data); });
       }
     }, 30000);
+
 
     return () => {
       window.removeEventListener('focus', handleFocusSync);
@@ -259,7 +287,7 @@ export function SupabaseDataProvider({ children, session }) {
       console.error('Error adding work item:', error);
     } else if (data && data.length > 0) {
       setWorkItems(prev => [...prev, ...data]);
-      supabase.from('work_items').select('*').then(({ data: d }) => { if (d) setWorkItems(d); });
+      fetchAllFromTable('work_items', 'created_at', false).then(d => { if (d) setWorkItems(d); });
     }
     return { data, error };
   };
@@ -269,7 +297,7 @@ export function SupabaseDataProvider({ children, session }) {
     const { data, error } = await supabase.from('work_items').update(updates).eq('id', id).select();
     if (error) {
       console.error('Error updating work item:', error);
-      supabase.from('work_items').select('*').then(({ data: d }) => { if (d) setWorkItems(d); });
+      fetchAllFromTable('work_items', 'created_at', false).then(d => { if (d) setWorkItems(d); });
     }
     return { data, error };
   };
@@ -280,7 +308,7 @@ export function SupabaseDataProvider({ children, session }) {
     const { error } = await supabase.from('work_items').delete().eq('id', id);
     if (error) {
       console.error('Error deleting work item:', error);
-      supabase.from('work_items').select('*').then(({ data: d }) => { if (d) setWorkItems(d); });
+      fetchAllFromTable('work_items', 'created_at', false).then(d => { if (d) setWorkItems(d); });
     }
     return { error };
   };
@@ -329,11 +357,12 @@ export function SupabaseDataProvider({ children, session }) {
     if (data && data.length > 0) {
       setSavedTasks(prev => [...prev, ...data]);
       // Re-fetch work items so any auto-spawned work item from DB trigger immediately reflects in UI state
-      const { data: freshWi } = await supabase.from('work_items').select('*');
+      const freshWi = await fetchAllFromTable('work_items', 'created_at', false);
       if (freshWi) setWorkItems(freshWi);
     }
     return { data, error };
   };
+
 
   const updateSavedTask = async (id, updates) => {
     setSavedTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
@@ -379,7 +408,7 @@ export function SupabaseDataProvider({ children, session }) {
       console.error('Error deleting container:', error);
       const { data: allContainers } = await supabase.from('containers').select('*');
       if (allContainers) setContainers(allContainers);
-      const { data: allWorkItems } = await supabase.from('work_items').select('*');
+      const allWorkItems = await fetchAllFromTable('work_items', 'created_at', false);
       if (allWorkItems) setWorkItems(allWorkItems);
     }
     return { error };
@@ -784,7 +813,7 @@ export function SupabaseDataProvider({ children, session }) {
     try {
       const { error } = await supabase.rpc('spawn_recurring_tasks_ist');
       if (error) throw error;
-      const { data: refreshedItems } = await supabase.from('work_items').select('*');
+      const refreshedItems = await fetchAllFromTable('work_items', 'created_at', false);
       if (refreshedItems) setWorkItems(refreshedItems);
       const { data: refreshedSaved } = await supabase.from('saved_tasks').select('*');
       if (refreshedSaved) setSavedTasks(refreshedSaved);
